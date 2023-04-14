@@ -35,10 +35,6 @@ contract Puppet {
         bool isActive;
     }
 
-    // trader => token => vault
-    // mapping (address => mapping (address => Vault)) tradersLongVaults;
-    // mapping (address => mapping (address => Vault)) tradersShortVaults;
-
     // trader => token => isLong => vault
     mapping (address => mapping (address => mapping (bool => Vault))) traderVaults;
 
