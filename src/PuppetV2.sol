@@ -2,6 +2,7 @@
 pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 contract PuppetV2 {
 
@@ -18,10 +19,10 @@ contract PuppetV2 {
     // using EnumerableMap for EnumerableMap.AddressToUintMap;
 
     struct RouteInfo {
-        // puppets
-        EnumerableMap.AddressToUintMap participents;
         // shares of route participents (puppets + manager)
         EnumerableMap.AddressToUintMap shares;
+        // puppets
+        EnumerableSet.AddressSet participents;
     }
 
     // route(=position/trade) => routeInfo
