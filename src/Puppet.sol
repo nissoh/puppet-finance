@@ -40,8 +40,6 @@ contract Puppet {
 
     // investor => trader => token => isLong => shares
     mapping (address => mapping (address => mapping (bool => uint256))) investorShares;
-    
-    mapping(address => mapping(address => uint256)) public investors;
 
     function registerVault(address _trader, address _token, bool _isLong) external {
         if (traderVaults[_trader][_token][_isLong].isActive) revert(); // vault already registered
