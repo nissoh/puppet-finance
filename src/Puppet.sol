@@ -41,6 +41,10 @@ contract Puppet {
     // investor => trader => token => isLong => shares
     mapping (address => mapping (address => mapping (bool => uint256))) investorShares;
 
+    //
+    // -------------------------------------- EXTERNAL --------------------------------------
+    //
+
     function registerVault(address _trader, address _token, bool _isLong) external {
         if (traderVaults[_trader][_token][_isLong].isActive) revert(); // vault already registered
         if (!tokenWhitelist[_token]) revert();
@@ -48,16 +52,16 @@ contract Puppet {
         traderVaults[_trader][_token][_isLong].isActive = true;
     }
 
-    function deposit(address[] _traders, uint256[] _amounts, address _token, address _receiver, bool _isLong) external {
+    function deposit(address[] memory _traders, uint256[] memory _amounts, address _token, address _receiver, bool _isLong) external {
         if (_traders.length != _amounts.length) revert(); // arrays not the same length
 
-        uint256 totalAmount;
+        uint256 _totalAmount;
         for (uint256 i = 0; i < _traders.length; i++) {
             _deposit(_traders[i], _token, msg.sender, _receiver, _amounts[i], _isLong);
-            totalAmount += _amounts[i];
+            _totalAmount += _amounts[i];
         }
 
-        IERC20(_token).transferFrom(msg.sender, address(this), totalAmount);
+        IERC20(_token).transferFrom(msg.sender, address(this), _totalAmount);
     }
 
     //
