@@ -15,13 +15,11 @@ A public draft for Puppet Finance
 - trader's position is 100$/2000$ (20x leverage)
 - puppet's position is 20$/400 (same 20x leverage)
 - shares stay the same
-that's easy.
 
 *trader decreases position size by 500$:*
 - trader's position is 100$/500$ (5x leverage)
 - puppet's position is 20$/100$ (same 5x leverage)
 - shares stay the same
-that's also easy.
 
 *trader adds 100$ collateral to position:*
 - trader's position is 200$/1000$ (5x leverage) - trader gets another 200 shares
