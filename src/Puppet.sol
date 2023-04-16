@@ -10,7 +10,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 
-contract Puppet {
+contract Puppet is ReentrancyGuard {
 
     using SafeERC20 for IERC20;
 
@@ -20,6 +20,7 @@ contract Puppet {
         address trader;
         bool isRegistered;
         bool isPositionOpen;
+        bytes32 positionKey;
         EnumerableMap.AddressToUintMap participantShares;
         EnumerableMap.AddressToUintMap puppetAllowance;
         EnumerableSet.AddressSet puppetsSet;
@@ -30,8 +31,9 @@ contract Puppet {
 
     uint256 public marginFee = 0.01 ether; // TODO
 
-    // route => routeInfo
     mapping(bytes32 => RouteInfo) private routeInfo;
+    mapping(bytes32 => bytes32) private gmxPositionKeyToRouteKey;
+    
     // puppet => deposit account balance
     mapping(address => uint256) public puppetDepositAccount;
 
@@ -58,13 +60,13 @@ contract Puppet {
 
     // ====================== Trader Functions ======================
 
-    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) public {
+    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant {
         address _trader = msg.sender;
         bytes32 _routeKey = getPositionKey(_trader, _collateralToken, _indexToken, _isLong);
         if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
-        routeInfo[_routeKey].trader = _trader;
         routeInfo[_routeKey].isRegistered = true;
+        routeInfo[_routeKey].trader = _trader;
 
         emit RegisterRoute(_trader, _collateralToken, _indexToken, _isLong);
     }
@@ -75,7 +77,7 @@ contract Puppet {
     //     // make sure _positionData's _indexToken is WETH
     // }
 
-    function createIncreasePosition(bytes memory _positionData, uint256 _traderAmount) public {
+    function createIncreasePosition(bytes memory _positionData, uint256 _traderAmount) external nonReentrant {
         (address[] memory _path, address _indexToken, uint256 _amountIn,,, bool _isLong,,)
             = abi.decode(_positionData, (address[], address, uint256, uint256, uint256, bool, uint256, uint256));
 
@@ -84,14 +86,13 @@ contract Puppet {
         RouteInfo storage _route = routeInfo[_routeKey];
         if (!_route.isRegistered) revert RouteNotRegistered();
 
-        uint256 _totalFunds;
-        bool _isPositionOpen = _route.isPositionOpen;
+        uint256 _totalFunds; // total collateral + fees of all participants
+        bool _isPositionOpen = _route.isPositionOpen; // take collateral from puppets only if position is not open. Fees are always taken when needed
         for (uint256 i = 0; i < EnumerableSet.length(_route.puppetsSet); i++) {
-            uint256 _amount;
+            uint256 _amount = marginFee; // TODO
             address _puppet = EnumerableSet.at(_route.puppetsSet, i);
 
-            if (!_isPositionOpen) _amount = EnumerableMap.get(_route.puppetAllowance, _puppet);
-            _amount += marginFee; // TODO
+            if (!_isPositionOpen) _amount += EnumerableMap.get(_route.puppetAllowance, _puppet);
 
             if (puppetDepositAccount[_puppet] >= _amount) {
                 puppetDepositAccount[_puppet] -= _amount;
@@ -100,30 +101,39 @@ contract Puppet {
                 continue;
             }
 
-            if (!_isPositionOpen) _deposit(_route, _puppet, _amount);
+            if (!_isPositionOpen) _deposit(_route, _puppet, _amount - marginFee); // TODO - marginFee // update shares and totalAmount for puppet
 
             _totalFunds += _amount;
         }
 
         _route.isPositionOpen = true;
 
-        _deposit(_route, _trader, _traderAmount - marginFee); // TODO - marginFee
+        _deposit(_route, _trader, _traderAmount - marginFee); // TODO - marginFee // update shares and totalAmount for trader
 
         _totalFunds += _traderAmount;
         if (_totalFunds != _amountIn) revert InvalidAmountIn();
 
         IERC20(_path[0]).safeTransferFrom(_trader, address(this), _traderAmount);
 
-        _createIncreasePosition(_positionData);
+        _createIncreasePosition(_positionData, _routeKey, _isPositionOpen);
     }
 
-    function _createIncreasePosition(bytes memory _positionData) internal {
+    function _createIncreasePosition(bytes memory _positionData, bytes32 _routeKey, bool _isPositionOpen) internal {
         (address[] memory _path, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, bool _isLong, uint256 _acceptablePrice, uint256 _executionFee)
             = abi.decode(_positionData, (address[], address, uint256, uint256, uint256, bool, uint256, uint256));
 
+            
+        if (_isPositionOpen) {
+            // trader added collateral to existing position
+            // TODO - decrease position size to account for puppets not adding collateral
+            // make sure _sizeDelta (position size in USD)...
+        }
+
         address _callbackTarget = address(this); // TODO
         bytes32 _referralCode; // TODO
-        IGMXPositionRouter(gmxPositionRouter).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, _isLong, _acceptablePrice, _executionFee, _referralCode, _callbackTarget);
+        bytes32 _positionKey = IGMXPositionRouter(gmxPositionRouter).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, _isLong, _acceptablePrice, _executionFee, _referralCode, _callbackTarget);
+
+        gmxPositionKeyToRouteKey[_positionKey] = _routeKey;
     }
 
     function _deposit(RouteInfo storage _route, address _account, uint256 _amount) internal {
@@ -184,6 +194,13 @@ contract Puppet {
             EnumerableMap.set(routeInfo[_routeKeys[i]].puppetAllowance, _puppet, _allowance);
         }
     }
+
+    // TODO
+    // function signToRouteAndSetAllowance(bytes32[] memory _routeKeys, uint256[] _allowance) external {}
+
+    // ====================== GMX request callback ======================
+
+    // function gmxPositionCallback(bytes32 _key, bool _wasExecuted, bool _isIncrease) {}
 
     // ====================== Owner Functions ======================
 
