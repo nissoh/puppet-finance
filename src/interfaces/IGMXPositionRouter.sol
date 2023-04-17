@@ -2,7 +2,6 @@
 pragma solidity 0.8.17;
 
 interface IGMXPositionRouter {
-    
     function createIncreasePosition(
         address[] memory _path,
         address _indexToken,

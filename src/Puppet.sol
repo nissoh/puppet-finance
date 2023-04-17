@@ -17,19 +17,29 @@ contract Puppet is ReentrancyGuard {
     struct RouteInfo {
         uint256 totalAmount;
         uint256 totalSupply;
+        uint256 createdTraderCollateralAmount;
+        uint256 traderCollateralAmount;
         address trader;
+        address collateralToken;
+        address indexToken;
+        bool isLong;
         bool isRegistered;
         bool isPositionOpen;
+        bool isPositionInitiated;
+        bool isWaitingForCallback;
         bytes32 positionKey;
         EnumerableMap.AddressToUintMap participantShares;
         EnumerableMap.AddressToUintMap puppetAllowance;
         EnumerableSet.AddressSet puppetsSet;
     }
 
+    uint256 public marginFee = 0.01 ether; // TODO
+
     address public gmxRouter;
     address public gmxPositionRouter;
+    address public callbackTarget;
 
-    uint256 public marginFee = 0.01 ether; // TODO
+    bytes32 public referralCode;
 
     mapping(bytes32 => RouteInfo) private routeInfo;
     mapping(bytes32 => bytes32) private gmxPositionKeyToRouteKey;
@@ -44,13 +54,16 @@ contract Puppet is ReentrancyGuard {
 
     // ====================== Constructor ======================
 
-    constructor(address[] memory _collateralTokens, address[] memory _indexTokens, address _gmxRouter, address _gmxPositionRouter) {
+    constructor(address[] memory _collateralTokens, address[] memory _indexTokens, address _gmxRouter, address _gmxPositionRouter, address _callbackTarget, bytes32 _referralCode) {
         for (uint256 i = 0; i < _collateralTokens.length; i++) {
             collateralTokenWhitelist[_collateralTokens[i]] = true;
         }
         for (uint256 i = 0; i < _indexTokens.length; i++) {
             indexTokenWhitelist[_indexTokens[i]] = true;
         }
+
+        callbackTarget = _callbackTarget;
+        referralCode = _referralCode;
 
         gmxRouter = _gmxRouter;
         gmxPositionRouter = _gmxPositionRouter;
@@ -67,6 +80,9 @@ contract Puppet is ReentrancyGuard {
 
         routeInfo[_routeKey].isRegistered = true;
         routeInfo[_routeKey].trader = _trader;
+        routeInfo[_routeKey].collateralToken = _collateralToken;
+        routeInfo[_routeKey].indexToken = _indexToken;
+        routeInfo[_routeKey].isLong = _isLong;
 
         emit RegisterRoute(_trader, _collateralToken, _indexToken, _isLong);
     }
@@ -74,7 +90,7 @@ contract Puppet is ReentrancyGuard {
     // TODO
     // function createIncreasePositionETH(bytes memory _positionData, uint256 _traderAmount) external payable {
     //     // wrap ETH and call createIncreasePosition
-    //     // make sure _positionData's _indexToken is WETH
+    //     // make sure _positionData's _collateralToken is WETH
     // }
 
     function createIncreasePosition(bytes memory _positionData, uint256 _traderAmount) external nonReentrant {
@@ -85,14 +101,15 @@ contract Puppet is ReentrancyGuard {
         bytes32 _routeKey = getPositionKey(_trader, _path[_path.length - 1], _indexToken, _isLong);
         RouteInfo storage _route = routeInfo[_routeKey];
         if (!_route.isRegistered) revert RouteNotRegistered();
+        if (_route.isWaitingForCallback) revert RouteIsWaitingForCallback();
 
         uint256 _totalFunds; // total collateral + fees of all participants
-        bool _isPositionOpen = _route.isPositionOpen; // take collateral from puppets only if position is not open. Fees are always taken when needed
+        bool _isPositionInitiated = _route.isPositionInitiated; // take collateral from puppets only if position is not open. Fees are always taken when needed
         for (uint256 i = 0; i < EnumerableSet.length(_route.puppetsSet); i++) {
             uint256 _amount = marginFee; // TODO
             address _puppet = EnumerableSet.at(_route.puppetsSet, i);
 
-            if (!_isPositionOpen) _amount += EnumerableMap.get(_route.puppetAllowance, _puppet);
+            if (!_isPositionInitiated) _amount += EnumerableMap.get(_route.puppetAllowance, _puppet);
 
             if (puppetDepositAccount[_puppet] >= _amount) {
                 puppetDepositAccount[_puppet] -= _amount;
@@ -101,39 +118,40 @@ contract Puppet is ReentrancyGuard {
                 continue;
             }
 
-            if (!_isPositionOpen) _deposit(_route, _puppet, _amount - marginFee); // TODO - marginFee // update shares and totalAmount for puppet
+            if (!_isPositionInitiated) _deposit(_route, _puppet, _amount - marginFee); // TODO - marginFee // update shares and totalAmount for puppet
 
             _totalFunds += _amount;
         }
 
-        _route.isPositionOpen = true;
+        _route.isPositionInitiated = true;
 
         _deposit(_route, _trader, _traderAmount - marginFee); // TODO - marginFee // update shares and totalAmount for trader
 
         _totalFunds += _traderAmount;
         if (_totalFunds != _amountIn) revert InvalidAmountIn();
 
+        _route.createdTraderCollateralAmount = _traderAmount;
+
         IERC20(_path[0]).safeTransferFrom(_trader, address(this), _traderAmount);
 
-        _createIncreasePosition(_positionData, _routeKey, _isPositionOpen);
+        _createIncreasePosition(_positionData, _routeKey);
     }
 
-    function _createIncreasePosition(bytes memory _positionData, bytes32 _routeKey, bool _isPositionOpen) internal {
+    function _createIncreasePosition(bytes memory _positionData, bytes32 _routeKey) internal {
         (address[] memory _path, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, bool _isLong, uint256 _acceptablePrice, uint256 _executionFee)
             = abi.decode(_positionData, (address[], address, uint256, uint256, uint256, bool, uint256, uint256));
 
-            
-        if (_isPositionOpen) {
+        RouteInfo storage _route = routeInfo[_routeKey];
+        if (_route.isPositionOpen) {
             // trader added collateral to existing position
             // TODO - decrease position size to account for puppets not adding collateral
             // make sure _sizeDelta (position size in USD)...
         }
 
-        address _callbackTarget = address(this); // TODO
-        bytes32 _referralCode; // TODO
-        bytes32 _positionKey = IGMXPositionRouter(gmxPositionRouter).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, _isLong, _acceptablePrice, _executionFee, _referralCode, _callbackTarget);
+        bytes32 _positionKey = IGMXPositionRouter(gmxPositionRouter).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, _isLong, _acceptablePrice, _executionFee, referralCode, callbackTarget);
 
         gmxPositionKeyToRouteKey[_positionKey] = _routeKey;
+        _route.isWaitingForCallback = true;
     }
 
     function _deposit(RouteInfo storage _route, address _account, uint256 _amount) internal {
@@ -147,13 +165,55 @@ contract Puppet is ReentrancyGuard {
         emit Deposit(_account, _amount, _shares);
     }
 
+    // update traderCollateralAmount with createdTraderCollateralAmount
+    // function approvePosition // TODO
+
+    function rejectIncreasePosition(bytes32 _gmxPositionKey, bool _isPositionOpen) external nonReentrant {
+        if (msg.sender != callbackTarget) revert NotCallbackTarget();
+
+        bytes32 _routeKey = gmxPositionKeyToRouteKey[_gmxPositionKey];
+        RouteInfo storage _route = routeInfo[_routeKey];
+        if (!_route.isRegistered) revert RouteNotRegistered();
+
+        uint256 _amount;
+        for (uint256 i = 0; i < EnumerableSet.length(_route.puppetsSet); i++) {
+            address _puppet = EnumerableSet.at(_route.puppetsSet, i);
+            _amount = marginFee; // TODO marginFee
+
+            if (!_isPositionOpen) _amount += EnumerableMap.get(_route.puppetAllowance, _puppet);
+
+            puppetDepositAccount[_puppet] += _amount;
+        }
+
+        _amount = _route.createdTraderCollateralAmount + marginFee; // TODO marginFee
+        if (!_isPositionOpen) _amount += route.traderCollateralAmount;
+
+        _route.isWaitingForCallback = false;
+        _route.createdTraderCollateralAmount = 0;
+
+        if (!_isPositionOpen) {
+            _route.isPositionOpen = false;
+            _route.isPositionInitiated = false;
+            _route.traderCollateralAmount = 0;
+            _route.totalAmount = 0;
+            _route.totalSupply = 0;
+            // clear participantShares
+            for (uint256 i = 0; i < EnumerableMap.length(info.participantShares); i++) {
+                (address key, ) = EnumerableMap.at(info.participantShares, i);
+                EnumerableMap.remove(info.participantShares, key);
+            }
+        }
+
+        IERC20(_route.collateralToken).safeTransfer(_route.trader, _amount);
+    }
+
     // function createDecreasePosition
     // 4. *removing collateral* createDecreasePosition (txn hash https://arbiscan.io/tx/0xddeac229f6190861f93185acb69111fe963ad9de282a52ad6da23300a1ac1539)
     // 5. *closing position* createDecreasePosition (txn hash https://arbiscan.io/tx/0x0aa093c2709d3f2a42b7c41345cfa4588e736bb5d98b2d0eca47f029f74a930e)
 
     // ====================== Puppet Functions ======================
 
-    function depositToAccount(uint256 _amount, address _token, address _puppet) public {
+    function depositToAccount(uint256 _amount, address _token, address _puppet) external nonReentrant {
         puppetDepositAccount[_puppet] += _amount;
 
         address _caller = msg.sender;
@@ -162,7 +222,7 @@ contract Puppet is ReentrancyGuard {
         emit DepositToAccount(_amount, _caller, _puppet);
     }
 
-    function toggleRouteSubscription(address[] memory _traders, address _collateralToken, address _indexToken, bool _isLong, bool _sign) public {
+    function toggleRouteSubscription(address[] memory _traders, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external nonReentrant {
         if (!collateralTokenWhitelist[_collateralToken]) revert CollateralTokenNotWhitelisted();
         if (!indexTokenWhitelist[_indexToken]) revert IndexTokenNotWhitelisted();
 
@@ -187,7 +247,7 @@ contract Puppet is ReentrancyGuard {
         emit SignToRoute(_traders, _puppet, _collateralToken, _indexToken, _isLong, _sign);
     }
 
-    function setTraderAllowance(bytes32[] memory _routeKeys, uint256 _allowance) external {
+    function setTraderAllowance(bytes32[] memory _routeKeys, uint256 _allowance) external nonReentrant {
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _routeKeys.length; i++) {
             if (!EnumerableSet.contains(routeInfo[_routeKeys[i]].puppetsSet, _puppet)) revert PuppetNotSigned();
@@ -197,6 +257,9 @@ contract Puppet is ReentrancyGuard {
 
     // TODO
     // function signToRouteAndSetAllowance(bytes32[] memory _routeKeys, uint256[] _allowance) external {}
+
+    // TODO
+    // function unsignFromRoute(bytes32[] memory _routeKeys) external nonReentrant {}
 
     // ====================== GMX request callback ======================
 
@@ -244,4 +307,8 @@ contract Puppet is ReentrancyGuard {
     error PuppetNotSigned();
     error Underflow();
     error InvalidAmountIn();
+    error InvalidAmountOut();
+    error NotCallbackTarget();
+    error PositionNotOpen();
+    error RouteIsWaitingForCallback();
 }
