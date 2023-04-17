@@ -39,25 +39,21 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
     function gmxPositionCallback(bytes32 _positionKey, bool _isExecuted, bool _isIncrease) external override {
         if (msg.sender != gmxPositionRouter) revert Unauthorized();
 
-        if (_isExecuted) {
-            IPuppet(puppetContract).approvePosition(_positionKey);
-        } else {
-            if (_isPositionOpen(_positionKey)) {
-                if (_isIncrease) {
-                    IPuppet(puppetContract).rejectIncreasePosition(_positionKey, true);
-                } else {
-                    IPuppet(puppetContract).rejectDecreasePosition(_positionKey, true);
-                }
+        if (_isIncrease) {
+            if (_isExecuted) {
+                IPuppet(puppetContract).approveIncreasePosition(_positionKey);
             } else {
-                if (_isIncrease) {
-                    IPuppet(puppetContract).rejectIncreasePosition(_positionKey, false);
-                } else {
-                    IPuppet(puppetContract).rejectDecreasePosition(_positionKey, false);
-                }
+                IPuppet(puppetContract).rejectIncreasePosition(_positionKey);
+            }
+        } else {
+            if (_isExecuted) {
+                IPuppet(puppetContract).approveDecreasePosition(_positionKey);
+            } else {
+                IPuppet(puppetContract).rejectDecreasePosition(_positionKey);
             }
         }
         emit GMXPositionCallback(_positionKey, _isExecuted);
     }
 
-    function _isPositionOpen(bytes32 _positionKey) internal returns (bool _isOpen) {} // TODO 
+    // function _isPositionOpen(bytes32 _positionKey) internal returns (bool _isOpen) {} // TODO 
 }
