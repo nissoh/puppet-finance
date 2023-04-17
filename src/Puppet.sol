@@ -71,7 +71,7 @@ contract Puppet is ReentrancyGuard {
 
     // ====================== Trader Functions ======================
 
-    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant {
+    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant returns (bytes32 _routeKey) {
         address _trader = msg.sender;
         bytes32 _routeKey = getPositionKey(_trader, _collateralToken, _indexToken, _isLong);
         if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
@@ -91,7 +91,6 @@ contract Puppet is ReentrancyGuard {
     //     // make sure _positionData's _collateralToken is WETH
     // }
 
-    // TODO  -->  update position storage only if position approved
     function createIncreasePosition(bytes memory _positionData, uint256 _traderAmount) external nonReentrant {
         (address[] memory _path, address _indexToken, uint256 _amountIn,,, bool _isLong,,)
             = abi.decode(_positionData, (address[], address, uint256, uint256, uint256, bool, uint256, uint256));
@@ -122,96 +121,14 @@ contract Puppet is ReentrancyGuard {
             _totalFunds += _amount;
         }
 
-        _deposit(_route, _trader, _traderAmount - marginFee); // TODO - marginFee // update shares and totalAmount for trader
-
         _totalFunds += _traderAmount;
         if (_totalFunds != _amountIn) revert InvalidAmountIn();
 
-        _route.traderRequestedCollateralAmount = _traderAmount; // includes margin fee
+        _route.traderRequestedCollateralAmount = _traderAmount - marginFee; // TODO - marginFee // includes margin fee
 
         IERC20(_path[0]).safeTransferFrom(_trader, address(this), _traderAmount);
 
         _createIncreasePosition(_positionData, _routeKey);
-    }
-
-    function _createIncreasePosition(bytes memory _positionData, bytes32 _routeKey) internal {
-        (address[] memory _path, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, bool _isLong, uint256 _acceptablePrice, uint256 _executionFee)
-            = abi.decode(_positionData, (address[], address, uint256, uint256, uint256, bool, uint256, uint256));
-
-        RouteInfo storage _route = routeInfo[_routeKey];
-        if (_route.isPositionOpen) {
-            // trader added collateral to existing position
-            // TODO - decrease position size to account for puppets not adding collateral
-            // make sure _sizeDelta (position size in USD)...
-        }
-
-        bytes32 _positionKey = IGMXPositionRouter(gmxPositionRouter).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, _isLong, _acceptablePrice, _executionFee, referralCode, callbackTarget);
-
-        gmxPositionKeyToRouteKey[_positionKey] = _routeKey;
-        _route.isWaitingForCallback = true;
-    }
-
-    function _deposit(RouteInfo storage _route, address _account, uint256 _amount) internal {
-        uint256 _shares = convertToShares(_route.totalAmount, _route.totalSupply, _amount);
-
-        EnumerableMap.set(_route.participantShares, _account, EnumerableMap.get(_route.participantShares, _account) + _shares);
-
-        _route.totalAmount += _amount;
-        _route.totalSupply += _shares;
-
-        emit Deposit(_account, _amount, _shares);
-    }
-
-    function approveIncreasePosition(bytes32 _gmxPositionKey) external nonReentrant {
-        if (msg.sender != callbackTarget) revert NotCallbackTarget();
-
-        bytes32 _routeKey = gmxPositionKeyToRouteKey[_gmxPositionKey];
-        RouteInfo storage _route = routeInfo[_routeKey];
-        if (!_route.isRegistered) revert RouteNotRegistered();
-
-        _route.isPositionOpen = true;
-        _route.isWaitingForCallback = false;
-        _route.traderCollateralAmount = 0;
-
-        emit ApprovePosition(_routeKey);
-    }
-
-    function rejectIncreasePosition(bytes32 _gmxPositionKey) external nonReentrant {
-        if (msg.sender != callbackTarget) revert NotCallbackTarget();
-
-        bytes32 _routeKey = gmxPositionKeyToRouteKey[_gmxPositionKey];
-        RouteInfo storage _route = routeInfo[_routeKey];
-        if (!_route.isRegistered) revert RouteNotRegistered();
-
-        uint256 _amount;
-        bool _isPositionOpen = _route.isPositionOpen;
-        for (uint256 i = 0; i < EnumerableSet.length(_route.puppetsSet); i++) {
-            address _puppet = EnumerableSet.at(_route.puppetsSet, i);
-            _amount = marginFee; // TODO marginFee
-
-            if (!_isPositionOpen) _amount += EnumerableMap.get(_route.puppetAllowance, _puppet);
-
-            puppetDepositAccount[_puppet] += _amount;
-        }
-
-        _amount = _route.traderRequestedCollateralAmount; // includes margin fee
-
-        _route.isWaitingForCallback = false;
-        _route.traderRequestedCollateralAmount = 0;
-
-        if (!_isPositionOpen) {
-            _route.isPositionOpen = false;
-            _route.traderCollateralAmount = 0;
-            _route.totalAmount = 0;
-            _route.totalSupply = 0;
-            // clear participantShares
-            for (uint256 i = 0; i < EnumerableMap.length(info.participantShares); i++) {
-                (address key, ) = EnumerableMap.at(info.participantShares, i);
-                EnumerableMap.remove(info.participantShares, key);
-            }
-        }
-
-        IERC20(_route.collateralToken).safeTransfer(_route.trader, _amount);
     }
 
     // function createDecreasePosition
@@ -236,9 +153,9 @@ contract Puppet is ReentrancyGuard {
         bytes32 _routeKey;
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _traders.length; i++) {
-            _routeKey = getPositionKey(_traders[0], _collateralToken, _indexToken, _isLong);
+            _routeKey = getPositionKey(_traders[i], _collateralToken, _indexToken, _isLong);
             if (!routeInfo[_routeKey].isRegistered) revert RouteNotRegistered();
-            if (_traders[i] != routeInfo[_routeKey].trader) revert TraderNotMatch();
+            if (routeInfo[_routeKey].isWaitingForCallback) revert WaitingForCallback();
 
             bool _isPresent;
             EnumerableSet.AddressSet storage _puppetsSet = routeInfo[_routeKey].puppetsSet;
@@ -258,6 +175,8 @@ contract Puppet is ReentrancyGuard {
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _routeKeys.length; i++) {
             if (!EnumerableSet.contains(routeInfo[_routeKeys[i]].puppetsSet, _puppet)) revert PuppetNotSigned();
+            if (routeInfo[_routeKeys[i]].isWaitingForCallback) revert WaitingForCallback();
+
             EnumerableMap.set(routeInfo[_routeKeys[i]].puppetAllowance, _puppet, _allowance);
         }
     }
@@ -268,11 +187,94 @@ contract Puppet is ReentrancyGuard {
     // TODO
     // function unsignFromRoute(bytes32[] memory _routeKeys) external nonReentrant {}
 
-    // ====================== GMX request callback ======================
+    // ====================== request callback ======================
 
-    // function gmxPositionCallback(bytes32 _key, bool _wasExecuted, bool _isIncrease) {}
+    function approveIncreasePosition(bytes32 _gmxPositionKey) external nonReentrant {
+        if (msg.sender != callbackTarget) revert NotCallbackTarget();
+
+        bytes32 _routeKey = gmxPositionKeyToRouteKey[_gmxPositionKey];
+        RouteInfo storage _route = routeInfo[_routeKey];
+        if (!_route.isRegistered) revert RouteNotRegistered();
+
+        _deposit(_route, _route.trader, _route.traderRequestedCollateralAmount); // update shares and totalAmount for trader
+
+        _route.isPositionOpen = true;
+        _route.isWaitingForCallback = false;
+        _route.traderRequestedCollateralAmount = 0;
+
+        emit ApprovePosition(_routeKey);
+    }
+
+    function rejectIncreasePosition(bytes32 _gmxPositionKey) external nonReentrant {
+        if (msg.sender != callbackTarget) revert NotCallbackTarget();
+
+        bytes32 _routeKey = gmxPositionKeyToRouteKey[_gmxPositionKey];
+        RouteInfo storage _route = routeInfo[_routeKey];
+        if (!_route.isRegistered) revert RouteNotRegistered();
+
+        uint256 _amount;
+        bool _isPositionOpen = _route.isPositionOpen;
+        for (uint256 i = 0; i < EnumerableSet.length(_route.puppetsSet); i++) {
+            address _puppet = EnumerableSet.at(_route.puppetsSet, i);
+            _amount = marginFee; // TODO marginFee
+
+            if (!_isPositionOpen) _amount += EnumerableMap.get(_route.puppetAllowance, _puppet);
+
+            puppetDepositAccount[_puppet] += _amount;
+        }
+
+        _amount = _route.traderRequestedCollateralAmount + marginFee; // TODO - marginFee // includes margin fee
+
+        _route.isWaitingForCallback = false;
+        _route.traderRequestedCollateralAmount = 0;
+
+        if (!_isPositionOpen) {
+            _route.isPositionOpen = false;
+            _route.traderCollateralAmount = 0;
+            _route.totalAmount = 0;
+            _route.totalSupply = 0;
+            for (uint256 i = 0; i < EnumerableMap.length(info.participantShares); i++) {
+                (address key, ) = EnumerableMap.at(info.participantShares, i);
+                EnumerableMap.remove(info.participantShares, key);
+            }
+        }
+        IERC20(_route.collateralToken).safeTransfer(_route.trader, _amount);
+    }
 
     // ====================== Owner Functions ======================
+
+    // ====================== Internal Helper Functions ======================
+
+    function _createIncreasePosition(bytes memory _positionData, bytes32 _routeKey) internal {
+        (address[] memory _path, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, bool _isLong, uint256 _acceptablePrice, uint256 _executionFee)
+            = abi.decode(_positionData, (address[], address, uint256, uint256, uint256, bool, uint256, uint256));
+
+        RouteInfo storage _route = routeInfo[_routeKey];
+        if (_route.isPositionOpen) {
+            // trader added collateral to an existing position
+            // TODO - decrease position size to account for puppets not adding collateral
+            // (make sure _sizeDelta (position size in USD)...)(?)
+        }
+
+        bytes32 _positionKey = IGMXPositionRouter(gmxPositionRouter).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, _isLong, _acceptablePrice, _executionFee, referralCode, callbackTarget);
+
+        gmxPositionKeyToRouteKey[_positionKey] = _routeKey;
+        _route.isWaitingForCallback = true;
+    }
+
+    function _deposit(RouteInfo storage _route, address _account, uint256 _amount) internal {
+        uint256 _shares = convertToShares(_route.totalAmount, _route.totalSupply, _amount);
+
+        if (!(_amount > 0)) revert ZeroAmount();
+        if (!(_shares > 0)) revert ZeroAmount();
+
+        EnumerableMap.set(_route.participantShares, _account, EnumerableMap.get(_route.participantShares, _account) + _shares);
+
+        _route.totalAmount += _amount;
+        _route.totalSupply += _shares;
+
+        emit Deposit(_account, _amount, _shares);
+    }
 
     // ====================== Helper Functions ======================
 
@@ -320,4 +322,5 @@ contract Puppet is ReentrancyGuard {
     error NotCallbackTarget();
     error PositionNotOpen();
     error RouteIsWaitingForCallback();
+    error ZeroAmount();
 }
