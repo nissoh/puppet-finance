@@ -25,7 +25,7 @@ contract Puppet is ReentrancyGuard {
         bool isRegistered;
         bool isPositionOpen;
         bool isWaitingForCallback;
-        bytes32 positionKey;
+        // bytes32 positionKey;
         EnumerableMap.AddressToUintMap participantShares;
         EnumerableMap.AddressToUintMap puppetAllowance;
         EnumerableSet.AddressSet puppetsSet;
@@ -41,13 +41,13 @@ contract Puppet is ReentrancyGuard {
 
     mapping(bytes32 => RouteInfo) private routeInfo;
     mapping(bytes32 => bytes32) private gmxPositionKeyToRouteKey;
-    
-    // puppet => deposit account balance
+
+    // TODO - fix puppet token balance
+    // // token => puppet => balance
+    // mapping(address => mapping(address => uint256)) public puppetDepositAccount;
     mapping(address => uint256) public puppetDepositAccount;
 
-    // collateral token => is whitelisted
     mapping(address => bool) public collateralTokenWhitelist;
-    // index token => is whitelisted
     mapping(address => bool) public indexTokenWhitelist;
 
     // ====================== Constructor ======================
@@ -91,6 +91,9 @@ contract Puppet is ReentrancyGuard {
     //     // make sure _positionData's _collateralToken is WETH
     // }
 
+    // NOTE: on adjusting position:
+    // when setting `_sizeDelta`, make sure to account for the fact that puppets do not add collateral to an adjusment in an open position
+    // if not, trader will pay for increasing position size of puppets
     function createIncreasePosition(bytes memory _positionData, uint256 _traderAmount) external nonReentrant {
         (address[] memory _path, address _indexToken, uint256 _amountIn,,, bool _isLong,,)
             = abi.decode(_positionData, (address[], address, uint256, uint256, uint256, bool, uint256, uint256));
@@ -99,6 +102,7 @@ contract Puppet is ReentrancyGuard {
         bytes32 _routeKey = getPositionKey(_trader, _path[_path.length - 1], _indexToken, _isLong);
         RouteInfo storage _route = routeInfo[_routeKey];
         if (!_route.isRegistered) revert RouteNotRegistered();
+        if (_route.trader != _trader) revert InvalidCaller();
         if (_route.isWaitingForCallback) revert RouteIsWaitingForCallback();
 
         uint256 _totalFunds; // total collateral + fees of all participants
@@ -131,9 +135,62 @@ contract Puppet is ReentrancyGuard {
         _createIncreasePosition(_positionData, _routeKey);
     }
 
-    // function createDecreasePosition
     // 4. *removing collateral* createDecreasePosition (txn hash https://arbiscan.io/tx/0xddeac229f6190861f93185acb69111fe963ad9de282a52ad6da23300a1ac1539)
     // 5. *closing position* createDecreasePosition (txn hash https://arbiscan.io/tx/0x0aa093c2709d3f2a42b7c41345cfa4588e736bb5d98b2d0eca47f029f74a930e)
+    function createDecreasePosition(bytes memory _positionData) external nonReentrant {
+        (address[] memory _path, address _indexToken, uint256 _collateralDeltaUSD, uint256 _sizeDelta, bool _isLong, address _receiver, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee, bool _withdrawETH)
+            = abi.decode(_positionData, (address[], address, uint256, uint256, bool, address, uint256, uint256, uint256, bool));
+
+        address _trader = msg.sender;
+        bytes32 _routeKey = getPositionKey(_trader, _path[_path.length - 1], _indexToken, _isLong);
+        RouteInfo storage _route = routeInfo[_routeKey];
+        if (!_route.isRegistered) revert RouteNotRegistered();
+        if (_route.trader != _trader) revert InvalidCaller();
+        if (_route.isWaitingForCallback) revert RouteIsWaitingForCallback();
+
+        uint256 _collateralDelta;
+        if (_collateralDeltaUSD > 0) {
+            // TODO: convert _collateralDeltaUSD to _collateralDelta using the exchange rate
+            _collateralDelta = _collateralDeltaUSD; // TODO
+
+            uint256 _totalSharesToBurn = convertToShares(_route.totalAmount, _route.totalSupply, _collateralDelta);
+
+            uint256 _shares;
+            uint256 _sharesToBurn;
+            uint256 _amountToCredit;
+            for (uint256 i = 0; i < puppetsSet.length(); i++) {
+                address _puppet = puppetsSet.at(i);
+                _shares = EnumerableMap.get(_route.participantShares, _puppet);
+                _sharesToBurn = (_shares * _totalSharesToBurn) / _route.totalSupply;
+                _amountToCredit = convertToAmount(_route.totalAmount, _route.totalSupply, _sharesToBurn);
+
+                // TODO: only gather data here, do the actual state update only on approveDecreasePosition
+                EnumerableMap.set(_route.participantShares, _puppet, _shares - _sharesToBurn);
+                puppetDepositAccount[_puppet] += _amountToCredit;
+            }
+
+            _shares = EnumerableMap.get(_route.participantShares, _trader);
+            _sharesToBurn = (_shares * _totalSharesToBurn) / _route.totalSupply;
+            _amountToCredit = convertToAmount(_route.totalAmount, _route.totalSupply, _sharesToBurn);
+
+            // TODO: only gather data here, do the actual state update only on approveDecreasePosition
+            EnumerableMap.set(_route.participantShares, _trader, _shares - _sharesToBurn);
+            creditBalance(_trader, _amountToCredit);
+
+            // TODO: only gather data here, do the actual state update only on approveDecreasePosition
+            _route.totalAmount -= _collateralDelta;
+            _route.totalSupply -= _totalSharesToBurn;
+        }
+
+        bytes32 _positionKey = IGMXPositionRouter(gmxPositionRouter).createDecreasePosition(_path, _indexToken, _collateralDelta, _sizeDelta, _isLong, _receiver, _acceptablePrice, _minOut, _executionFee, _withdrawETH, referralCode, callbackTarget);
+
+        gmxPositionKeyToRouteKey[_positionKey] = _routeKey;
+        _route.isWaitingForCallback = true;
+    }
+
+    function creditBalance(address _account, uint256 _amount) private {
+        // TODO: Implement the logic to credit the balance of _account with _amount
+    }
 
     // ====================== Puppet Functions ======================
 
@@ -230,7 +287,6 @@ contract Puppet is ReentrancyGuard {
 
         if (!_isPositionOpen) {
             _route.isPositionOpen = false;
-            _route.traderCollateralAmount = 0;
             _route.totalAmount = 0;
             _route.totalSupply = 0;
             for (uint256 i = 0; i < EnumerableMap.length(info.participantShares); i++) {
@@ -250,11 +306,6 @@ contract Puppet is ReentrancyGuard {
             = abi.decode(_positionData, (address[], address, uint256, uint256, uint256, bool, uint256, uint256));
 
         RouteInfo storage _route = routeInfo[_routeKey];
-        if (_route.isPositionOpen) {
-            // trader added collateral to an existing position
-            // TODO - decrease position size to account for puppets not adding collateral
-            // (make sure _sizeDelta (position size in USD)...)(?)
-        }
 
         bytes32 _positionKey = IGMXPositionRouter(gmxPositionRouter).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, _isLong, _acceptablePrice, _executionFee, referralCode, callbackTarget);
 
@@ -323,4 +374,6 @@ contract Puppet is ReentrancyGuard {
     error PositionNotOpen();
     error RouteIsWaitingForCallback();
     error ZeroAmount();
+    error WaitingForCallback();
+    error InvalidCaller();
 }
