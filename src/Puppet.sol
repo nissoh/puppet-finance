@@ -31,6 +31,13 @@ contract Puppet is ReentrancyGuard {
         EnumerableSet.AddressSet puppetsSet;
     }
 
+    struct PendingDecrease {
+        uint256 totalAmount;
+        uint256 totalSupply;
+        EnumerableMap.AddressToUintMap newParticipantShares;
+        EnumerableMap.AddressToUintMap creditAmounts;
+    }
+
     uint256 public marginFee = 0.01 ether; // TODO
 
     address public gmxRouter;
@@ -40,6 +47,7 @@ contract Puppet is ReentrancyGuard {
     bytes32 public referralCode;
 
     mapping(bytes32 => RouteInfo) private routeInfo;
+    mapping(bytes32 => PendingDecrease) public pendingDecreases;
     mapping(bytes32 => bytes32) private gmxPositionKeyToRouteKey;
 
     // TODO - fix puppet token balance
@@ -135,8 +143,7 @@ contract Puppet is ReentrancyGuard {
         _createIncreasePosition(_positionData, _routeKey);
     }
 
-    // 4. *removing collateral* createDecreasePosition (txn hash https://arbiscan.io/tx/0xddeac229f6190861f93185acb69111fe963ad9de282a52ad6da23300a1ac1539)
-    // 5. *closing position* createDecreasePosition (txn hash https://arbiscan.io/tx/0x0aa093c2709d3f2a42b7c41345cfa4588e736bb5d98b2d0eca47f029f74a930e)
+    // TODO - add margin fee handling
     function createDecreasePosition(bytes memory _positionData) external nonReentrant {
         (address[] memory _path, address _indexToken, uint256 _collateralDeltaUSD, uint256 _sizeDelta, bool _isLong, address _receiver, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee, bool _withdrawETH)
             = abi.decode(_positionData, (address[], address, uint256, uint256, bool, address, uint256, uint256, uint256, bool));
@@ -155,6 +162,8 @@ contract Puppet is ReentrancyGuard {
 
             uint256 _totalSharesToBurn = convertToShares(_route.totalAmount, _route.totalSupply, _collateralDelta);
 
+            PendingDecrease storage _pendingDecrease;
+
             uint256 _shares;
             uint256 _sharesToBurn;
             uint256 _amountToCredit;
@@ -164,22 +173,21 @@ contract Puppet is ReentrancyGuard {
                 _sharesToBurn = (_shares * _totalSharesToBurn) / _route.totalSupply;
                 _amountToCredit = convertToAmount(_route.totalAmount, _route.totalSupply, _sharesToBurn);
 
-                // TODO: only gather data here, do the actual state update only on approveDecreasePosition
-                EnumerableMap.set(_route.participantShares, _puppet, _shares - _sharesToBurn);
-                puppetDepositAccount[_puppet] += _amountToCredit;
+                EnumerableMap.set(_pendingDecrease.newParticipantShares, _puppet, _shares - _sharesToBurn);
+                EnumerableMap.set(_pendingDecrease.creditAmounts, _puppet, _amountToCredit);
             }
 
             _shares = EnumerableMap.get(_route.participantShares, _trader);
             _sharesToBurn = (_shares * _totalSharesToBurn) / _route.totalSupply;
             _amountToCredit = convertToAmount(_route.totalAmount, _route.totalSupply, _sharesToBurn);
 
-            // TODO: only gather data here, do the actual state update only on approveDecreasePosition
-            EnumerableMap.set(_route.participantShares, _trader, _shares - _sharesToBurn);
-            creditBalance(_trader, _amountToCredit);
+            EnumerableMap.set(_pendingDecrease.newParticipantShares, _trader, _shares - _sharesToBurn);
+            EnumerableMap.set(_pendingDecrease.creditAmounts, _trader, _amountToCredit);
 
-            // TODO: only gather data here, do the actual state update only on approveDecreasePosition
-            _route.totalAmount -= _collateralDelta;
-            _route.totalSupply -= _totalSharesToBurn;
+            _pendingDecrease.totalAmount = _route.totalAmount - _collateralDelta;
+            _pendingDecrease.totalSupply = _route.totalSupply - _totalSharesToBurn;
+
+            pendingDecreases[_positionKey] = _pendingDecrease;
         }
 
         bytes32 _positionKey = IGMXPositionRouter(gmxPositionRouter).createDecreasePosition(_path, _indexToken, _collateralDelta, _sizeDelta, _isLong, _receiver, _acceptablePrice, _minOut, _executionFee, _withdrawETH, referralCode, callbackTarget);
@@ -295,6 +303,40 @@ contract Puppet is ReentrancyGuard {
             }
         }
         IERC20(_route.collateralToken).safeTransfer(_route.trader, _amount);
+
+        emit RejectPosition(_routeKey, _amount);
+    }
+
+    function approveDecreasePosition(bytes32 _positionKey) external nonReentrant {
+        if (msg.sender != callbackTarget) revert NotCallbackTarget();
+
+        PendingDecrease storage _pendingDecrease = pendingDecreases[_positionKey];
+        bytes32 _routeKey = gmxPositionKeyToRouteKey[_positionKey];
+        RouteInfo storage _route = routeInfo[_routeKey];
+
+        _route.totalAmount = _pendingDecrease.totalAmount;
+        _route.totalSupply = _pendingDecrease.totalSupply;
+
+        uint256 _newParticipantShares;
+        uint256 _creditAmount;
+        for (uint256 i = 0; i < puppetsSet.length(); i++) {
+            address _puppet = puppetsSet.at(i);
+            _newParticipantShares = EnumerableMap.get(_pendingDecrease.newParticipantShares, _puppet);
+            _creditAmount = EnumerableMap.get(_pendingDecrease.creditAmounts, _puppet);
+
+            EnumerableMap.set(_route.participantShares, _puppet, _newParticipantShares);
+            puppetDepositAccount[_puppet] += _creditAmount;
+        }
+
+        _newParticipantShares = EnumerableMap.get(_pendingDecrease.newParticipantShares, _route.trader);
+        _creditAmount = EnumerableMap.get(_pendingDecrease.creditAmounts, _route.trader);
+
+        EnumerableMap.set(_route.participantShares, _route.trader, _newParticipantShares);
+        creditBalance(msg.sender, _creditAmount);
+
+        delete pendingDecreases[_positionKey];
+
+        emit ApproveDecreasePosition(_routeKey);
     }
 
     // ====================== Owner Functions ======================
