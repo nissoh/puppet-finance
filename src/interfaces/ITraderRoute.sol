@@ -17,10 +17,21 @@ interface ITraderRoute {
 
     function setAllowance(address _puppet, uint256 _allowance) external;
 
+    function approveIncreasePosition() external;
+
+    function rejectIncreasePosition() external;
+
+    function approveDecreasePosition() external;
+
+    function rejectDecreasePosition() external;
+
     // ====================== Events ======================
 
     event CreateIncreasePosition(bytes32 indexed positionKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
+    event CreateDecreasePosition(bytes32 indexed positionKey, uint256 minOut, uint256 collateralDeltaUSD, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event Deposit(address indexed account, uint256 amount, uint256 shares);
+    event ApprovePosition();
+    event RejectPosition(uint256 totalPuppetsCredit, uint256 amount);
 
     // ====================== Errors ======================
 
@@ -30,4 +41,7 @@ interface ITraderRoute {
     error Unauthorized();
     error InvalidAmountIn();
     error PositionIsOpen();
+    error NotCallbackTarget();
+    error RouteNotRegistered();
+    error KeyError();
 }

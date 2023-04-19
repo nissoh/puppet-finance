@@ -9,13 +9,19 @@ interface IPuppetOrchestrator {
 
     function getGMXPositionRouter() external view returns (address);
 
-    function isPuppetSolvent(uint256 _amount, address _puppet) external view returns (bool);
+    function isPuppetSolvent(uint256 _amount, address _token, address _puppet) external view returns (bool);
 
     function getReferralCode() external view returns (bytes32);
 
     function getCallbackTarget() external view returns (address);
 
+    function getTraderRouteForPosition(bytes32 _gmxPositionKey) external view returns (address);
+
+    function updateGMXPositionKeyToTraderRouteAddress(bytes32 _gmxPositionKey) external; 
+
     function debitPuppetAccount(address _puppet, address _token, uint256 _amount) external;
+
+    function creditPuppetAccount(address _puppet, address _token, uint256 _amount) external;
 
     // ====================== Events ======================
 

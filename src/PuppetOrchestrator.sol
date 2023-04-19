@@ -18,27 +18,16 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     using SafeERC20 for IERC20;
 
-    // struct PendingDecrease {
-    //     uint256 totalAmount;
-    //     uint256 totalSupply;
-    //     EnumerableMap.AddressToUintMap newParticipantShares;
-    //     EnumerableMap.AddressToUintMap creditAmounts;
-    // }
+    address private gmxRouter;
+    address private gmxPositionRouter;
+    address private callbackTarget;
 
-    // uint256 public marginFee = 0.01 ether; // TODO
+    bytes32 private referralCode;
 
-    address public gmxRouter;
-    address public gmxPositionRouter;
-    address public callbackTarget;
+    mapping(bytes32 => address) private gmxPositionKeyToTraderRouteAddress;
 
-    bytes32 public referralCode;
-
-    // mapping(bytes32 => RouteInfo) private routeInfo;
-    // mapping(bytes32 => PendingDecrease) public pendingDecreases;
-    // mapping(bytes32 => bytes32) private gmxPositionKeyToRouteKey;
-
-    // mapping(bytes32 => TraderRoute) public traderRoute; // TODO
     mapping(bytes32 => address) public traderRoute;
+    mapping(address => bool) public isTraderRoute;
 
     // token => puppet => balance
     mapping(address => mapping(address => uint256)) public puppetDepositAccount;
@@ -71,26 +60,48 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         return referralCode;
     }
 
-    function isPuppetSolvent(uint256 _amount, address _puppet) external view override returns (bool _isSolvent) {
-        // TODO
+    function isPuppetSolvent(uint256 _amount, address _token, address _puppet) external view override returns (bool _isSolvent) {
+        return puppetDepositAccount[_token][_puppet] >= _amount;
+    }
+
+    function getTraderRouteForPosition(bytes32 _gmxPositionKey) external view returns (address _traderRoute) {
+        return gmxPositionKeyToTraderRouteAddress[_gmxPositionKey];
     }
 
     // ====================== Accounting Helpers ======================
 
     function debitPuppetAccount(address _puppet, address _token, uint256 _amount) external override nonReentrant {
-        // TODO
+        if (!isTraderRoute[msg.sender]) revert RouteNotRegistered();
+
+        puppetDepositAccount[_token][_puppet] -= _amount;
+    }
+
+    function creditPuppetAccount(address _puppet, address _token, uint256 _amount) external override nonReentrant {
+        if (!isTraderRoute[msg.sender]) revert RouteNotRegistered();
+
+        puppetDepositAccount[_token][_puppet] += _amount;
+    }
+
+    // ====================== Trader route functions ======================
+
+    function updateGMXPositionKeyToTraderRouteAddress(bytes32 _gmxPositionKey) external nonReentrant {
+        address _traderRoute = msg.sender;
+        if (!isTraderRoute[_traderRoute]) revert RouteNotRegistered();
+
+        gmxPositionKeyToTraderRouteAddress[_gmxPositionKey] = _traderRoute;
     }
 
     // ====================== Trader Functions ======================
 
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant returns (bytes32 _routeKey) {
         address _trader = msg.sender;
-        bytes32 _routeKey = getPositionKey(_trader, _collateralToken, _indexToken, _isLong);
+        _routeKey = getPositionKey(_trader, _collateralToken, _indexToken, _isLong);
         if (traderRoute[_routeKey] != address(0)) revert RouteAlreadyRegistered();
 
         address _routeAddress = address(new TraderRoute(_trader, _collateralToken, _indexToken, _isLong));
 
         traderRoute[_routeKey] = _routeAddress;
+        isTraderRoute[_routeAddress] = true;
 
         emit RegisterRoute(_trader, _routeAddress, _collateralToken, _indexToken, _isLong);
     }
@@ -207,60 +218,6 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
     // function unsignFromRoute(bytes32[] memory _routeKeys) external nonReentrant {}
 
     // ====================== request callback ======================
-
-    // function approveIncreasePosition(bytes32 _gmxPositionKey) external nonReentrant {
-    //     if (msg.sender != callbackTarget) revert NotCallbackTarget();
-
-    //     bytes32 _routeKey = gmxPositionKeyToRouteKey[_gmxPositionKey];
-    //     RouteInfo storage _route = routeInfo[_routeKey];
-    //     if (!_route.isRegistered) revert RouteNotRegistered();
-
-    //     _deposit(_route, _route.trader, _route.traderRequestedCollateralAmount); // update shares and totalAmount for trader
-
-    //     _route.isPositionOpen = true;
-    //     _route.isWaitingForCallback = false;
-    //     _route.traderRequestedCollateralAmount = 0;
-
-    //     emit ApprovePosition(_routeKey);
-    // }
-
-    // function rejectIncreasePosition(bytes32 _gmxPositionKey) external nonReentrant {
-    //     if (msg.sender != callbackTarget) revert NotCallbackTarget();
-
-    //     bytes32 _routeKey = gmxPositionKeyToRouteKey[_gmxPositionKey];
-    //     RouteInfo storage _route = routeInfo[_routeKey];
-    //     if (!_route.isRegistered) revert RouteNotRegistered();
-
-    //     uint256 _amount;
-    //     bool _isPositionOpen = _route.isPositionOpen;
-    //     for (uint256 i = 0; i < EnumerableSet.length(_route.puppetsSet); i++) {
-    //         address _puppet = EnumerableSet.at(_route.puppetsSet, i);
-    //         _amount = marginFee; // TODO marginFee
-
-    //         if (!_isPositionOpen) _amount += EnumerableMap.get(_route.puppetAllowance, _puppet);
-
-    //         puppetDepositAccount[_puppet] += _amount;
-    //     }
-
-    //     _amount = _route.traderRequestedCollateralAmount + marginFee; // TODO - marginFee // includes margin fee
-
-    //     _route.isWaitingForCallback = false;
-    //     _route.traderRequestedCollateralAmount = 0;
-
-    //     if (!_isPositionOpen) {
-    //         _route.isPositionOpen = false;
-    //         _route.totalAmount = 0;
-    //         _route.totalSupply = 0;
-    //         for (uint256 i = 0; i < EnumerableMap.length(info.participantShares); i++) {
-    //             (address key, ) = EnumerableMap.at(info.participantShares, i);
-    //             EnumerableMap.remove(info.participantShares, key);
-    //         }
-    //     }
-    //     // TODO - might need to transfer path[0] token instead of collateral token
-    //     IERC20(_route.collateralToken).safeTransfer(_route.trader, _amount);
-
-    //     emit RejectPosition(_routeKey, _amount);
-    // }
 
     // function approveDecreasePosition(bytes32 _positionKey) external nonReentrant {
     //     if (msg.sender != callbackTarget) revert NotCallbackTarget();
