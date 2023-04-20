@@ -27,15 +27,17 @@ interface IPuppetOrchestrator {
 
     event RegisterRoute(address indexed trader, address _routeAddress, address indexed collateralToken, address indexed indexToken, bool isLong);
     event DepositToAccount(uint256 amount, address indexed token, address indexed caller, address indexed puppet);
+    event WithdrawFromAccount(uint256 amount, address indexed token, address indexed puppet);
     event PuppetToggleSubscription(address[] traders, uint256[] allowances, address indexed puppet, address indexed collateralToken, address indexed indexToken, bool isLong, bool sign);
     event PuppetSetAllowance(bytes32[] _routeKeys, uint256[] _allowances, address indexed _puppet);
 
     // ====================== Errors ======================
 
     error RouteAlreadyRegistered();
-    error PuppetAlreadySigned();
-    error PuppetNotSigned();
+    error Unauthorized();
     error WaitingForCallback();
     error PositionOpen();
     error RouteNotRegistered();
+    error PuppetNotSigned();
+    error InvalidAmount();
 }

@@ -11,9 +11,9 @@ interface ITraderRoute {
 
     function isPuppetSigned(address _puppet) external view returns (bool);
 
-    function signPuppet(address _puppet, uint256 _allowance) external returns (bool);
+    function signPuppet(address _puppet, uint256 _allowance) external;
 
-    function unsignPuppet(address _puppet) external returns (bool);
+    function unsignPuppet(address _puppet) external;
 
     function setAllowance(address _puppet, uint256 _allowance) external;
 
@@ -30,8 +30,10 @@ interface ITraderRoute {
     event CreateIncreasePosition(bytes32 indexed positionKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event CreateDecreasePosition(bytes32 indexed positionKey, uint256 minOut, uint256 collateralDeltaUSD, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event Deposit(address indexed account, uint256 amount, uint256 shares);
-    event ApprovePosition();
-    event RejectPosition(uint256 totalPuppetsCredit, uint256 amount);
+    event ApproveIncreasePosition();
+    event ApproveDecreasePosition();
+    event RejectIncreasePosition(uint256 totalPuppetsCredit, uint256 TraderCredit);
+    event RejectDecreasePosition(uint256 totalPuppetsCredit, uint256 TraderCredit);
 
     // ====================== Errors ======================
 
@@ -44,4 +46,6 @@ interface ITraderRoute {
     error NotCallbackTarget();
     error RouteNotRegistered();
     error KeyError();
+    error PuppetAlreadySigned();
+    error PuppetNotSigned();
 }

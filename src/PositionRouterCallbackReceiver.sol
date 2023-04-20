@@ -7,56 +7,70 @@ import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
 
 contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
 
-    error Unauthorized();
+    IPuppetOrchestrator puppetOrchestrator;
 
-    event GMXPositionCallback(bytes32 indexed _positionKey, address indexed _traderRoute, bool indexed _isExecuted);
-
-    address public puppetOrchestrator;
     address public owner;
     address public gmxPositionRouter;
+
+    // ====================== Constructor ======================
 
     constructor(address _owner) {
         owner = _owner;
     }
 
-    function setPuppetOrchestrator(address _puppetOrchestrator) external {
-        if (msg.sender != owner) revert Unauthorized();
+    // ====================== Modifiers ======================
 
-        puppetOrchestrator = _puppetOrchestrator;
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert Unauthorized();
+        _;
     }
 
-    function setGMXPositionRouter(address _gmxPositionRouter) external {
-        if (msg.sender != owner) revert Unauthorized();
-
-        gmxPositionRouter = _gmxPositionRouter;
-    }
-
-    function setOwner(address _owner) external {
-        if (msg.sender != owner) revert Unauthorized();
-
-        owner = _owner;
-    }
-
-    function gmxPositionCallback(bytes32 _positionKey, bool _isExecuted, bool _isIncrease) external override {
+    modifier onlyGMXPositionRouter() {
         if (msg.sender != gmxPositionRouter) revert Unauthorized();
+        _;
+    }
 
-        address _traderRoute = IPuppetOrchestrator(puppetOrchestrator).getTraderRouteForPosition(_positionKey);
+    // ====================== GMXPositionRouter functions ======================
+    
+    function gmxPositionCallback(bytes32 _positionKey, bool _isExecuted, bool _isIncrease) external override onlyGMXPositionRouter {
+        ITraderRoute _traderRoute = ITraderRoute(puppetOrchestrator.getTraderRouteForPosition(_positionKey));
 
         if (_isIncrease) {
             if (_isExecuted) {
-                ITraderRoute(_traderRoute).approveIncreasePosition();
+                _traderRoute.approveIncreasePosition();
             } else {
-                ITraderRoute(_traderRoute).rejectIncreasePosition();
+                _traderRoute.rejectIncreasePosition();
             }
         } else {
             if (_isExecuted) {
-                ITraderRoute(_traderRoute).approveDecreasePosition();
+                _traderRoute.approveDecreasePosition();
             } else {
-                ITraderRoute(_traderRoute).rejectDecreasePosition();
+                _traderRoute.rejectDecreasePosition();
             }
         }
-        emit GMXPositionCallback(_positionKey, _traderRoute, _isExecuted);
+
+        emit GMXPositionCallback(_positionKey, address(_traderRoute), _isExecuted);
     }
 
-    // function _isPositionOpen(bytes32 _positionKey) internal returns (bool _isOpen) {} // TODO 
+    // ====================== Owner functions ======================
+
+    function setPuppetOrchestrator(address _puppetOrchestrator) external onlyOwner {
+        puppetOrchestrator = IPuppetOrchestrator(_puppetOrchestrator);
+    }
+
+    function setGMXPositionRouter(address _gmxPositionRouter) external onlyOwner {
+        gmxPositionRouter = _gmxPositionRouter;
+    }
+
+    function setOwner(address _owner) external onlyOwner {
+        owner = _owner;
+    }
+
+    // ====================== Events ======================
+
+    event GMXPositionCallback(bytes32 indexed _positionKey, address indexed _traderRoute, bool indexed _isExecuted);
+
+    // ====================== Errors ======================
+
+    error Unauthorized();
 }

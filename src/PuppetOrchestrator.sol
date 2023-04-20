@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {TraderRoute} from "./TraderRoute.sol";
 
@@ -13,20 +14,25 @@ import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
 import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
+import {IWETH} from "./interfaces/IWETH.sol";
 
 contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     using SafeERC20 for IERC20;
+    using Address for address payable;
 
+    address public owner;
     address private gmxRouter;
     address private gmxPositionRouter;
     address private callbackTarget;
+    address constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
 
     bytes32 private referralCode;
 
     mapping(bytes32 => address) private gmxPositionKeyToTraderRouteAddress;
 
-    mapping(bytes32 => address) public traderRoute;
+    // mapping(bytes32 => address) public traderRoute;
+    mapping(bytes32 => ITraderRoute) public traderRoute;
     mapping(address => bool) public isTraderRoute;
 
     // token => puppet => balance
@@ -40,6 +46,18 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
         gmxRouter = _gmxRouter;
         gmxPositionRouter = _gmxPositionRouter;
+    }
+
+    // ====================== Modifiers ======================
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert Unauthorized();
+        _;
+    }
+
+    modifier onlyTrderRoute() {
+        if (!isTraderRoute[msg.sender]) revert Unauthorized();
+        _;
     }
 
     // ====================== View Functions ======================
@@ -68,103 +86,32 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         return gmxPositionKeyToTraderRouteAddress[_gmxPositionKey];
     }
 
-    // ====================== Accounting Helpers ======================
-
-    function debitPuppetAccount(address _puppet, address _token, uint256 _amount) external override nonReentrant {
-        if (!isTraderRoute[msg.sender]) revert RouteNotRegistered();
-
-        puppetDepositAccount[_token][_puppet] -= _amount;
-    }
-
-    function creditPuppetAccount(address _puppet, address _token, uint256 _amount) external override nonReentrant {
-        if (!isTraderRoute[msg.sender]) revert RouteNotRegistered();
-
-        puppetDepositAccount[_token][_puppet] += _amount;
-    }
-
-    // ====================== Trader route functions ======================
-
-    function updateGMXPositionKeyToTraderRouteAddress(bytes32 _gmxPositionKey) external nonReentrant {
-        address _traderRoute = msg.sender;
-        if (!isTraderRoute[_traderRoute]) revert RouteNotRegistered();
-
-        gmxPositionKeyToTraderRouteAddress[_gmxPositionKey] = _traderRoute;
-    }
-
     // ====================== Trader Functions ======================
 
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant returns (bytes32 _routeKey) {
         address _trader = msg.sender;
         _routeKey = getPositionKey(_trader, _collateralToken, _indexToken, _isLong);
-        if (traderRoute[_routeKey] != address(0)) revert RouteAlreadyRegistered();
+        if (address(traderRoute[_routeKey]) != address(0)) revert RouteAlreadyRegistered();
 
-        address _routeAddress = address(new TraderRoute(_trader, _collateralToken, _indexToken, _isLong));
+        ITraderRoute _routeAddress = new TraderRoute(_trader, _collateralToken, _indexToken, _isLong);
 
         traderRoute[_routeKey] = _routeAddress;
-        isTraderRoute[_routeAddress] = true;
+        isTraderRoute[address(_routeAddress)] = true;
 
-        emit RegisterRoute(_trader, _routeAddress, _collateralToken, _indexToken, _isLong);
+        emit RegisterRoute(_trader, address(_routeAddress), _collateralToken, _indexToken, _isLong);
     }
 
-    // // TODO - add margin fee handling
-    // function createDecreasePosition(bytes memory _positionData) external nonReentrant {
-    //     (address[] memory _path, address _indexToken, uint256 _collateralDeltaUSD, uint256 _sizeDelta, bool _isLong, address _receiver, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee, bool _withdrawETH)
-    //         = abi.decode(_positionData, (address[], address, uint256, uint256, bool, address, uint256, uint256, uint256, bool));
-
-    //     address _trader = msg.sender;
-    //     bytes32 _routeKey = getPositionKey(_trader, _path[_path.length - 1], _indexToken, _isLong);
-    //     RouteInfo storage _route = routeInfo[_routeKey];
-    //     if (!_route.isRegistered) revert RouteNotRegistered();
-    //     if (_route.trader != _trader) revert InvalidCaller();
-    //     if (_route.isWaitingForCallback) revert RouteIsWaitingForCallback();
-
-    //     uint256 _collateralDelta;
-    //     if (_collateralDeltaUSD > 0) {
-    //         // TODO: convert _collateralDeltaUSD to _collateralDelta using the exchange rate
-    //         _collateralDelta = _collateralDeltaUSD; // TODO
-
-    //         uint256 _totalSharesToBurn = convertToShares(_route.totalAmount, _route.totalSupply, _collateralDelta);
-
-    //         PendingDecrease storage _pendingDecrease;
-
-    //         uint256 _shares;
-    //         uint256 _sharesToBurn;
-    //         uint256 _amountToCredit;
-    //         for (uint256 i = 0; i < puppetsSet.length(); i++) {
-    //             address _puppet = puppetsSet.at(i);
-    //             _shares = EnumerableMap.get(_route.participantShares, _puppet);
-    //             _sharesToBurn = (_shares * _totalSharesToBurn) / _route.totalSupply;
-    //             _amountToCredit = convertToAmount(_route.totalAmount, _route.totalSupply, _sharesToBurn);
-
-    //             EnumerableMap.set(_pendingDecrease.newParticipantShares, _puppet, _shares - _sharesToBurn);
-    //             EnumerableMap.set(_pendingDecrease.creditAmounts, _puppet, _amountToCredit);
-    //         }
-
-    //         _shares = EnumerableMap.get(_route.participantShares, _trader);
-    //         _sharesToBurn = (_shares * _totalSharesToBurn) / _route.totalSupply;
-    //         _amountToCredit = convertToAmount(_route.totalAmount, _route.totalSupply, _sharesToBurn);
-
-    //         EnumerableMap.set(_pendingDecrease.newParticipantShares, _trader, _shares - _sharesToBurn);
-    //         EnumerableMap.set(_pendingDecrease.creditAmounts, _trader, _amountToCredit);
-
-    //         _pendingDecrease.totalAmount = _route.totalAmount - _collateralDelta;
-    //         _pendingDecrease.totalSupply = _route.totalSupply - _totalSharesToBurn;
-
-    //         pendingDecreases[_positionKey] = _pendingDecrease;
-    //     }
-
-    //     _createDecreasePosition(_positionData, _routeKey);
-    //     // bytes32 _positionKey = IGMXPositionRouter(gmxPositionRouter).createDecreasePosition(_path, _indexToken, _collateralDelta, _sizeDelta, _isLong, _receiver, _acceptablePrice, _minOut, _executionFee, _withdrawETH, referralCode, callbackTarget);
-
-    //     // gmxPositionKeyToRouteKey[_positionKey] = _routeKey;
-    //     // _route.isWaitingForCallback = true;
-    // }
-
-    // function creditBalance(address _account, uint256 _amount) private {
-    //     // TODO: Implement the logic to credit the balance of _account with _amount
-    // }
-
     // ====================== Puppet Functions ======================
+
+    function depositETHToAccount(uint256 _amount, address _puppet) external payable nonReentrant { 
+        if (msg.value != _amount) revert InvalidAmount();
+
+        address _weth = WETH;
+        IWETH(_weth).deposit{value: _amount}();
+        puppetDepositAccount[_weth][_puppet] += _amount;
+
+        emit DepositToAccount(_amount, _weth, msg.sender, _puppet);
+    }
 
     function depositToAccount(uint256 _amount, address _token, address _puppet) external nonReentrant {
         puppetDepositAccount[_token][_puppet] += _amount;
@@ -175,21 +122,38 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         emit DepositToAccount(_amount, _token, _caller, _puppet);
     }
 
+    function withdrawETHFromAccount(uint256 _amount) external nonReentrant {
+        address _puppet = msg.sender;
+        address _weth = WETH;
+        puppetDepositAccount[_weth][_puppet] -= _amount;
+
+        IWETH(_weth).withdraw(_amount);
+        payable(_puppet).sendValue(_amount);
+
+        emit WithdrawFromAccount(_amount, _weth, _puppet);
+    }
+
+    function withdrawFromAccount(uint256 _amount, address _token) external nonReentrant {
+        address _puppet = msg.sender;
+        puppetDepositAccount[_token][_puppet] -= _amount;
+
+        IERC20(_token).safeTransfer(_puppet, _amount);
+
+        emit WithdrawFromAccount(_amount, _token, _puppet);
+    }
+
     function toggleRouteSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external nonReentrant {
         bytes32 _routeKey;
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _traders.length; i++) {
             _routeKey = getPositionKey(_traders[i], _collateralToken, _indexToken, _isLong);
-            address _route = traderRoute[_routeKey];
-            if (_route == address(0)) revert RouteNotRegistered();
+            ITraderRoute _route = traderRoute[_routeKey];
+            if (address(_route) == address(0)) revert RouteNotRegistered();
 
-            bool _isPresent;
             if (_sign) {
-                _isPresent = ITraderRoute(_route).signPuppet(_puppet, _allowances[i]);
-                if (_isPresent) revert PuppetAlreadySigned();
+                _route.signPuppet(_puppet, _allowances[i]);
             } else {
-                _isPresent = ITraderRoute(_route).unsignPuppet(_puppet);
-                if (!_isPresent) revert PuppetNotSigned();
+                _route.unsignPuppet(_puppet);
             }
         }
 
@@ -199,132 +163,57 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
     function setTraderAllowance(bytes32[] memory _routeKeys, uint256[] memory _allowances) external nonReentrant {
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _routeKeys.length; i++) {
-            address _route = traderRoute[_routeKeys[i]];
-            if (_route == address(0)) revert RouteNotRegistered();
-            if (ITraderRoute(_route).isWaitingForCallback()) revert WaitingForCallback();
-            if (ITraderRoute(_route).isPuppetSigned(_puppet)) revert PuppetNotSigned();
-            if (ITraderRoute(_route).isPositionOpen()) revert PositionOpen();
+            ITraderRoute _route = traderRoute[_routeKeys[i]];
+            if (address(_route) == address(0)) revert RouteNotRegistered();
+            if (_route.isWaitingForCallback()) revert WaitingForCallback();
+            if (_route.isPuppetSigned(_puppet)) revert PuppetNotSigned();
+            if (_route.isPositionOpen()) revert PositionOpen();
 
-            ITraderRoute(_route).setAllowance(_puppet, _allowances[i]);
+            _route.setAllowance(_puppet, _allowances[i]);
         }
 
         emit PuppetSetAllowance(_routeKeys, _allowances, _puppet);
     }
 
-    // TODO
-    // function signToRouteAndSetAllowance(bytes32[] memory _routeKeys, uint256[] _allowance) external {}
+    // ====================== TraderRoute functions ======================
 
-    // TODO
-    // function unsignFromRoute(bytes32[] memory _routeKeys) external nonReentrant {}
+    function debitPuppetAccount(address _puppet, address _token, uint256 _amount) external override onlyTrderRoute {
+        puppetDepositAccount[_token][_puppet] -= _amount;
+    }
 
-    // ====================== request callback ======================
+    function creditPuppetAccount(address _puppet, address _token, uint256 _amount) external override onlyTrderRoute {
+        puppetDepositAccount[_token][_puppet] += _amount;
+    }
 
-    // function approveDecreasePosition(bytes32 _positionKey) external nonReentrant {
-    //     if (msg.sender != callbackTarget) revert NotCallbackTarget();
-
-    //     bytes32 _routeKey = gmxPositionKeyToRouteKey[_positionKey];
-    //     PendingDecrease storage _pendingDecrease = pendingDecreases[_routeKey];
-    //     RouteInfo storage _route = routeInfo[_routeKey];
-
-    //     _route.totalAmount = _pendingDecrease.totalAmount;
-    //     _route.totalSupply = _pendingDecrease.totalSupply;
-
-    //     uint256 _newParticipantShares;
-    //     uint256 _creditAmount;
-    //     for (uint256 i = 0; i < puppetsSet.length(); i++) {
-    //         address _puppet = puppetsSet.at(i);
-    //         _newParticipantShares = EnumerableMap.get(_pendingDecrease.newParticipantShares, _puppet);
-    //         _creditAmount = EnumerableMap.get(_pendingDecrease.creditAmounts, _puppet);
-
-    //         EnumerableMap.set(_route.participantShares, _puppet, _newParticipantShares);
-    //         puppetDepositAccount[_puppet] += _creditAmount;
-    //     }
-
-    //     _newParticipantShares = EnumerableMap.get(_pendingDecrease.newParticipantShares, _route.trader);
-    //     _creditAmount = EnumerableMap.get(_pendingDecrease.creditAmounts, _route.trader);
-
-    //     EnumerableMap.set(_route.participantShares, _route.trader, _newParticipantShares);
-
-    //     delete pendingDecreases[_routeKey];
-
-    //     _route.isWaitingForCallback = false;
-    //     if (!_isPositionOpen(_route)) _route.isPositionOpen = false; // TODO
-
-    //     creditBalance(msg.sender, _creditAmount); // TODO - send to trader
-
-    //     emit ApproveDecreasePosition(_routeKey);
-    // }
-
-    // // TODO - credit margin fee
-    // function rejectDecreasePosition(bytes32 _positionKey) external nonReentrant {
-    //     if (msg.sender != callbackTarget) revert NotCallbackTarget();
-
-    //     bytes32 _routeKey = gmxPositionKeyToRouteKey[_positionKey];
-    //     PendingDecrease storage _pendingDecrease = pendingDecreases[_routeKey];
-    //     RouteInfo storage _route = routeInfo[_routeKey];
-
-    //     uint256 _creditAmount;
-    //     for (uint256 i = 0; i < puppetsSet.length(); i++) {
-    //         address _puppet = puppetsSet.at(i);
-    //         _creditAmount = EnumerableMap.get(_pendingDecrease.creditAmounts, _puppet);
-    //         puppetDepositAccount[_puppet] += _creditAmount;
-    //     }
-
-    //     _creditAmount = EnumerableMap.get(_pendingDecrease.creditAmounts, _route.trader);
-    //     creditBalance(msg.sender, _creditAmount); // TODO - send to trader
-
-    //     delete pendingDecreases[_positionKey];
-
-    //     emit RejectDecreasePosition(_routeKey);
-    // }
+    function updateGMXPositionKeyToTraderRouteAddress(bytes32 _gmxPositionKey) external onlyTrderRoute {
+        gmxPositionKeyToTraderRouteAddress[_gmxPositionKey] = msg.sender;
+    }
 
     // ====================== Owner Functions ======================
 
-    // ====================== Internal Helper Functions ======================
+    function setGMXRouter(address _gmxRouter) external onlyOwner {
+        gmxRouter = _gmxRouter;
+    }
 
-    // function _createDecreasePosition(bytes memory _positionData, bytes32 _routeKey) internal {
-    //     (address[] memory _path, address _indexToken, uint256 _collateralDeltaUSD, uint256 _sizeDelta, bool _isLong, address _receiver, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee, bool _withdrawETH)
-    //         = abi.decode(_positionData, (address[], address, uint256, uint256, bool, address, uint256, uint256, uint256, bool));
+    function setGMXPositionRouter(address _gmxPositionRouter) external onlyOwner {
+        gmxPositionRouter = _gmxPositionRouter;
+    }
 
-    //     RouteInfo storage _route = routeInfo[_routeKey];
+    function setCallbackTarget(address _callbackTarget) external onlyOwner {
+        callbackTarget = _callbackTarget;
+    }
 
-    //     bytes32 _positionKey = IGMXPositionRouter(gmxPositionRouter).createDecreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, _isLong, _acceptablePrice, _executionFee, referralCode, callbackTarget);
-    //     if (gmxPositionKeyToRouteKey[_positionKey] != _routeKey) revert KeyError();
+    function setReferralCode(bytes32 _referralCode) external onlyOwner {
+        referralCode = _referralCode;
+    }
 
-    //     _route.isWaitingForCallback = true;
-    // }
+    function setOwner(address _owner) external onlyOwner {
+        owner = _owner;
+    }
 
     // ====================== Helper Functions ======================
 
     function getPositionKey(address _account, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(_account, _collateralToken, _indexToken, _isLong));
     }
-
-    // // ====================== Events ======================
-
-    // event RegisterRoute(address indexed trader, address _routeAddress, address indexed collateralToken, address indexed indexToken, bool isLong);
-    // event DepositToAccount(uint256 amount, address indexed caller, address indexed puppet);
-    // event SignToRoute(address[] traders, address indexed puppet, address indexed collateralToken, address indexed indexToken, bool isLong, bool sign);
-    // event Deposit(address indexed account, uint256 amount, uint256 shares);
-    // event ApprovePosition(bytes32 indexed key);
-
-
-    // // ====================== Errors ======================
-
-    // error RouteAlreadyRegistered();
-    // error CollateralTokenNotWhitelisted();
-    // error IndexTokenNotWhitelisted();
-    // error RouteNotRegistered();
-    // error TraderNotMatch();
-    // error PuppetAlreadySigned();
-    // error PuppetNotSigned();
-    // error Underflow();
-    // error InvalidAmountIn();
-    // error InvalidAmountOut();
-    // error NotCallbackTarget();
-    // error PositionNotOpen();
-    // error RouteIsWaitingForCallback();
-    // error ZeroAmount();
-    // error WaitingForCallback();
-    // error InvalidCaller();
 }
