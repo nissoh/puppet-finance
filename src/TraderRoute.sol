@@ -6,28 +6,20 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
+import {IGMXReader} from "./interfaces/IGMXReader.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
 
 import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
 import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
 
-// TODO - on position liquidation, clear route
-
-// questions:
-    // 1. require the trader's collateral to be x% of the total funds deposited by investors? (e.g. in order to use 1000$ of investors funds, trader will need 10% so 100$)
-    // 2. cut trader collateral on loss?
-    // 3. limit performance fee to x% of TVL? (to disincentivize over risk taking)
-    //
-    // one of the first 2 is a must in order to allign incentives on all scenarios. ideally both. but probably only #1 makes sense here
-    // #3 might not make sense here
-
-
 contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
     using SafeERC20 for IERC20;
+    using Address for address payable;
 
     struct RouteInfo {
         uint256 totalAmount;
@@ -48,6 +40,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         uint256 totalAmount;
         uint256 totalSupply;
         bool isCollateralDeltaPositive;
+        bool isETH;
         EnumerableMap.AddressToUintMap newParticipantShares;
         EnumerableMap.AddressToUintMap creditAmounts;
     }
@@ -56,8 +49,6 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
     PendingDecrease private pendingDecrease;
 
     IPuppetOrchestrator public puppetOrchestrator;
-
-    uint256 public marginFee = 0.01 ether; // TODO
 
     address constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
 
@@ -84,12 +75,6 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         return routeInfo.isPositionOpen;
     }
 
-    function _isOpenInterest() internal view returns (bool) {
-        // TODO
-        // https://gmxio.gitbook.io/gmx/contracts#positions-list
-        // IGMXReader(puppetOrchestrator.getGMXReader()).getPositions(puppetOrchestrator.getGMXVault(), address(this), routeInfo.collateralToken, routeInfo.indexToken, routeInfo.isLong);
-    }
-
     function isPuppetSigned(address _puppet) external view returns (bool) {
         return EnumerableSet.contains(routeInfo.puppetsSet, _puppet);
     }
@@ -108,6 +93,24 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         } else {
             _amount = (_shares * _totalAmount) / _totalSupply;
         }
+    }
+
+    function _isOpenInterest() internal view returns (bool) {
+        address[] memory _collateralTokens = new address[](1);
+        address[] memory _indexTokens = new address[](1);
+        bool[] memory _isLong = new bool[](1);
+
+        _collateralTokens[0] = routeInfo.collateralToken;
+        _indexTokens[0] = routeInfo.indexToken;
+        _isLong[0] = routeInfo.isLong;
+
+        uint256[] memory _response = IGMXReader(puppetOrchestrator.getGMXReader()).getPositions(puppetOrchestrator.getGMXVault(), address(this), _collateralTokens, _indexTokens, _isLong);
+
+        // TODO - make sure that's correct
+        // console.log("position size in USD", _response[0]);
+        // console.log("position collateral in USD", _response[1]);
+
+        return _response[0] > 0 && _response[1] > 0;
     }
 
     // ====================== Puppet orchestrator functions ======================
@@ -150,11 +153,15 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
         if (_isETH) {
             address _weth = WETH;
+            if (!(msg.value > 0)) revert InvalidValue();
             if (msg.value != _amountIn) revert InvalidValue();
             if (_collateralToken != _weth) revert InvalidCollateralToken();
 
             IWETH(_weth).deposit{value: _amountIn}();
+        } else {
+            if (msg.value != 0) revert InvalidValue();
         }
+
         address _trader = msg.sender;
 
         RouteInfo storage _route = routeInfo;
@@ -169,12 +176,13 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
                 address _puppet = EnumerableSet.at(_route.puppetsSet, i);
                 uint256 _allowance = EnumerableMap.get(_route.puppetAllowance, _puppet);
 
-                if (_allowance > _traderAmount) _allowance = _traderAmount;
+                // if (_allowance > _traderAmount) _allowance = _traderAmount; // TODO - limit allowance to trader amount
 
                 if (puppetOrchestrator.isPuppetSolvent(_allowance, _collateralToken, _puppet)) {
-                    puppetOrchestrator.debitPuppetAccount(_puppet, _collateralToken, _allowance);
+                    puppetOrchestrator.debitPuppetAccount(_allowance, _puppet, _collateralToken);
                 } else {
-                    // _liquidate(_puppet); // TODO
+                    _liquidate(_puppet);
+                    // i = i - 1;
                     continue;
                 }
 
@@ -188,16 +196,17 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
         _route.traderRequestedCollateralAmount = _traderAmount;
 
-        IERC20(_collateralToken).safeTransferFrom(_trader, address(this), _traderAmount);
         if (_puppetsTotalAmount > 0) IERC20(_collateralToken).safeTransferFrom(address(puppetOrchestrator), address(this), _puppetsTotalAmount);
+        if (_traderAmount > 0) IERC20(_collateralToken).safeTransferFrom(_trader, address(this), _traderAmount);
 
         _createIncreasePosition(_positionData);
     }
 
-    // TODO - add ETH handling
-    function createDecreasePosition(bytes memory _positionData) external nonReentrant {
+    function createDecreasePosition(bytes memory _positionData, bool _isETH) external nonReentrant {
         (address _collateralToken,, uint256 _collateralDeltaUSD,,,,)
             = abi.decode(_positionData, (address, address, uint256, uint256, uint256, uint256, uint256));
+
+        if (_isETH && _collateralToken != WETH) revert InvalidCollateralToken();
 
         address _trader = msg.sender; 
         RouteInfo storage _route = routeInfo;
@@ -208,7 +217,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         uint256 _collateralDelta;
         if (_collateralDeltaUSD > 0) {
             // TODO: convert _collateralDeltaUSD to _collateralDelta using the exchange rate
-            _collateralDelta = _collateralDeltaUSD; // TODO
+            _collateralDelta = _collateralDeltaUSD;
 
             uint256 _totalSharesToBurn = convertToShares(_route.totalAmount, _route.totalSupply, _collateralDelta);
 
@@ -238,9 +247,31 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
             _pendingDecrease.totalSupply = _route.totalSupply - _totalSharesToBurn;
 
             _pendingDecrease.isCollateralDeltaPositive = true;
+            _pendingDecrease.isETH = _isETH;
         }
 
         _createDecreasePosition(_positionData);
+    }
+
+    // ====================== liquidation ======================
+
+    function onLiquidation() external nonReentrant {
+        // if (msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget(); // TODO - who is msg.sender?
+        if (_isOpenInterest()) revert PositionStillAlive();
+
+        RouteInfo storage _route = routeInfo;
+
+        _route.totalAmount = 0;
+        _route.totalSupply = 0;
+        _route.traderRequestedCollateralAmount = 0;
+        _route.isPositionOpen = false;
+        _route.isWaitingForCallback = false;
+        for (uint256 i = 0; i < EnumerableMap.length(_route.participantShares); i++) {
+            (address _key, ) = EnumerableMap.at(_route.participantShares, i);
+            EnumerableMap.remove(_route.participantShares, _key);
+        }
+
+        emit OnLiquidation();
     }
 
     // ====================== request callback ======================
@@ -250,7 +281,8 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
         RouteInfo storage _route = routeInfo;
 
-        _deposit(_route, _route.trader, _route.traderRequestedCollateralAmount);
+        uint256 _traderRequestedCollateralAmount = _route.traderRequestedCollateralAmount;
+        if (_traderRequestedCollateralAmount > 0) _deposit(_route, _route.trader, _traderRequestedCollateralAmount);
 
         _route.isPositionOpen = true;
         _route.isWaitingForCallback = false;
@@ -264,25 +296,17 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
         RouteInfo storage _route = routeInfo;
 
-        uint256 _amount;
-        uint256 _totalPuppetsCredit;
+        uint256 _puppetsTotalAmount;
         bool _isPositionOpen = _route.isPositionOpen;
-        for (uint256 i = 0; i < EnumerableSet.length(_route.puppetsSet); i++) {
-            address _puppet = EnumerableSet.at(_route.puppetsSet, i);
-            _amount = marginFee; // TODO - marginFee
-
-            if (!_isPositionOpen) _amount += EnumerableMap.get(_route.puppetAllowance, _puppet);
-
-            _totalPuppetsCredit += _amount;
-            puppetOrchestrator.creditPuppetAccount(_puppet, _route.collateralToken, _amount);
-        }
-
-        _amount = _route.traderRequestedCollateralAmount + marginFee; // TODO - marginFee
-
-        _route.isWaitingForCallback = false;
-        _route.traderRequestedCollateralAmount = 0;
-
         if (!_isPositionOpen) {
+            for (uint256 i = 0; i < EnumerableSet.length(_route.puppetsSet); i++) {
+                address _puppet = EnumerableSet.at(_route.puppetsSet, i);
+                uint256 _allowance = EnumerableMap.get(_route.puppetAllowance, _puppet);
+
+                _puppetsTotalAmount += _allowance;
+                puppetOrchestrator.creditPuppetAccount(_allowance, _puppet, _route.collateralToken);
+            }
+
             _route.totalAmount = 0;
             _route.totalSupply = 0;
             for (uint256 i = 0; i < EnumerableMap.length(_route.participantShares); i++) {
@@ -291,10 +315,15 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
             }
         }
 
-        IERC20(_route.collateralToken).safeTransfer(address(puppetOrchestrator), _totalPuppetsCredit);
-        IERC20(_route.collateralToken).safeTransfer(_route.trader, _amount);
+        uint256 _traderRequestedCollateralAmount = _route.traderRequestedCollateralAmount;
 
-        emit RejectIncreasePosition(_totalPuppetsCredit, _amount);
+        _route.isWaitingForCallback = false;
+        _route.traderRequestedCollateralAmount = 0;
+
+        if (_puppetsTotalAmount > 0) IERC20(_route.collateralToken).safeTransfer(address(puppetOrchestrator), _puppetsTotalAmount);
+        if (_traderRequestedCollateralAmount > 0) IERC20(_route.collateralToken).safeTransfer(_route.trader, _traderRequestedCollateralAmount);
+
+        emit RejectIncreasePosition(_puppetsTotalAmount, _traderRequestedCollateralAmount);
     }
 
     function approveDecreasePosition() external nonReentrant {
@@ -304,7 +333,6 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         PendingDecrease storage _pendingDecrease = pendingDecrease;
 
         _route.isWaitingForCallback = false;
-        if (!_isOpenInterest()) _route.isPositionOpen = false;
 
         if(_pendingDecrease.isCollateralDeltaPositive) {
             _route.totalAmount = _pendingDecrease.totalAmount;
@@ -319,7 +347,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
                 _creditAmount = EnumerableMap.get(_pendingDecrease.creditAmounts, _puppet);
 
                 EnumerableMap.set(_route.participantShares, _puppet, _newParticipantShares);
-                puppetOrchestrator.creditPuppetAccount(_puppet, _route.collateralToken, _creditAmount);
+                puppetOrchestrator.creditPuppetAccount(_creditAmount, _puppet, _route.collateralToken);
 
                 _totalPuppetsCreditAmount += _creditAmount;
             }
@@ -329,10 +357,16 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
             EnumerableMap.set(_route.participantShares, _route.trader, _newParticipantShares);
 
+            if (!_isOpenInterest()) _route.isPositionOpen = false;
             _pendingDecrease.isCollateralDeltaPositive = false;
 
             IERC20(_route.collateralToken).safeTransfer(address(puppetOrchestrator), _totalPuppetsCreditAmount);
-            IERC20(_route.collateralToken).safeTransfer(_route.trader, _creditAmount);
+            if (_pendingDecrease.isETH) {
+                IWETH(WETH).withdraw(_creditAmount);
+                payable(_route.trader).sendValue(_creditAmount);
+            } else {
+                IERC20(_route.collateralToken).safeTransfer(_route.trader, _creditAmount);
+            }
         }
 
         emit ApproveDecreasePosition();
@@ -343,7 +377,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
         routeInfo.isWaitingForCallback = false;
 
-        emit RejectDecreasePosition(_totalPuppetsCredit, _creditAmount);
+        emit RejectDecreasePosition();
     }
 
     // ====================== Internal functions ======================
@@ -384,6 +418,13 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
         emit CreateDecreasePosition(_positionKey, _minOut, _collateralDeltaUSD, _sizeDelta, _acceptablePrice, _executionFee);
     }
+
+    function _liquidate(address _puppet) internal {
+        EnumerableSet.remove(routeInfo.puppetsSet, _puppet);
+        EnumerableMap.set(routeInfo.puppetAllowance, _puppet, 0);
+        
+        emit Liquidate(_puppet);
+    } 
 
     function _deposit(RouteInfo storage _route, address _account, uint256 _amount) internal {
         uint256 _shares = convertToShares(_route.totalAmount, _route.totalSupply, _amount);

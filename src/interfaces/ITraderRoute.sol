@@ -33,7 +33,9 @@ interface ITraderRoute {
     event ApproveIncreasePosition();
     event ApproveDecreasePosition();
     event RejectIncreasePosition(uint256 totalPuppetsCredit, uint256 TraderCredit);
-    event RejectDecreasePosition(uint256 totalPuppetsCredit, uint256 TraderCredit);
+    event RejectDecreasePosition();
+    event Liquidate(address indexed puppet);
+    event OnLiquidation();
 
     // ====================== Errors ======================
 
@@ -50,4 +52,5 @@ interface ITraderRoute {
     error PuppetNotSigned();
     error InvalidCollateralToken();
     error InvalidValue();
+    error PositionStillAlive();
 }

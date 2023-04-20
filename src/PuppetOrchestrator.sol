@@ -23,6 +23,8 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     address public owner;
     address private gmxRouter;
+    address private gmxReader;
+    address private gmxVault;
     address private gmxPositionRouter;
     address private callbackTarget;
     address constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
@@ -40,11 +42,13 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     // ====================== Constructor ======================
 
-    constructor(address _gmxRouter, address _gmxPositionRouter, address _callbackTarget, bytes32 _referralCode) {
+    constructor(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _callbackTarget, bytes32 _referralCode) {
         callbackTarget = _callbackTarget;
         referralCode = _referralCode;
 
         gmxRouter = _gmxRouter;
+        gmxReader = _gmxReader;
+        gmxVault = _gmxVault;
         gmxPositionRouter = _gmxPositionRouter;
     }
 
@@ -64,6 +68,14 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     function getGMXRouter() external view override returns (address) {
         return gmxRouter;
+    }
+
+    function getGMXReader() external view override returns (address) {
+        return gmxReader;
+    }
+
+    function getGMXVault() external view override returns (address) {
+        return gmxVault;
     }
 
     function getGMXPositionRouter() external view override returns (address) {
@@ -177,11 +189,11 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     // ====================== TraderRoute functions ======================
 
-    function debitPuppetAccount(address _puppet, address _token, uint256 _amount) external override onlyTrderRoute {
+    function debitPuppetAccount(uint256 _amount, address _puppet, address _token) external override onlyTrderRoute {
         puppetDepositAccount[_token][_puppet] -= _amount;
     }
 
-    function creditPuppetAccount(address _puppet, address _token, uint256 _amount) external override onlyTrderRoute {
+    function creditPuppetAccount(uint256 _amount, address _puppet, address _token) external override onlyTrderRoute {
         puppetDepositAccount[_token][_puppet] += _amount;
     }
 
@@ -191,11 +203,10 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     // ====================== Owner Functions ======================
 
-    function setGMXRouter(address _gmxRouter) external onlyOwner {
+    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter) external onlyOwner {
         gmxRouter = _gmxRouter;
-    }
-
-    function setGMXPositionRouter(address _gmxPositionRouter) external onlyOwner {
+        gmxReader = _gmxReader;
+        gmxVault = _gmxVault;
         gmxPositionRouter = _gmxPositionRouter;
     }
 
