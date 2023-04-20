@@ -48,4 +48,6 @@ interface ITraderRoute {
     error KeyError();
     error PuppetAlreadySigned();
     error PuppetNotSigned();
+    error InvalidCollateralToken();
+    error InvalidValue();
 }
