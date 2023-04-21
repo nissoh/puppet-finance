@@ -381,7 +381,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
     }
 
     // ====================== Internal functions ======================
-
+    // TODO - if (_amountIn > 0 && isPositionOpen) (collateral is added to an exsisting position) --> call _decidePositionSizeDelta(), only if it's (_sizeDelta > 0), and make sure (_collateralDeltaUSD == 0)
     function _createIncreasePosition(bytes memory _positionData) internal {
         (address _collateralToken, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee)
             = abi.decode(_positionData, (address, address, uint256, uint256, uint256, uint256, uint256));
