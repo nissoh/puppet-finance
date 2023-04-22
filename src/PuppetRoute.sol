@@ -147,8 +147,11 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
     // ====================== TraderRoute functions ======================
 
     function createIncreasePosition(bytes memory _positionData) external nonReentrant {
-        if (isWaitingForCallback) revert WaitingForCallback();
-        if (msg.sender != address(traderRoute)) revert Unauthorized();
+        if (isRejected) {
+            if (msg.sender != address(keeper)) revert Unauthorized();
+        } else {
+            if (msg.sender != address(traderRoute)) revert Unauthorized();
+        }
 
         (address _collateralToken,, uint256 _amountIn,,,,)
             = abi.decode(_positionData, (address, address, uint256, uint256, uint256, uint256, uint256));
@@ -177,9 +180,12 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         _createIncreasePosition(_positionData);
     }
 
-    function createDecreasePosition(bytes memory _positionData, bool _isETH) external nonReentrant {
-        if (isWaitingForCallback) revert WaitingForCallback();
-        if (msg.sender != address(traderRoute)) revert Unauthorized();
+    function createDecreasePosition(bytes memory _positionData) external nonReentrant {
+        if (isRejected) {
+            if (msg.sender != address(keeper)) revert Unauthorized();
+        } else {
+            if (msg.sender != address(traderRoute)) revert Unauthorized();
+        }
 
         (address _collateralToken,, uint256 _collateralDeltaUSD,,,,)
             = abi.decode(_positionData, (address, address, uint256, uint256, uint256, uint256, uint256));
@@ -249,11 +255,14 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
     function approveIncreasePosition() external nonReentrant {
         if (msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget();
 
-        isWaitingForCallback = false;
+        isRejected = false;
+        traderRoute.notifyCallback();
 
         emit ApproveIncreasePosition();
     }
 
+    // if rejected, a keeper will need to call createIncreasePosition again until it is approved
+    // TODO - add forceClose to allow the platform to close the position
     function rejectIncreasePosition() external nonReentrant {
         if (msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget();
 
@@ -264,23 +273,22 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         for (uint256 i = 0; i < EnumerableSet.length(puppetsSet); i++) {
             address _puppet = EnumerableSet.at(puppetsSet, i);
             uint256 _share = EnumerableMap.get(participantShares, _puppet);
-            uint256 _amount = convertToAmount(_totalAssets, _totalSupply, _share);
+            uint256 _assets = convertToAssets(_totalAssets, _totalSupply, _share);
 
-            _puppetsTotalAmount += _amount;
-            _totalAssets -= _amount;
+            _puppetsTotalAmount += _assets;
+            _totalAssets -= _assets;
             _totalSupply -= _share;
 
-            puppetOrchestrator.creditPuppetAccount(_amount, _puppet, _token);
+            puppetOrchestrator.creditPuppetAccount(_assets, _puppet, _token);
         }
 
-        totalAmount = 0;
         totalSupply = 0;
-        for (uint256 i = 0; i < EnumerableMap.length(_route.participantShares); i++) {
-            (address _key, ) = EnumerableMap.at(_route.participantShares, i);
-            EnumerableMap.remove(_route.participantShares, _key);
+        for (uint256 i = 0; i < EnumerableMap.length(participantShares); i++) {
+            (address _key, ) = EnumerableMap.at(participantShares, i);
+            EnumerableMap.remove(participantShares, _key);
         }
 
-        isWaitingForCallback = false;
+        isRejected = true;
 
         IERC20(_token).safeTransfer(address(puppetOrchestrator), _puppetsTotalAmount);
 
@@ -375,8 +383,6 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         address[] memory _path = new address[](1);
         _path[0] = _collateralToken;
 
-        isWaitingForCallback = true;
-
         bytes32 _referralCode = puppetOrchestrator.getReferralCode();
         address _callbackTarget = puppetOrchestrator.getCallbackTarget();
         bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, routeInfo.isLong, _acceptablePrice, _executionFee, _referralCode, _callbackTarget);
@@ -410,16 +416,16 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         emit Liquidate(_puppet);
     } 
 
-    function _deposit(RouteInfo storage _route, address _account, uint256 _amount) internal {
-        uint256 _shares = convertToShares(_route.totalAmount, _route.totalSupply, _amount);
+    function _deposit(address _account, uint256 _assets) internal {
+        uint256 _shares = convertToShares(totalAssets, totalSupply, _assets);
 
-        if (!(_amount > 0)) revert ZeroAmount();
+        if (!(_assets > 0)) revert ZeroAmount();
         if (!(_shares > 0)) revert ZeroAmount();
 
-        EnumerableMap.set(_route.participantShares, _account, EnumerableMap.get(_route.participantShares, _account) + _shares);
+        EnumerableMap.set(participantShares, _account, EnumerableMap.get(participantShares, _account) + _shares);
 
-        _route.totalAmount += _amount;
-        _route.totalSupply += _shares;
+        totalAmount += _amount;
+        totalSupply += _shares;
 
         emit Deposit(_account, _amount, _shares);
     }

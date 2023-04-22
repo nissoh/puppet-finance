@@ -29,6 +29,8 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
     bool public isPositionOpen;
     bool public isWaitingForCallback;
 
+    bytes public puppetPositionData;
+
     IPuppetOrchestrator public puppetOrchestrator;
 
     // ====================== Constructor ======================
@@ -54,6 +56,8 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
         (address _collateralToken,, uint256 _amountIn,,,,)
             = abi.decode(_traderData, (address, address, uint256, uint256, uint256, uint256, uint256));
+        
+        puppetPositionData = _puppetsData;
 
         _transferFunds(_amountIn, _collateralToken, _trader);
 
@@ -101,7 +105,8 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         if (msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget();
 
         isPositionOpen = true;
-        isWaitingForCallback = false;
+
+        puppetRoute.createIncreasePosition(puppetPositionData);
 
         emit ApproveIncreasePosition();
     }
@@ -155,15 +160,12 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         _path[0] = _collateralToken;
 
         isWaitingForCallback = true;
-        isWaitingForPuppetRouteCallback = true;
 
         bytes32 _referralCode = puppetOrchestrator.getReferralCode();
         address _callbackTarget = puppetOrchestrator.getCallbackTarget();
         bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, routeInfo.isLong, _acceptablePrice, _executionFee, _referralCode, _callbackTarget);
 
         puppetOrchestrator.updateGMXPositionKeyToTraderRouteAddress(_positionKey);
-
-        puppetRoute.createIncreasePosition(_puppetData);
 
         emit CreateIncreasePosition(_positionKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
