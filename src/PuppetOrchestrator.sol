@@ -106,6 +106,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         if (address(traderRoute[_routeKey]) != address(0)) revert RouteAlreadyRegistered();
 
         ITraderRoute _routeAddress = new TraderRoute(_trader, _collateralToken, _indexToken, _isLong);
+        // IPuppetRoute _puppetAddress = new PuppetRoute(_trader, _collateralToken, _indexToken, _isLong);
 
         traderRoute[_routeKey] = _routeAddress;
         isTraderRoute[address(_routeAddress)] = true;
