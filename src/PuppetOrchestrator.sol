@@ -116,47 +116,45 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     // ====================== Puppet Functions ======================
 
-    function depositETHToAccount(uint256 _amount, address _puppet) external payable nonReentrant { 
-        if (msg.value != _amount) revert InvalidAmount();
+    function depositToAccount(uint256 _assets, address _token, address _puppet, bool _isETH) external nonReentrant {
+        if (!(_assets > 0)) revert InvalidAmount();
+        if (msg.value != _assets) revert InvalidAmount();
+        if (!tokenWhitelist[_token]) revert InvalidToken();
+        if (_isETH && _token != WETH) revert InvalidToken();
 
-        address _weth = WETH;
-        IWETH(_weth).deposit{value: _amount}();
-        puppetDepositAccount[_weth][_puppet] += _amount;
-
-        emit DepositToAccount(_amount, _weth, msg.sender, _puppet);
-    }
-
-    function depositToAccount(uint256 _amount, address _token, address _puppet) external nonReentrant {
-        puppetDepositAccount[_token][_puppet] += _amount;
+        puppetDepositAccount[_token][_puppet] += _assets;
 
         address _caller = msg.sender;
-        IERC20(_token).safeTransferFrom(_caller, address(this), _amount);
+        if (_isETH) {
+            payable(_token).functionCallWithValue(abi.encodeWithSignature("deposit()"), _assets);
+        } else {
+            IERC20(_token).safeTransferFrom(_caller, address(this), _assets);
+        }
 
-        emit DepositToAccount(_amount, _token, _caller, _puppet);
+        emit DepositToAccount(_assets, _token, _caller, _puppet);
     }
 
-    function withdrawETHFromAccount(uint256 _amount) external nonReentrant {
+    function withdrawFromAccount(uint256 _assets, address _token, address _receiver, bool _isETH) external nonReentrant {
+        if (!(_assets > 0)) revert InvalidAmount();
+        if (!_isETH && !tokenWhitelist[_token]) revert InvalidToken();
+        if (_isETH && _token != WETH) revert InvalidToken();
+
         address _puppet = msg.sender;
-        address _weth = WETH;
-        puppetDepositAccount[_weth][_puppet] -= _amount;
+        puppetDepositAccount[_token][_puppet] -= _assets;
 
-        IWETH(_weth).withdraw(_amount);
-        payable(_puppet).sendValue(_amount);
+        if (_isETH) {
+            IWETH(_token).withdraw(_assets);
+            payable(_receiver).sendValue(_assets);
+        } else {
+            IERC20(_token).safeTransfer(_receiver, _assets);
+        }
 
-        emit WithdrawFromAccount(_amount, _weth, _puppet);
-    }
-
-    function withdrawFromAccount(uint256 _amount, address _token) external nonReentrant {
-        address _puppet = msg.sender;
-        puppetDepositAccount[_token][_puppet] -= _amount;
-
-        IERC20(_token).safeTransfer(_puppet, _amount);
-
-        emit WithdrawFromAccount(_amount, _token, _puppet);
+        emit WithdrawFromAccount(_assets, _token, _puppet, _receiver);
     }
 
     function toggleRouteSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external nonReentrant {
         bytes32 _routeKey;
+        uint256 _totalAllowance;
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _traders.length; i++) {
             _routeKey = getPositionKey(_traders[i], _collateralToken, _indexToken, _isLong);
@@ -164,11 +162,15 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
             if (address(_route) == address(0)) revert RouteNotRegistered();
 
             if (_sign) {
-                _route.signPuppet(_puppet, _allowances[i]);
+                uint256 _allowance = _allowances[i];
+                _totalAllowance += _allowance;
+                _route.signPuppet(_puppet, _allowance);
             } else {
                 _route.unsignPuppet(_puppet);
             }
         }
+
+        // if (_sign && puppetDepositAccount[_collateralToken][_puppet] < (_totalAllowance * 2)) revert InsufficientBalance();
 
         emit PuppetToggleSubscription(_traders, _allowances, _puppet, _collateralToken, _indexToken, _isLong, _sign);
     }

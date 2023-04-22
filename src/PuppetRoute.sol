@@ -37,15 +37,6 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         EnumerableSet.AddressSet puppetsSet;
     }
 
-    struct PendingDecrease {
-        uint256 totalAmount;
-        uint256 totalSupply;
-        bool isCollateralDeltaPositive;
-        bool isETH;
-        EnumerableMap.AddressToUintMap newParticipantShares;
-        EnumerableMap.AddressToUintMap creditAmounts;
-    }
-
     RouteInfo private routeInfo;
     PendingDecrease private pendingDecrease;
 
@@ -58,9 +49,9 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
     constructor(address _trader, address _collateralToken, address _indexToken, bool _isLong) {
         puppetOrchestrator = IPuppetOrchestrator(msg.sender);
 
-        routeInfo.trader = _trader;
-        routeInfo.collateralToken = _collateralToken;
-        routeInfo.indexToken = _indexToken;
+        trader = _trader;
+        collateralToken = _collateralToken;
+        indexToken = _indexToken;
         routeInfo.isLong = _isLong;
 
         IGMXRouter(puppetOrchestrator.getGMXRouter()).approvePlugin(puppetOrchestrator.getGMXPositionRouter());
@@ -80,19 +71,23 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         return EnumerableSet.contains(routeInfo.puppetsSet, _puppet);
     }
 
-    function convertToShares(uint256 _totalAmount, uint256 _totalSupply, uint256 _amount) public pure returns (uint256 _shares) {
-        if (_totalAmount == 0) {
-            _shares = _amount;
+    function convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) public pure returns (uint256 _shares) {
+        if (_assets == 0) revert ZeroAmount();
+
+        if (_totalAssets == 0) {
+            _shares = _assets;
         } else {
-            _shares = (_amount * _totalSupply) / _totalAmount;
+            _shares = (_assets * _totalSupply) / _totalAssets;
         }
+
+        if (_shares == 0) revert ZeroShares();
     }
 
-    function convertToAmount(uint256 _totalAmount, uint256 _totalSupply, uint256 _shares) public pure returns (uint256 _amount) {
+    function convertToAssets(uint256 _totalAssets, uint256 _totalSupply, uint256 _shares) public pure returns (uint256 _assets) {
         if (_totalSupply == 0) {
-            _amount = _shares;
+            _assets = _shares;
         } else {
-            _amount = (_shares * _totalAmount) / _totalSupply;
+            _assets = (_shares * _totalAssets) / _totalSupply;
         }
     }
 
@@ -106,10 +101,6 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         _isLong[0] = routeInfo.isLong;
 
         uint256[] memory _response = IGMXReader(puppetOrchestrator.getGMXReader()).getPositions(puppetOrchestrator.getGMXVault(), address(this), _collateralTokens, _indexTokens, _isLong);
-
-        // TODO - make sure that's correct
-        // console.log("position size in USD", _response[0]);
-        // console.log("position collateral in USD", _response[1]);
 
         return _response[0] > 0 && _response[1] > 0;
     }
@@ -153,31 +144,18 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
             if (msg.sender != address(traderRoute)) revert Unauthorized();
         }
 
-        (address _collateralToken,, uint256 _amountIn,,,,)
-            = abi.decode(_positionData, (address, address, uint256, uint256, uint256, uint256, uint256));
+        (uint256 _amountIn, uint256 _executionFee,,,,) = abi.decode(_positionData, (uint256, uint256, uint256, uint256, uint256, address));
 
-        uint256 _puppetsTotalAmount;
-        for (uint256 i = 0; i < EnumerableSet.length(_route.puppetsSet); i++) {
-            address _puppet = EnumerableSet.at(puppetsSet, i);
-            uint256 _allowance = EnumerableMap.get(puppetAllowance, _puppet);
+        uint256 _requiredAssets = _amountIn + _executionFee;
 
-            uint256 _traderAmountIn = puppetOrchestrator.getTraderAmountIn();
-            if (_allowance > _traderAmountIn) _allowance = _traderAmountIn;
-
-            if (puppetOrchestrator.isPuppetSolvent(_allowance, _collateralToken, _puppet)) {
-                puppetOrchestrator.debitPuppetAccount(_allowance, _puppet, _collateralToken);
-            } else {
-                _liquidate(_puppet);
-                continue;
-            }
-
-            _deposit(_puppet, _allowance);
-
-            _puppetsTotalAmount += _allowance;
+        if (isPositionOpen) {
+            // trader is increasing position, get only the fees
+            _getFees(_requiredAssets);
+        } else {
+            // trader is opening position, get the collateral and the fees
+            _getAllowances(_requiredAssets);
         }
-
-        IERC20(_collateralToken).safeTransferFrom(address(puppetOrchestrator), address(this), _puppetsTotalAmount);
-
+        
         _createIncreasePosition(_positionData);
     }
 
@@ -214,10 +192,9 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
 
     // ====================== request callback ======================
 
-    function approveIncreasePosition() external nonReentrant {
-        if (msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget();
-
+    function approveIncreasePosition() external nonReentrant onlyCallbackTarget {
         isRejected = false;
+
         traderRoute.notifyCallback();
 
         emit ApproveIncreasePosition();
@@ -225,74 +202,44 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
 
     // if rejected, a keeper will need to call createIncreasePosition again until it is approved
     // TODO - add forceClose to allow the platform to close the position
-    function rejectIncreasePosition() external nonReentrant {
-        if (msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget();
-
-        uint256 _puppetsTotalAmount;
-        uint256 _totalAssets = totalAssets();
-        uint256 _totalSupply = totalSupply;
-        address _token = traderRoute.getCollateralToken();
-        for (uint256 i = 0; i < EnumerableSet.length(puppetsSet); i++) {
-            address _puppet = EnumerableSet.at(puppetsSet, i);
-            uint256 _share = EnumerableMap.get(participantShares, _puppet);
-            uint256 _assets = convertToAssets(_totalAssets, _totalSupply, _share);
-
-            _puppetsTotalAmount += _assets;
-            _totalAssets -= _assets;
-            _totalSupply -= _share;
-
-            puppetOrchestrator.creditPuppetAccount(_assets, _puppet, _token);
-        }
-
-        totalSupply = 0;
-        for (uint256 i = 0; i < EnumerableMap.length(participantShares); i++) {
-            (address _key, ) = EnumerableMap.at(participantShares, i);
-            EnumerableMap.remove(participantShares, _key);
-        }
-
+    function rejectIncreasePosition() external nonReentrant onlyCallbackTarget {
         isRejected = true;
 
-        IERC20(_token).safeTransfer(address(puppetOrchestrator), _puppetsTotalAmount);
+        _repayBalance();
 
-        emit RejectIncreasePosition(_puppetsTotalAmount);
-    }
-
-    function approveDecreasePosition() external nonReentrant {
-        if (msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget();
-
-        if (!_isOpenInterest()) isPositionOpen = false;
-        isRejected = false;
-
-        uint256 _puppetsTotalAmount;
-        uint256 _totalAssets = totalAssets();
-        address _token = traderRoute.getCollateralToken();
-        if (_totalAssets > 0) {
-            uint256 _totalSupply = totalSupply;
-            for (uint256 i = 0; i < EnumerableSet.length(puppetsSet); i++) {
-                address _puppet = EnumerableSet.at(puppetsSet, i);
-                uint256 _share = EnumerableMap.get(participantShares, _puppet);
-                uint256 _assets = convertToAssets(_totalAssets, _totalSupply, _share);
-
-                _puppetsTotalAmount += _assets;
-                _totalAssets -= _assets;
-                _totalSupply -= _share;
-
-                puppetOrchestrator.creditPuppetAccount(_assets, _puppet, _token);
+        if (!isPositionOpen) {
+            totalAssets = 0;
+            totalSupply = 0;
+            for (uint256 i = 0; i < EnumerableMap.length(participantShares); i++) {
+                (address _key, ) = EnumerableMap.at(participantShares, i);
+                EnumerableMap.remove(participantShares, _key);
             }
-
-            IERC20(_token).safeTransfer(address(puppetOrchestrator), _puppetsTotalAmount);
         }
 
+        emit RejectIncreasePosition();
+    }
+
+    function approveDecreasePosition() external nonReentrant onlyCallbackTarget {
+        isRejected = false;
+
         traderRoute.notifyCallback();
+
+        _repayBalance();
+
+        if (!_isOpenInterest()) {
+            isPositionOpen = false;
+            totalAssets = 0;
+            totalSupply = 0;
+            for (uint256 i = 0; i < EnumerableMap.length(participantShares); i++) {
+                (address _key, ) = EnumerableMap.at(participantShares, i);
+                EnumerableMap.remove(participantShares, _key);
+            }
+        }
 
         emit ApproveDecreasePosition();
     }
 
-    // if rejected, a keeper will need to call createIncreasePosition again until it is approved
-    // TODO - add forceClose to allow the platform to close the position
-    function rejectDecreasePosition() external nonReentrant {
-        if (msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget();
-
+    function rejectDecreasePosition() external nonReentrant onlyCallbackTarget {
         isRejected = true;
 
         emit RejectDecreasePosition();
@@ -336,19 +283,76 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         EnumerableMap.set(puppetAllowance, _puppet, 0);
         
         emit Liquidate(_puppet);
-    } 
+    }
 
-    function _deposit(address _account, uint256 _assets) internal {
-        uint256 _newShares = convertToShares(totalAssets, totalSupply, _assets);
+    function _getFees(uint256 _requiredAssets) internal {
+        uint256 _requiredShares = convertToShares(totalAssets, totalSupply, _requiredAssets);
+        uint256 _requiredAssetsPerShare = _requiredAssets / _requiredShares;
+        for (uint256 i = 0; i < EnumerableSet.length(puppetsSet); i++) {
+            address _puppet = EnumerableSet.at(puppetsSet, i);
+            uint256 _shares = EnumerableMap.get(puppetShares, _puppet);
+            uint256 _puppetRequiredAmount = _requiredAssetsPerShare * _shares;
 
-        if (!(_assets > 0)) revert ZeroAmount();
-        if (!(_newShares > 0)) revert ZeroAmount();
+            if (puppetOrchestrator.isPuppetSolvent(_puppetRequiredAmount, _puppet)) {
+                puppetOrchestrator.debitPuppetAccount(_puppetRequiredAmount, _puppet);
+            } else {
+                revert PuppetCannotCoverFees();
+            }
+        }
+    }
 
-        uint256 _oldShares = EnumerableMap.get(participantShares, _account);
-        EnumerableMap.set(participantShares, _account, _oldShares + _newShares);
+    function _getAllowances(uint256 _requiredAssets) internal {
+        uint256 _totalSupply;
+        uint256 _totalAssets;
+        uint256 _traderAmountIn = puppetOrchestrator.getTraderAmountIn();
+        for (uint256 i = 0; i < EnumerableSet.length(puppetsSet); i++) {
+            address _puppet = EnumerableSet.at(puppetsSet, i);
+            uint256 _allowance = EnumerableMap.get(puppetAllowance, _puppet);
 
-        totalSupply += _newShares;
+            if (_allowance > _traderAmountIn) _allowance = _traderAmountIn;
 
-        emit Deposit(_account, _amount, _newShares);
+            if (puppetOrchestrator.isEnoughBuffer(_allowance, _puppet)) {
+                puppetOrchestrator.debitPuppetAccount(_allowance, _puppet);
+            } else {
+                _liquidate(_puppet);
+                continue;
+            }
+
+            uint256 _shares = convertToShares(_totalAssets, _totalSupply, _allowance);
+            EnumerableMap.set(puppetShares, _puppet, _shares);
+
+            _totalSupply += _shares;
+            _totalAssets += _allowance;
+        }
+
+        if (_totalAssets != _requiredAssets) revert AssetsAmonutMismatch();
+
+        totalSupply = _totalSupply;
+        totalAssets = _totalAssets;
+
+        IERC20(WETH).safeTransferFrom(address(puppetOrchestrator), address(this), _totalAssets);
+        IWETH(WETH).withdraw(_totalAssets);
+
+        if (address(this).balance < _totalAssets) revert AssetsAmonutMismatch();
+        if (_totalAssets < minPositionSize) revert PositionTooSmall();
+    }
+
+    function _repayBalance() internal {
+        uint256 _totalAssets = address(this).balance;
+        if (_totalAssets > 0) {
+            address _weth = WETH;
+            IWETH(_weth).deposit{value: address(this).balance}();
+            
+            uint256 _totalSupply = totalSupply;
+            _totalAssets = IERC20(_weth).balanceOf(address(this));
+            for (uint256 i = 0; i < EnumerableSet.length(puppetsSet); i++) {
+                address _puppet = EnumerableSet.at(puppetsSet, i);
+                uint256 _shares = EnumerableMap.get(participantShares, _puppet);
+                uint256 _assets = convertToAssets(_totalAssets, _totalSupply, _shares);
+
+                puppetOrchestrator.creditPuppetAccount(_assets, _puppet);
+            }
+            IERC20(_weth).safeTransfer(address(puppetOrchestrator), _totalAssets);
+        }
     }
 }

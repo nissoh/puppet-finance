@@ -56,7 +56,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
         (address _collateralToken,, uint256 _amountIn,,,,)
             = abi.decode(_traderData, (address, address, uint256, uint256, uint256, uint256, uint256));
-        
+
         puppetPositionData = _puppetsData;
 
         _transferFunds(_amountIn, _collateralToken, _trader);
