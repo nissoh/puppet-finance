@@ -56,6 +56,11 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         _;
     }
 
+    modifier onlyKeeper() {
+        if (!puppetOrchestrator.isKeeper(msg.sender)) revert Unauthorized();
+        _;
+    }
+
     // ====================== Trader functions ======================
 
     function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable nonReentrant {
@@ -77,10 +82,12 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
     // ====================== liquidation ======================
 
-    function onLiquidation() external nonReentrant {
-        // if (msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget(); // TODO - who is msg.sender?
+    function onLiquidation(bytes memory _puppetPositionData) external nonReentrant onlyKeeper {
+        if (!_isLiquidated()) revert PositionStillAlive();
 
         _repayBalance();
+
+        puppetRoute.liquidatePosition(_puppetPositionData);
 
         emit Liquidated();
     }
@@ -105,12 +112,12 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
     // ====================== Internal functions ======================
 
-    function _createIncreasePosition(bytes memory _traderData) internal {
-        (address _collateralToken, address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee)
-            = abi.decode(_traderData, (address, address, uint256, uint256, uint256, uint256, uint256));
+    function _createIncreasePosition(bytes memory _traderPositionData) internal {
+        (address _indexToken, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee)
+            = abi.decode(_traderPositionData, (address, uint256, uint256, uint256, uint256, uint256));
 
         address[] memory _path = new address[](1);
-        _path[0] = _collateralToken;
+        _path[0] = collateralToken;
 
         bytes32 _referralCode = puppetOrchestrator.getReferralCode();
         address _callbackTarget = puppetOrchestrator.getCallbackTarget();
@@ -121,12 +128,12 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         emit CreateIncreasePosition(_positionKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _createDecreasePosition(bytes memory _traderData) internal {
-        (address _collateralToken, address _indexToken, uint256 _collateralDeltaUSD, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee)
-            = abi.decode(_traderData, (address, address, uint256, uint256, uint256, uint256, uint256));
+    function _createDecreasePosition(bytes memory _traderPositionData) internal {
+        (address _indexToken, uint256 _collateralDeltaUSD, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee)
+            = abi.decode(_traderPositionData, (address, uint256, uint256, uint256, uint256, uint256));
 
         address[] memory _path = new address[](1);
-        _path[0] = _collateralToken;
+        _path[0] = collateralToken;
 
         address _callbackTarget = puppetOrchestrator.getCallbackTarget();
         bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition(_path, _indexToken, _collateralDeltaUSD, _sizeDelta, _route.isLong, address(this), _acceptablePrice, _minOut, _executionFee, false, _callbackTarget);
