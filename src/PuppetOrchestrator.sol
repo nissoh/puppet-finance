@@ -40,26 +40,26 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     bytes32 private referralCode;
 
-    mapping(address => uint256) public puppetDepositAccount;
+    mapping(bytes32 => RouteInfo) private routeInfo;
     mapping(address => bool) public isTraderRoute;
-    mapping(bytes32 => ITraderRoute) public traderRoute;
+
+    mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => traderRoute => allowance
+    mapping(address => uint256) public puppetDepositAccount;
 
     mapping(bytes32 => address) private gmxPositionKeyToTraderRouteAddress;
 
-    // puppet => traderRoute => allowance
-    mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances;
-    mapping(bytes32 => RouteInfo) private routeInfo;
-
     // ====================== Constructor ======================
 
-    constructor(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _callbackTarget, bytes32 _referralCode) {
-        callbackTarget = _callbackTarget;
-        referralCode = _referralCode;
+    constructor(address _owner, address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _callbackTarget, bytes32 _referralCode) {
+        owner = _owner;
 
         gmxRouter = _gmxRouter;
         gmxReader = _gmxReader;
         gmxVault = _gmxVault;
         gmxPositionRouter = _gmxPositionRouter;
+
+        callbackTarget = _callbackTarget;
+        referralCode = _referralCode;
 
         solvencyMargin = 2;
     }
@@ -67,13 +67,18 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
     // ====================== Modifiers ======================
 
     modifier onlyOwner() {
-        if (msg.sender != owner) revert Unauthorized();
+        if (msg.sender != owner) revert NotOwner();
         _;
     }
 
     modifier onlyTraderRoute() {
-        if (!isTraderRoute[msg.sender]) revert Unauthorized();
+        if (msg.sender != owner && !isTraderRoute[msg.sender]) revert NotTraderRoute();
         _;
+    }
+
+    modifier isSolvent() {
+        _;
+        if (!isPuppetSolvent(msg.sender)) revert InsufficientPuppetFunds();
     }
 
     // ====================== Trader Functions ======================
@@ -83,10 +88,10 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         _routeKey = getPositionKey(_trader, _collateralToken, _indexToken, _isLong);
         if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
-        ITraderRoute _routeAddress = new TraderRoute(_trader, _collateralToken, _indexToken, _isLong);
+        address _traderRoute = address(new TraderRoute(_trader, _collateralToken, _indexToken, _isLong));
 
         routeInfo[_routeKey] = RouteInfo({
-            traderRoute: address(_routeAddress),
+            traderRoute: _traderRoute,
             collateralToken: _collateralToken,
             indexToken: _indexToken,
             isLong: _isLong,
@@ -94,9 +99,9 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
             puppets: EnumerableSet.AddressSet(0)
         });
 
-        isTraderRoute[address(_routeAddress)] = true;
+        isTraderRoute[_traderRoute] = true;
 
-        emit RegisterRoute(_trader, address(_routeAddress), _collateralToken, _indexToken, _isLong);
+        emit RegisterRoute(_trader, _traderRoute, _collateralToken, _indexToken, _isLong);
     }
 
     // ====================== Puppet Functions ======================
@@ -110,7 +115,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         emit DepositToAccount(_assets, msg.sender, _puppet);
     }
 
-    function withdrawFromAccount(uint256 _assets, address _receiver) external nonReentrant {
+    function withdrawFromAccount(uint256 _assets, address _receiver) external nonReentrant isSolvent {
         if (_assets == 0) revert ZeroAmount();
 
         address _puppet = msg.sender;
@@ -121,7 +126,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         emit WithdrawFromAccount(_assets, _puppet, _receiver);
     }
 
-    function toggleRouteSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external nonReentrant {
+    function toggleRouteSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external nonReentrant isSolvent {
         if (_traders.length != _allowances.length) revert MismatchedInputArrays();
 
         address _puppet = msg.sender;
@@ -145,9 +150,9 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
                     EnumerableSet.remove(_routeInfo.puppets, _puppet);
                 }
             }
-
-            emit ToggleRouteSubscription(_traders, _allowances, _puppet, _collateralToken, _indexToken, _isLong, _sign);
         }
+
+        emit ToggleRouteSubscription(_traders, _allowances, _puppet, _collateralToken, _indexToken, _isLong, _sign);
     }
 
     // ====================== TraderRoute functions ======================
