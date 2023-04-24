@@ -17,49 +17,45 @@ import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
 import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
 import {IPuppetRoute} from "./interfaces/IPuppetRoute.sol";
 
-contract TraderRoute is ReentrancyGuard, IPuppetRoute {
+contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
 
-    struct RouteInfo {
-        uint256 totalAmount;
-        uint256 totalSupply;
-        uint256 traderRequestedCollateralAmount;
-        address trader;
-        address collateralToken;
-        address indexToken;
-        bool isLong;
-        bool isPositionOpen;
-        bool isWaitingForCallback;
-        EnumerableMap.AddressToUintMap participantShares;
-        EnumerableMap.AddressToUintMap puppetAllowance;
-        EnumerableSet.AddressSet puppetsSet;
-    }
+    uint256 private totalAmount;
+    uint256 private totalSupply;
 
-    RouteInfo private routeInfo;
-    PendingDecrease private pendingDecrease;
+    address public collateralToken;
+    address public indexToken;
+    
+    bool public isLong;
+    bool public isPositionOpen;
+    bool public isWaitingForCallback;
+
+    EnumerableSet.AddressSet private puppetsSet;
+
+    EnumerableMap.AddressToUintMap private puppetShare;
+    EnumerableMap.AddressToUintMap private puppetAllowance;
 
     IPuppetOrchestrator public puppetOrchestrator;
-
-    address constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
+    ITraderRoute public traderRoute;
 
     // ====================== Constructor ======================
 
-    constructor(address _trader, address _collateralToken, address _indexToken, bool _isLong) {
-        puppetOrchestrator = IPuppetOrchestrator(msg.sender);
+    constructor(address _puppetOrchestrator, address _collateralToken, address _indexToken, bool _isLong) {
+        puppetOrchestrator = IPuppetOrchestrator(_puppetOrchestrator);
+        traderRoute = ITraderRoute(msg.sender);
 
-        trader = _trader;
         collateralToken = _collateralToken;
         indexToken = _indexToken;
-        routeInfo.isLong = _isLong;
+        isLong = _isLong;
 
         IGMXRouter(puppetOrchestrator.getGMXRouter()).approvePlugin(puppetOrchestrator.getGMXPositionRouter());
     }
 
     // ====================== Modifiers ======================
 
-    modifier onlyAuthorizedCaller() {
+    modifier onlyKeeperOrTraderRoute() {
         if (msg.sender != owner) {
             if (isRejected) {
                 if (msg.sender != puppetOrchestrator.getKeeper()) revert Unauthorized();
@@ -77,64 +73,32 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         _;
     }
 
-    modifier onlyPuppetOrchestrator() {
-        if (msg.sender != owner && msg.sender != address(puppetOrchestrator)) revert Unauthorized();
-        if (isWaitingForCallback) revert WaitingForCallback();
-        if (isPositionOpen) revert PositionIsOpen();
+    modifier verifyPuppetOrchestratorCall() {
+        if (msg.sender != owner) {
+            if (msg.sender != address(puppetOrchestrator)) revert Unauthorized();
+            if (isWaitingForCallback) revert WaitingForCallback();
+            if (isPositionOpen) revert PositionIsOpen();
+        }
         _;
     }
 
-    // ====================== Helper functions ======================
+    // ====================== View functions ======================
 
     function isWaitingForCallback() external view returns (bool) {
-        return routeInfo.isWaitingForCallback;
+        return isWaitingForCallback;
     }
 
-    function isPositionOpen() public view returns (bool) {
-        return routeInfo.isPositionOpen;
+    function isPositionOpen() external view returns (bool) {
+        return isPositionOpen;
     }
 
     function isPuppetSigned(address _puppet) external view returns (bool) {
         return EnumerableSet.contains(routeInfo.puppetsSet, _puppet);
     }
 
-    function convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) public pure returns (uint256 _shares) {
-        if (_assets == 0) revert ZeroAmount();
-
-        if (_totalAssets == 0) {
-            _shares = _assets;
-        } else {
-            _shares = (_assets * _totalSupply) / _totalAssets;
-        }
-
-        if (_shares == 0) revert ZeroShares();
-    }
-
-    function convertToAssets(uint256 _totalAssets, uint256 _totalSupply, uint256 _shares) public pure returns (uint256 _assets) {
-        if (_totalSupply == 0) {
-            _assets = _shares;
-        } else {
-            _assets = (_shares * _totalAssets) / _totalSupply;
-        }
-    }
-
-    function _isOpenInterest() internal view returns (bool) {
-        address[] memory _collateralTokens = new address[](1);
-        address[] memory _indexTokens = new address[](1);
-        bool[] memory _isLong = new bool[](1);
-
-        _collateralTokens[0] = collateralToken;
-        _indexTokens[0] = indexToken;
-        _isLong[0] = isLong;
-
-        uint256[] memory _response = IGMXReader(puppetOrchestrator.getGMXReader()).getPositions(puppetOrchestrator.getGMXVault(), address(this), _collateralTokens, _indexTokens, _isLong);
-
-        return _response[0] > 0 && _response[1] > 0;
-    }
-
     // ====================== Puppet orchestrator functions ======================
 
-    function signPuppet(address _puppet, uint256 _allowance) external nonReentrant onlyPuppetOrchestrator {
+    function signPuppet(address _puppet, uint256 _allowance) external nonReentrant verifyPuppetOrchestratorCall {
         if (!puppetOrchestrator.isEnoughBuffer(_allowance, _puppet)) revert NotEnoughBuffer();
 
         bool _isPresent = EnumerableSet.add(puppetsSet, _puppet);
@@ -143,12 +107,12 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         EnumerableMap.set(puppetAllowance, _puppet, _allowance);
     }
 
-    function unsignPuppet(address _puppet) external nonReentrant onlyPuppetOrchestrator {
+    function unsignPuppet(address _puppet) external nonReentrant verifyPuppetOrchestratorCall {
         bool _isPresent = EnumerableSet.remove(puppetsSet, _puppet);
         if (!_isPresent) revert PuppetNotSigned();
     }
 
-    function setAllowance(address _puppet, uint256 _allowance) external nonReentrant onlyPuppetOrchestrator {
+    function setAllowance(address _puppet, uint256 _allowance) external nonReentrant verifyPuppetOrchestratorCall {
         if (!puppetOrchestrator.isEnoughBuffer(_allowance, _puppet)) revert NotEnoughBuffer();
 
         EnumerableMap.set(puppetAllowance, _puppet, _allowance);
@@ -156,7 +120,7 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
 
     // ====================== TraderRoute functions ======================
 
-    function createPosition(bytes memory _positionData, bool _isIncrease) public nonReentrant onlyAuthorizedCaller {
+    function createPosition(bytes memory _positionData, bool _isIncrease) public nonReentrant onlyKeeperOrTraderRoute {
         if (isWaitingForCallback) revert WaitingForCallback();
 
         isWaitingForCallback = true;
@@ -365,5 +329,39 @@ contract TraderRoute is ReentrancyGuard, IPuppetRoute {
         }
 
         return _amountIn + _executionFee;
+    }
+
+    function _isOpenInterest() internal view returns (bool) {
+        address[] memory _collateralTokens = new address[](1);
+        address[] memory _indexTokens = new address[](1);
+        bool[] memory _isLong = new bool[](1);
+
+        _collateralTokens[0] = collateralToken;
+        _indexTokens[0] = indexToken;
+        _isLong[0] = isLong;
+
+        uint256[] memory _response = IGMXReader(puppetOrchestrator.getGMXReader()).getPositions(puppetOrchestrator.getGMXVault(), address(this), _collateralTokens, _indexTokens, _isLong);
+
+        return _response[0] > 0 && _response[1] > 0;
+    }
+
+    function _convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) internal pure returns (uint256 _shares) {
+        if (_assets == 0) revert ZeroAmount();
+
+        if (_totalAssets == 0) {
+            _shares = _assets;
+        } else {
+            _shares = (_assets * _totalSupply) / _totalAssets;
+        }
+
+        if (_shares == 0) revert ZeroShares();
+    }
+
+    function _convertToAssets(uint256 _totalAssets, uint256 _totalSupply, uint256 _shares) internal pure returns (uint256 _assets) {
+        if (_totalSupply == 0) {
+            _assets = _shares;
+        } else {
+            _assets = (_shares * _totalAssets) / _totalSupply;
+        }
     }
 }

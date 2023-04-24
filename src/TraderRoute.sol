@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXReader} from "./interfaces/IGMXReader.sol";
@@ -12,6 +12,7 @@ import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
 
 import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
+import {IPuppetRoute} from "./interfaces/IPuppetRoute.sol";
 import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
 
 contract TraderRoute is ReentrancyGuard, ITraderRoute {
@@ -24,16 +25,18 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
     address public indexToken;
 
     bool public isLong;
-    bool public isPositionOpen;
     bool public isWaitingForCallback;
 
     bytes public puppetPositionData;
 
     IPuppetOrchestrator public puppetOrchestrator;
+    IPuppetRoute public puppetRoute;
 
     // ====================== Constructor ======================
 
     constructor(address _trader, address _collateralToken, address _indexToken, bool _isLong) {
+        puppetRoute = new PuppetRoute(_collateralToken, _indexToken, _isLong);
+
         puppetOrchestrator = IPuppetOrchestrator(msg.sender);
 
         trader = _trader;
@@ -47,17 +50,17 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
     // ====================== Modifiers ======================
 
     modifier onlyCallbackTarget() {
-        if (msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget();
+        if (msg.sender != owner && msg.sender != puppetOrchestrator.getCallbackTarget()) revert NotCallbackTarget();
         _;
     }
 
     modifier onlyPuppetRoute() {
-        if (msg.sender != address(puppetRoute)) revert Unauthorized();
+        if (msg.sender != owner && msg.sender != address(puppetRoute)) revert NotPuppetRoute();
         _;
     }
 
     modifier onlyKeeper() {
-        if (!puppetOrchestrator.isKeeper(msg.sender)) revert Unauthorized();
+        if (msg.sender != owner && !puppetOrchestrator.isKeeper(msg.sender)) revert NotKeeper();
         _;
     }
 
@@ -65,7 +68,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
     function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable nonReentrant {
         if (isWaitingForCallback) revert WaitingForCallback();
-        if (trader != msg.sender) revert Unauthorized();
+        if (trader != msg.sender) revert NotTrader();
 
         puppetPositionData = _puppetsData;
         isWaitingForCallback = true;
