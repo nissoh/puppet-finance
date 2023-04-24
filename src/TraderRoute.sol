@@ -11,8 +11,8 @@ import {IGMXReader} from "./interfaces/IGMXReader.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
 
+import {PuppetRoute} from "./PuppetRoute.sol";
 import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
-import {IPuppetRoute} from "./interfaces/IPuppetRoute.sol";
 import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
 
 contract TraderRoute is ReentrancyGuard, ITraderRoute {
@@ -30,7 +30,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
     bytes public puppetPositionData;
 
     IPuppetOrchestrator public puppetOrchestrator;
-    IPuppetRoute public puppetRoute;
+    PuppetRoute public puppetRoute;
 
     // ====================== Constructor ======================
 
@@ -68,7 +68,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
     function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable nonReentrant {
         if (isWaitingForCallback) revert WaitingForCallback();
-        if (trader != msg.sender) revert NotTrader();
+        if (msg.sender != trader) revert NotTrader();
 
         puppetPositionData = _puppetsData;
         isWaitingForCallback = true;
@@ -126,7 +126,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         address _callbackTarget = puppetOrchestrator.getCallbackTarget();
         bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, routeInfo.isLong, _acceptablePrice, _executionFee, _referralCode, _callbackTarget);
 
-        puppetOrchestrator.updateGMXPositionKeyToTraderRouteAddress(_positionKey);
+        puppetOrchestrator.updatePositionKeyToRouteAddress(_positionKey);
 
         emit CreateIncreasePosition(_positionKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
@@ -141,7 +141,7 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         address _callbackTarget = puppetOrchestrator.getCallbackTarget();
         bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition(_path, _indexToken, _collateralDeltaUSD, _sizeDelta, _route.isLong, address(this), _acceptablePrice, _minOut, _executionFee, false, _callbackTarget);
 
-        if (puppetOrchestrator.getTraderRouteForPosition(_positionKey) != address(this)) revert KeyError();
+        if (puppetOrchestrator.getRouteForPositionKey(_positionKey) != address(this)) revert KeyError();
 
         emit CreateDecreasePosition(_positionKey, _minOut, _collateralDeltaUSD, _sizeDelta, _acceptablePrice, _executionFee);
     }

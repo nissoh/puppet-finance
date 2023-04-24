@@ -31,6 +31,7 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
     bool public isLong;
     bool public isPositionOpen;
     bool public isWaitingForCallback;
+    bool public isIncrease;
 
     EnumerableSet.AddressSet private puppetsSet;
 
@@ -73,15 +74,6 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
         _;
     }
 
-    modifier verifyPuppetOrchestratorCall() {
-        if (msg.sender != owner) {
-            if (msg.sender != address(puppetOrchestrator)) revert Unauthorized();
-            if (isWaitingForCallback) revert WaitingForCallback();
-            if (isPositionOpen) revert PositionIsOpen();
-        }
-        _;
-    }
-
     // ====================== View functions ======================
 
     function isWaitingForCallback() external view returns (bool) {
@@ -96,34 +88,13 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
         return EnumerableSet.contains(routeInfo.puppetsSet, _puppet);
     }
 
-    // ====================== Puppet orchestrator functions ======================
-
-    function signPuppet(address _puppet, uint256 _allowance) external nonReentrant verifyPuppetOrchestratorCall {
-        if (!puppetOrchestrator.isEnoughBuffer(_allowance, _puppet)) revert NotEnoughBuffer();
-
-        bool _isPresent = EnumerableSet.add(puppetsSet, _puppet);
-        if (_isPresent) revert PuppetAlreadySigned();
-
-        EnumerableMap.set(puppetAllowance, _puppet, _allowance);
-    }
-
-    function unsignPuppet(address _puppet) external nonReentrant verifyPuppetOrchestratorCall {
-        bool _isPresent = EnumerableSet.remove(puppetsSet, _puppet);
-        if (!_isPresent) revert PuppetNotSigned();
-    }
-
-    function setAllowance(address _puppet, uint256 _allowance) external nonReentrant verifyPuppetOrchestratorCall {
-        if (!puppetOrchestrator.isEnoughBuffer(_allowance, _puppet)) revert NotEnoughBuffer();
-
-        EnumerableMap.set(puppetAllowance, _puppet, _allowance);
-    }
-
     // ====================== TraderRoute functions ======================
 
     function createPosition(bytes memory _positionData, bool _isIncrease) public nonReentrant onlyKeeperOrTraderRoute {
         if (isWaitingForCallback) revert WaitingForCallback();
 
         isWaitingForCallback = true;
+        isIncrease = _isIncrease;
 
         uint256 _requiredAssets = _getRequiredAssets(_positionData, _isIncrease);
 
@@ -166,7 +137,7 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
 
     // ====================== request callback ======================
 
-    function approvePositionRequest(bool _increase) external nonReentrant onlyCallbackTarget {
+    function approvePositionRequest() external nonReentrant onlyCallbackTarget {
         isRejected = false;
         isPositionOpen = true;
 
@@ -174,25 +145,27 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
 
         _repayBalance();
 
-        if (!_increase && !_isOpenInterest()) {
+        bool _isIncrease = isIncrease;
+        if (!_isIncrease && !_isOpenInterest()) {
             _resetPosition();
         }
 
-        emit PositionApproved(_increase);
+        emit PositionApproved(_isIncrease);
     }
 
-    function rejectPositionRequest(bool _increase) external nonReentrant onlyCallbackTarget {
+    function rejectPositionRequest() external nonReentrant onlyCallbackTarget {
         isRejected = true;
 
-        if (_increase) {
+        bool _isIncrease = isIncrease;
+        if (_isIncrease) {
             _repayBalance();
 
-            if (!traderRoute.isPositionOpen()) {
+            if (!isPositionOpen) {
                 _resetPosition();
             }
         }
 
-        emit PositionRejected(_increase);
+        emit PositionRejected(_isIncrease);
     }
 
     // ====================== Internal functions ======================
@@ -208,6 +181,8 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
         address _callbackTarget = puppetOrchestrator.getCallbackTarget();
         IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePosition(_path, _indexToken, _amountIn, _minOut, _sizeDelta, routeInfo.isLong, _acceptablePrice, _executionFee, _referralCode, _callbackTarget);
 
+        puppetOrchestrator.updatePositionKeyToRouteAddress(_positionKey);
+
         emit CreateIncreasePosition(_positionKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
@@ -220,6 +195,8 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
 
         address _callbackTarget = puppetOrchestrator.getCallbackTarget();
         IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition(_path, _indexToken, _collateralDeltaUSD, _sizeDelta, _route.isLong, address(this), _acceptablePrice, _minOut, _executionFee, false, _callbackTarget);
+
+        if (puppetOrchestrator.getRouteForPositionKey(_positionKey) != address(this)) revert KeyError();
 
         emit CreateDecreasePosition(_positionKey, _minOut, _collateralDeltaUSD, _sizeDelta, _acceptablePrice, _executionFee);
     }
@@ -240,25 +217,24 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
             uint256 _shares = EnumerableMap.get(puppetShares, _puppet);
             uint256 _puppetRequiredAmount = _requiredAssetsPerShare * _shares;
 
-            if (puppetOrchestrator.isPuppetSolvent(_puppetRequiredAmount, _puppet)) {
-                puppetOrchestrator.debitPuppetAccount(_puppetRequiredAmount, _puppet);
-            } else {
-                revert PuppetCannotCoverFees();
-            }
+            puppetOrchestrator.debitPuppetAccount(_puppetRequiredAmount, _puppet);
         }
+        puppetOrchestrator.sendFunds(_requiredAssets);
     }
 
     function _getFeesAndCollateral(uint256 _requiredAssets) internal {
         uint256 _totalSupply;
         uint256 _totalAssets;
         uint256 _traderAmountIn = traderRoute.getTraderAmountIn();
-        for (uint256 i = 0; i < EnumerableSet.length(puppetsSet); i++) {
-            address _puppet = EnumerableSet.at(puppetsSet, i);
-            uint256 _assets = EnumerableMap.get(puppetAllowance, _puppet);
+        address _traderRoute = address(traderRoute);
+        EnumerableSet.AddressSet storage _puppetsSet = puppetOrchestrator.getPuppetsSet(positionKey);
+        for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
+            address _puppet = EnumerableSet.at(_puppetsSet, i);
+            uint256 _assets = puppetOrchestrator.getPuppetAllowance(_puppet, _traderRoute);
 
             if (_assets > _traderAmountIn) _assets = _traderAmountIn;
 
-            if (puppetOrchestrator.isEnoughBuffer(_assets, _puppet)) {
+            if (puppetOrchestrator.isPuppetSolvent(_puppet)) {
                 puppetOrchestrator.debitPuppetAccount(_assets, _puppet);
             } else {
                 _liquidate(_puppet);
@@ -278,7 +254,7 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
         totalSupply = _totalSupply;
         totalAssets = _totalAssets;
 
-        puppetOrchestrator.withdrawFunds(_requiredAssets);
+        puppetOrchestrator.sendFunds(_requiredAssets);
     }
 
     function _repayBalance() internal {

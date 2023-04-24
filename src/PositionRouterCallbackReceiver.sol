@@ -3,53 +3,46 @@ pragma solidity ^0.8.17;
 
 import {IPositionRouterCallbackReceiver} from "./interfaces/IPositionRouterCallbackReceiver.sol";
 import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
-import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
+import {IRoute} from "./interfaces/IRoute.sol";
 
 contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
-
-    IPuppetOrchestrator puppetOrchestrator;
 
     address public owner;
     address public gmxPositionRouter;
 
+    IPuppetOrchestrator puppetOrchestrator;
+
     // ====================== Constructor ======================
 
-    constructor(address _owner) {
+    constructor(address _owner, address _gmxPositionRouter) {
         owner = _owner;
+        gmxPositionRouter = _gmxPositionRouter;
     }
 
     // ====================== Modifiers ======================
 
     modifier onlyOwner() {
-        if (msg.sender != owner) revert Unauthorized();
+        if (msg.sender != owner) revert NotOwner();
         _;
     }
 
     modifier onlyGMXPositionRouter() {
-        if (msg.sender != gmxPositionRouter) revert Unauthorized();
+        if (msg.sender != owner && msg.sender != gmxPositionRouter) revert NotGMXPositionRouter();
         _;
     }
 
     // ====================== GMXPositionRouter functions ======================
     
-    function gmxPositionCallback(bytes32 _positionKey, bool _isExecuted, bool _isIncrease) external override onlyGMXPositionRouter {
-        ITraderRoute _traderRoute = ITraderRoute(puppetOrchestrator.getTraderRouteForPosition(_positionKey));
+    function gmxPositionCallback(bytes32 _positionKey, bool _isExecuted, bool) external override onlyGMXPositionRouter {
+        IRoute _route = IRoute(puppetOrchestrator.getRouteForPositionKey(_positionKey));
 
-        if (_isIncrease) {
-            if (_isExecuted) {
-                _traderRoute.approveIncreasePosition();
-            } else {
-                _traderRoute.rejectIncreasePosition();
-            }
+        if (_isExecuted) {
+            _route.approvePositionRequest();
         } else {
-            if (_isExecuted) {
-                _traderRoute.approveDecreasePosition();
-            } else {
-                _traderRoute.rejectDecreasePosition();
-            }
+            _route.rejectPositionRequest();
         }
 
-        emit GMXPositionCallback(_positionKey, address(_traderRoute), _isExecuted);
+        emit GMXPositionCallback(_positionKey, address(_route), _isExecuted);
     }
 
     // ====================== Owner functions ======================
@@ -68,9 +61,10 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
 
     // ====================== Events ======================
 
-    event GMXPositionCallback(bytes32 indexed _positionKey, address indexed _traderRoute, bool indexed _isExecuted);
+    event GMXPositionCallback(bytes32 indexed _positionKey, address indexed _route, bool indexed _isExecuted);
 
     // ====================== Errors ======================
 
-    error Unauthorized();
+    error NotOwner();
+    error NotGMXPositionRouter();
 }
