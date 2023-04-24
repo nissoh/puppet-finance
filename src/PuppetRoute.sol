@@ -74,20 +74,6 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
         _;
     }
 
-    // ====================== View functions ======================
-
-    function isWaitingForCallback() external view returns (bool) {
-        return isWaitingForCallback;
-    }
-
-    function isPositionOpen() external view returns (bool) {
-        return isPositionOpen;
-    }
-
-    function isPuppetSigned(address _puppet) external view returns (bool) {
-        return EnumerableSet.contains(routeInfo.puppetsSet, _puppet);
-    }
-
     // ====================== TraderRoute functions ======================
 
     function createPosition(bytes memory _positionData, bool _isIncrease) public nonReentrant onlyKeeperOrTraderRoute {
@@ -201,13 +187,6 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
         emit CreateDecreasePosition(_positionKey, _minOut, _collateralDeltaUSD, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _liquidate(address _puppet) internal {
-        EnumerableSet.remove(puppetsSet, _puppet);
-        EnumerableMap.set(puppetAllowance, _puppet, 0);
-        
-        emit Liquidate(_puppet);
-    }
-
     // TODO - fix
     function _getFees(uint256 _requiredAssets) internal {
         uint256 _requiredShares = convertToShares(totalAssets, totalSupply, _requiredAssets);
@@ -237,7 +216,8 @@ contract PuppetRoute is ReentrancyGuard, IPuppetRoute {
             if (puppetOrchestrator.isPuppetSolvent(_puppet)) {
                 puppetOrchestrator.debitPuppetAccount(_assets, _puppet);
             } else {
-                _liquidate(_puppet);
+                bytes32 _positionKey = puppetOrchestrator.getPositionKey(address(this), collateralToken, indexToken, isLong);
+                puppetOrchestrator.liquidatePuppet(_puppet, _positionKey);
                 continue;
             }
 

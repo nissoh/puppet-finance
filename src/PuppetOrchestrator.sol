@@ -133,7 +133,8 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _traders.length; i++) {
-            RouteInfo storage _routeInfo = routeInfo[getPositionKey(_traders[i], _collateralToken, _indexToken, _isLong)];
+            bytes32 _routeKey = getPositionKey(_traders[i], _collateralToken, _indexToken, _isLong);
+            RouteInfo storage _routeInfo = routeInfo[_routeKey];
 
             if (!_routeInfo.isRegistered) revert RouteNotRegistered();
             if (TraderRoute(_routeInfo.traderRoute).isWaitingForCallback()) revert WaitingForCallback();
@@ -159,12 +160,21 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     // ====================== TraderRoute functions ======================
 
-    function debitPuppetAccount(uint256 _amount, address _puppet) external override onlyRoute {
+    function debitPuppetAccount(uint256 _amount, address _puppet) external override onlyPuppetRoute {
         puppetDepositAccount[_puppet] -= _amount;
     }
 
-    function creditPuppetAccount(uint256 _amount, address _puppet) external override onlyRoute {
+    function creditPuppetAccount(uint256 _amount, address _puppet) external override onlyPuppetRoute {
         puppetDepositAccount[_puppet] += _amount;
+    }
+
+    function liquidatePuppet(address _puppet, bytes32 _positionKey) external onlyPuppetRoute {
+        RouteInfo storage _routeInfo = routeInfo[_positionKey];
+        
+        EnumerableSet.remove(_routeInfo.puppets, _puppet);
+        EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, 0);
+
+        emit LiquidatePuppet(_puppet, msg.sender);
     }
 
     function updatePositionKeyToRouteAddress(bytes32 _positionKey) external onlyRoute {

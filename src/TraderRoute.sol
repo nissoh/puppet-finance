@@ -12,8 +12,10 @@ import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
 
 import {PuppetRoute} from "./PuppetRoute.sol";
+
 import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
 import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
+import {IPositionValidator} from "./interfaces/IPositionValidator.sol";
 
 contract TraderRoute is ReentrancyGuard, ITraderRoute {
 
@@ -73,6 +75,8 @@ contract TraderRoute is ReentrancyGuard, ITraderRoute {
         puppetPositionData = _puppetsData;
         isWaitingForCallback = true;
         isPuppetIncrease = _isPuppetIncrease;
+
+        IPositionValidator(puppetOrchestrator.getPositionValidator()).validatePositionParameters(_traderData, _puppetsData, _isIncrease, _isPuppetIncrease);
 
         _isIncrease ? _createIncreasePosition(_traderData) : _createDecreasePosition(_traderData);
     }
