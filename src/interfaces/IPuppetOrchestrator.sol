@@ -29,19 +29,26 @@ interface IPuppetOrchestrator {
 
     // ====================== Events ======================
 
-    event RegisterRoute(address indexed trader, address _routeAddress, address indexed collateralToken, address indexed indexToken, bool isLong);
-    event DepositToAccount(uint256 amount, address indexed token, address indexed caller, address indexed puppet);
-    event WithdrawFromAccount(uint256 amount, address indexed token, address indexed puppet);
-    event PuppetToggleSubscription(address[] traders, uint256[] allowances, address indexed puppet, address indexed collateralToken, address indexed indexToken, bool isLong, bool sign);
-    event PuppetSetAllowance(bytes32[] _routeKeys, uint256[] _allowances, address indexed _puppet);
+    event RegisterRoute(address indexed trader, address _traderRoute, address _puppetRoute, address indexed collateralToken, address indexed indexToken, bool isLong);
+    event DepositToAccount(uint256 assets, address indexed caller, address indexed puppet);
+    event WithdrawFromAccount(uint256 assets, address indexed receiver, address indexed puppet);
+    event ToggleRouteSubscription(address[] traders, uint256[] allowances, address indexed puppet, address indexed collateralToken, address indexed indexToken, bool isLong, bool sign);    
+    event DebitPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
+    event CreditPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
+    event LiquidatePuppet(address indexed _puppet, bytes32 indexed _positionKey, address indexed _liquidator);
+    event UpdatePositionKeyToRouteAddress(bytes32 indexed _positionKey, address indexed _routeAddress);
+    event SendFunds(uint256 _amount, address indexed _sender);
 
     // ====================== Errors ======================
 
     error RouteAlreadyRegistered();
-    error Unauthorized();
-    error WaitingForCallback();
-    error PositionOpen();
-    error RouteNotRegistered();
-    error PuppetNotSigned();
+    error NotOwner();
+    error NotRoute();
+    error ZeroAmount();
     error InvalidAmount();
+    error InsufficientPuppetFunds();
+    error MismatchedInputArrays();
+    error RouteNotRegistered();
+    error WaitingForCallback();
+    error PositionIsOpen();
 }

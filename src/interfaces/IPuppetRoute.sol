@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-interface ITraderRoute {
+interface IPuppetRoute {
 
     // ====================== Functions ======================
 
@@ -27,21 +27,26 @@ interface ITraderRoute {
 
     // ====================== Events ======================
 
-    event NotifyCallback(bool isIncrease);
+    event PositionCreated(bool _isIncrease);
+    event PositionClosed();
     event Liquidated();
-    event ApprovePositionRequest();
-    event RejectPositionRequest();
+    event PositionApproved(bool _isIncrease);
+    event PositionRejected(bool _isIncrease);
     event CreateIncreasePosition(bytes32 indexed positionKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event CreateDecreasePosition(bytes32 indexed positionKey, uint256 minOut, uint256 collateralDeltaUSD, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
+    event FeesCollected(uint256 _requiredAssets);
+    event FeesAndCollateralCollected(uint256 _requiredAssets);
+    event RepayBalance(uint256 _totalAssets);
+    event ResetPosition();
 
     // ====================== Errors ======================
 
-    error NotCallbackTarget();
-    error NotOwner();
     error WaitingForCallback();
-    error NotTrader();
-    error NotPuppetRoute();
-    error NotKeeper();
     error PositionStillAlive();
+    error NotKeeper();
+    error NotTraderRoute();
+    error NotCallbackTarget();
     error KeyError();
+    error ZeroAmount();
+    error NotOwner();
 }
