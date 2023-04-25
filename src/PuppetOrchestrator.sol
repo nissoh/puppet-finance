@@ -4,6 +4,7 @@ pragma solidity ^0.8.17;
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -60,7 +61,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         address _gmxVault,
         address _gmxPositionRouter,
         address _callbackTarget,
-        bytes32 _referralCod
+        bytes32 _referralCode
     ) {
         owner = _owner;
         positionValidator = _positionValidator;
@@ -93,26 +94,25 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external override nonReentrant returns (bytes32 _routeKey) {
         address _trader = msg.sender;
-        _routeKey = getPositionKey(_trader, _collateralToken, _indexToken, _isLong);
+        _routeKey = getTraderAccountKey(_trader, _collateralToken, _indexToken, _isLong);
         if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
-        ITraderRoute _traderRoute = address(new TraderRoute(msg.sender, owner, _trader, _collateralToken, _indexToken, _isLong));
-        address _puppetRoute = _traderRoute.getPuppetRoute();
+        address _traderRoute = address(new TraderRoute(msg.sender, owner, _trader, _collateralToken, _indexToken, _isLong));
+        address _puppetRoute = ITraderRoute(_traderRoute).getPuppetRoute();
 
-        routeInfo[_routeKey] = RouteInfo({
-            traderRoute: address(_traderRoute),
-            puppetRoute: _puppetRoute,
-            collateralToken: _collateralToken,
-            indexToken: _indexToken,
-            isLong: _isLong,
-            isRegistered: true,
-            puppets: EnumerableSet.AddressSet(0)
-        });
+        RouteInfo storage _routeInfo = routeInfo[_routeKey];
+        
+        _routeInfo.traderRoute = _traderRoute;
+        _routeInfo.puppetRoute = _puppetRoute;
+        _routeInfo.collateralToken = _collateralToken;
+        _routeInfo.indexToken = _indexToken;
+        _routeInfo.isLong = _isLong;
+        _routeInfo.isRegistered = true;
 
         isRoute[_traderRoute] = true;
         isRoute[_puppetRoute] = true;
 
-        emit RegisterRoute(_trader, address(_traderRoute), _puppetRoute, _collateralToken, _indexToken, _isLong);
+        emit RegisterRoute(_trader, _traderRoute, _puppetRoute, _collateralToken, _indexToken, _isLong);
     }
 
     // ====================== Puppet Functions ======================
@@ -144,7 +144,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _traders.length; i++) {
-            bytes32 _routeKey = getPositionKey(_traders[i], _collateralToken, _indexToken, _isLong);
+            bytes32 _routeKey = getTraderAccountKey(_traders[i], _collateralToken, _indexToken, _isLong);
             RouteInfo storage _routeInfo = routeInfo[_routeKey];
 
             if (!_routeInfo.isRegistered) revert RouteNotRegistered();
@@ -237,7 +237,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
     
     // ====================== View Functions ======================
 
-    function getPositionKey(address _account, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
+    function getTraderAccountKey(address _account, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(_account, _collateralToken, _indexToken, _isLong));
     }
 
@@ -281,8 +281,8 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         return EnumerableMap.get(puppetAllowances[_puppet], _route);
     }
 
-    function getPuppetsForRoute(address _route) external view override returns (address[] memory _puppets) {
-        EnumerableSet.AddressSet storage _puppetsSet = routeInfo[getPositionKeyForRoute(_route)].puppets;
+    function getPuppetsForRoute(bytes32 _key) external view override returns (address[] memory _puppets) {
+        EnumerableSet.AddressSet storage _puppetsSet = routeInfo[_key].puppets;
         _puppets = new address[](EnumerableSet.length(_puppetsSet));
 
         for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {

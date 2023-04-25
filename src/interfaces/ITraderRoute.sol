@@ -5,19 +5,23 @@ interface ITraderRoute {
 
     // ====================== Functions ======================
 
-    function getTraderAmountIn() external pure returns (uint256);
+    function getTraderAmountIn() external view returns (uint256);
 
     function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable;
 
-    function notifyCallback(bool _isIncrease) external;
+    function notifyCallback() external;
 
     function onLiquidation(bytes memory _puppetPositionData) external;
 
     function setPuppetRoute(address _puppetRoute) external;
 
+    function getPuppetRoute() external view returns (address);
+
+    function getIsWaitingForCallback() external view returns (bool);
+
     // ====================== Events ======================
 
-    event NotifyCallback(bool isIncrease);
+    event NotifyCallback();
 
     // ====================== Errors ======================
 

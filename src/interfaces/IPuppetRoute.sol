@@ -5,13 +5,15 @@ interface IPuppetRoute {
 
     // ====================== Functions ======================
 
-    function createPosition(bytes memory _positionData, bool _isIncrease) public;
+    function createPosition(bytes memory _positionData, bool _isIncrease) external;
 
     function closePosition(bytes memory _positionData) external;
 
     function onLiquidation() external;
 
     function setTraderRoute(address _puppetRoute) external;
+
+    function getIsPositionOpen() external view returns (bool);
 
     // ====================== Events ======================
 

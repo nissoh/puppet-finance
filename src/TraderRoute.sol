@@ -15,6 +15,8 @@ contract TraderRoute is BaseRoute, ITraderRoute {
 
     address public trader;
 
+    bool public isPuppetIncrease;
+
     bytes private puppetPositionData;
 
     IPuppetRoute public puppetRoute;
@@ -30,15 +32,23 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         bool _isLong
         ) BaseRoute(_puppetOrchestrator, _owner, _collateralToken, _indexToken, _isLong) {
 
-        puppetRoute = new PuppetRoute(_puppetOrchestrator, _owner, _collateralToken, _indexToken, _isLong);
+        puppetRoute = new PuppetRoute(_puppetOrchestrator, _trader, _owner, _collateralToken, _indexToken, _isLong);
 
         trader = _trader;
     }
 
     // ====================== View functions ======================
 
-    function getTraderAmountIn() external pure returns (uint256) {
+    function getTraderAmountIn() external view returns (uint256) {
         return traderAmountIn;
+    }
+
+    function getPuppetRoute() external view returns (address) {
+        return address(puppetRoute);
+    }
+
+    function getIsWaitingForCallback() external view returns (bool) {
+        return isWaitingForCallback;
     }
 
     // ====================== Trader functions ======================
@@ -58,12 +68,12 @@ contract TraderRoute is BaseRoute, ITraderRoute {
 
     // ====================== PuppetRoute ======================
 
-    function notifyCallback(bool _isIncrease) external nonReentrant {
+    function notifyCallback() external nonReentrant {
         if (msg.sender != owner && msg.sender != address(puppetRoute)) revert NotPuppetRoute();
 
         isWaitingForCallback = false;
 
-        emit NotifyCallback(_isIncrease);
+        emit NotifyCallback();
     }
 
     // ====================== liquidation ======================
@@ -84,7 +94,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
     function approvePositionRequest() external override nonReentrant onlyCallbackTarget {
         _repayBalance();
 
-        isPuppetIncrease ? puppetRoute.createIncreasePosition(puppetPositionData) : puppetRoute.createDecreasePosition(puppetPositionData);
+        isPuppetIncrease ? puppetRoute.createPosition(puppetPositionData, true) : puppetRoute.createPosition(puppetPositionData, false);
 
         emit ApprovePositionRequest();
     }

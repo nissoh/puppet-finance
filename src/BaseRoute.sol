@@ -8,6 +8,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
+import {IGMXVault} from "./interfaces/IGMXVault.sol";
 
 import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
 import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
@@ -51,16 +52,16 @@ contract BaseRoute is ReentrancyGuard, IRoute {
 
     // ====================== request callback ======================
 
-    function approvePositionRequest() external override nonReentrant onlyCallbackTarget {}
-    function rejectPositionRequest() external override nonReentrant onlyCallbackTarget {}
+    function approvePositionRequest() external virtual nonReentrant onlyCallbackTarget {}
+    function rejectPositionRequest() external virtual nonReentrant onlyCallbackTarget {}
 
     // ====================== Owner functions ======================
 
-    function setPuppetOrchestrator(address _puppetOrchestrator) external override onlyOwner {
+    function setPuppetOrchestrator(address _puppetOrchestrator) external virtual onlyOwner {
         puppetOrchestrator = IPuppetOrchestrator(_puppetOrchestrator);
     }
 
-    function approvePlugin() external override onlyOwner {
+    function approvePlugin() external virtual onlyOwner {
         IGMXRouter(puppetOrchestrator.getGMXRouter()).approvePlugin(puppetOrchestrator.getGMXPositionRouter());
     }
 
@@ -69,4 +70,10 @@ contract BaseRoute is ReentrancyGuard, IRoute {
     function _createIncreasePosition(bytes memory _positionData) internal virtual {}
     function _createDecreasePosition(bytes memory _positionData) internal virtual {}
     function _repayBalance() internal virtual {}
+
+    function _isLiquidated() internal view returns (bool) {
+        (uint256 state, ) = IGMXVault(puppetOrchestrator.getGMXVault()).validateLiquidation(address(this), collateralToken, indexToken, isLong, false);
+
+        return state > 0;
+    }
 }

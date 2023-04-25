@@ -35,7 +35,7 @@ interface IPuppetOrchestrator {
 
     function setOwner(address _owner) external;
 
-    function getPositionKey(address _account, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
+    function getTraderAccountKey(address _account, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
 
     function getGMXRouter() external view returns (address);
 
@@ -57,9 +57,9 @@ interface IPuppetOrchestrator {
 
     function getPuppetAllowance(address _puppet, address _route) external view returns (uint256);
 
-    function getPuppetsForRoute(address _route) external view returns (address[] memory);
+    function getPuppetsForRoute(bytes32 _key) external view returns (address[] memory);
 
-    function isPuppetSolvent(address _puppet) public view returns (bool);
+    function isPuppetSolvent(address _puppet) external view returns (bool);
 
     // ====================== Events ======================
 

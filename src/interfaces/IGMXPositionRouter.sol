@@ -14,7 +14,19 @@ interface IGMXPositionRouter {
         uint256 _executionFee,
         bytes32 _referralCode,
         address _callbackTarget
-    ) external returns (bytes32);
+    ) external payable returns (bytes32);
+
+    function createIncreasePositionETH(
+        address[] memory _path,
+        address _indexToken,
+        uint256 _minOut,
+        uint256 _sizeDelta,
+        bool _isLong,
+        uint256 _acceptablePrice,
+        uint256 _executionFee,
+        bytes32 _referralCode,
+        address _callbackTarget
+    ) external payable returns (bytes32);
 
     function createDecreasePosition(
         address[] memory _path,
