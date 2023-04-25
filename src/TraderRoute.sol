@@ -23,13 +23,14 @@ contract TraderRoute is BaseRoute, ITraderRoute {
 
     constructor(
         address _puppetOrchestrator,
+        address _owner,
         address _trader,
         address _collateralToken,
         address _indexToken,
         bool _isLong
-        ) BaseRoute(_puppetOrchestrator, _collateralToken, _indexToken, _isLong) {
+        ) BaseRoute(_puppetOrchestrator, _owner, _collateralToken, _indexToken, _isLong) {
 
-        puppetRoute = new PuppetRoute(_puppetOrchestrator, _collateralToken, _indexToken, _isLong);
+        puppetRoute = new PuppetRoute(_puppetOrchestrator, _owner, _collateralToken, _indexToken, _isLong);
 
         trader = _trader;
     }
@@ -104,7 +105,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
 
     // ====================== Internal functions ======================
 
-    function _createIncreasePosition(bytes memory _positionData) internal {
+    function _createIncreasePosition(bytes memory _positionData) internal override {
         (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee) = abi.decode(_positionData, (uint256, uint256, uint256, uint256));
 
         uint256 _amountIn = msg.value;
@@ -130,7 +131,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         emit CreateIncreasePosition(_positionKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _createDecreasePosition(bytes memory _positionData) internal {
+    function _createDecreasePosition(bytes memory _positionData) internal override {
         (uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee)
             = abi.decode(_positionData, (uint256, uint256, uint256, uint256, uint256));
 
@@ -156,8 +157,10 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         emit CreateDecreasePosition(_positionKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _repayBalance() internal {
+    function _repayBalance() internal override {
         uint256 _totalAssets = address(this).balance;
         if (_totalAssets > 0) payable(trader).sendValue(_totalAssets);
+
+        emit RepayBalance(_totalAssets);
     }
 }

@@ -91,12 +91,12 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     // ====================== Trader Functions ======================
 
-    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant returns (bytes32 _routeKey) {
+    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external override nonReentrant returns (bytes32 _routeKey) {
         address _trader = msg.sender;
         _routeKey = getPositionKey(_trader, _collateralToken, _indexToken, _isLong);
         if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
-        ITraderRoute _traderRoute = address(new TraderRoute(_trader, _collateralToken, _indexToken, _isLong));
+        ITraderRoute _traderRoute = address(new TraderRoute(msg.sender, owner, _trader, _collateralToken, _indexToken, _isLong));
         address _puppetRoute = _traderRoute.getPuppetRoute();
 
         routeInfo[_routeKey] = RouteInfo({
@@ -117,7 +117,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     // ====================== Puppet Functions ======================
 
-    function depositToAccount(uint256 _assets, address _puppet) external payable nonReentrant {
+    function depositToAccount(uint256 _assets, address _puppet) external payable override nonReentrant {
         if (_assets == 0) revert ZeroAmount();
         if (msg.value != _assets) revert InvalidAmount();
 
@@ -126,7 +126,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         emit DepositToAccount(_assets, msg.sender, _puppet);
     }
 
-    function withdrawFromAccount(uint256 _assets, address _receiver) external nonReentrant {
+    function withdrawFromAccount(uint256 _assets, address _receiver) external override nonReentrant {
         if (_assets == 0) revert ZeroAmount();
 
         address _puppet = msg.sender;
@@ -139,7 +139,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         emit WithdrawFromAccount(_assets, _receiver, _puppet);
     }
 
-    function toggleRouteSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external nonReentrant {
+    function toggleRouteSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external override nonReentrant {
         if (_traders.length != _allowances.length) revert MismatchedInputArrays();
 
         address _puppet = msg.sender;
@@ -257,11 +257,11 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         return gmxPositionRouter;
     }
 
-    function getCallbackTarget() external view override returns (address _callbackTarget) {
+    function getCallbackTarget() external view override returns (address) {
         return callbackTarget;
     }
 
-    function getReferralCode() external view override returns (bytes32 _referralCode) {
+    function getReferralCode() external view override returns (bytes32) {
         return referralCode;
     }
 
@@ -273,11 +273,15 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         return keeper;
     }
 
-    function getRouteForPositionKey(bytes32 _positionKey) external view returns (address _route) {
+    function getRouteForPositionKey(bytes32 _positionKey) external view override returns (address) {
         return positionKeyToRouteAddress[_positionKey];
     }
 
-    function getPuppetsForRoute(address _route) external view returns (address[] memory _puppets) {
+    function getPuppetAllowance(address _puppet, address _route) external view override returns (uint256 _allowance) {
+        return EnumerableMap.get(puppetAllowances[_puppet], _route);
+    }
+
+    function getPuppetsForRoute(address _route) external view override returns (address[] memory _puppets) {
         EnumerableSet.AddressSet storage _puppetsSet = routeInfo[getPositionKeyForRoute(_route)].puppets;
         _puppets = new address[](EnumerableSet.length(_puppetsSet));
 
@@ -286,11 +290,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         }
     }
 
-    function getPuppetAllowance(address _puppet, address _route) external view returns (uint256 _allowance) {
-        return EnumerableMap.get(puppetAllowances[_puppet], _route);
-    }
-
-    function isPuppetSolvent(address _puppet) public view returns (bool) {
+    function isPuppetSolvent(address _puppet) public view override returns (bool) {
         uint256 totalAllowance;
         EnumerableMap.AddressToUintMap storage _allowances = puppetAllowances[_puppet];
 

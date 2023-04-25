@@ -5,6 +5,38 @@ interface IPuppetOrchestrator {
 
     // ====================== Functions ======================
 
+    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external returns (bytes32);
+
+    function depositToAccount(uint256 _assets, address _puppet) external payable;
+
+    function withdrawFromAccount(uint256 _assets, address _receiver) external;
+
+    function toggleRouteSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external;
+
+    function debitPuppetAccount(uint256 _amount, address _puppet) external;
+
+    function creditPuppetAccount(uint256 _amount, address _puppet) external;
+
+    function liquidatePuppet(address _puppet, bytes32 _positionKey) external;
+
+    function updatePositionKeyToRouteAddress(bytes32 _positionKey) external;
+
+    function sendFunds(uint256 _amount) external;
+
+    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter) external;
+
+    function setCallbackTarget(address _callbackTarget) external;
+
+    function setReferralCode(bytes32 _referralCode) external;
+
+    function setSolvencyMargin(uint256 _solvencyMargin) external;
+
+    function setPositionValidator(address _positionValidator) external;
+
+    function setOwner(address _owner) external;
+
+    function getPositionKey(address _account, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
+
     function getGMXRouter() external view returns (address);
 
     function getGMXReader() external view returns (address);
@@ -13,19 +45,21 @@ interface IPuppetOrchestrator {
 
     function getGMXPositionRouter() external view returns (address);
 
-    function isPuppetSolvent(uint256 _amount, address _token, address _puppet) external view returns (bool);
+    function getCallbackTarget() external view returns (address);
 
     function getReferralCode() external view returns (bytes32);
 
-    function getCallbackTarget() external view returns (address);
+    function getPositionValidator() external view returns (address);
 
-    function getTraderRouteForPosition(bytes32 _gmxPositionKey) external view returns (address);
+    function getKeeper() external view returns (address);
 
-    function updateGMXPositionKeyToTraderRouteAddress(bytes32 _gmxPositionKey) external; 
+    function getRouteForPositionKey(bytes32 _positionKey) external view returns (address);
 
-    function debitPuppetAccount(uint256 _amount, address _puppet, address _token) external;
+    function getPuppetAllowance(address _puppet, address _route) external view returns (uint256);
 
-    function creditPuppetAccount(uint256 _amount, address _puppet, address _token) external;
+    function getPuppetsForRoute(address _route) external view returns (address[] memory);
+
+    function isPuppetSolvent(address _puppet) public view returns (bool);
 
     // ====================== Events ======================
 

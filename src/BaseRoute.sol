@@ -7,16 +7,16 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
+import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 
 import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
 import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
 import {IPuppetRoute} from "./interfaces/IPuppetRoute.sol";
+import {IRoute} from "./interfaces/IRoute.sol";
 
-contract BaseRoute is ReentrancyGuard {
+contract BaseRoute is ReentrancyGuard, IRoute {
 
-    using SafeERC20 for IERC20;
-    using Address for address payable;
-
+    address public owner;
     address public collateralToken;
     address public indexToken;
     
@@ -27,9 +27,9 @@ contract BaseRoute is ReentrancyGuard {
 
     // ====================== Constructor ======================
 
-    constructor(address _puppetOrchestrator, address _collateralToken, address _indexToken, bool _isLong) {
+    constructor(address _puppetOrchestrator, address _owner, address _collateralToken, address _indexToken, bool _isLong) {
         puppetOrchestrator = IPuppetOrchestrator(_puppetOrchestrator);
-
+        owner = _owner;
         collateralToken = _collateralToken;
         indexToken = _indexToken;
         isLong = _isLong;
@@ -51,16 +51,16 @@ contract BaseRoute is ReentrancyGuard {
 
     // ====================== request callback ======================
 
-    function approvePositionRequest() external virtual nonReentrant onlyCallbackTarget {}
-    function rejectPositionRequest() external virtual nonReentrant onlyCallbackTarget {
-    
+    function approvePositionRequest() external override nonReentrant onlyCallbackTarget {}
+    function rejectPositionRequest() external override nonReentrant onlyCallbackTarget {}
+
     // ====================== Owner functions ======================
 
-    function setPuppetOrchestrator(address _puppetOrchestrator) external onlyOwner {
+    function setPuppetOrchestrator(address _puppetOrchestrator) external override onlyOwner {
         puppetOrchestrator = IPuppetOrchestrator(_puppetOrchestrator);
     }
 
-    function approvePlugin() external onlyOwner {
+    function approvePlugin() external override onlyOwner {
         IGMXRouter(puppetOrchestrator.getGMXRouter()).approvePlugin(puppetOrchestrator.getGMXPositionRouter());
     }
 

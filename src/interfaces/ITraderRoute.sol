@@ -5,43 +5,23 @@ interface ITraderRoute {
 
     // ====================== Functions ======================
 
-    function isWaitingForCallback() external view returns (bool);
+    function getTraderAmountIn() external pure returns (uint256);
 
-    function isPositionOpen() external view returns (bool);
+    function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable;
 
-    function isPuppetSigned(address _puppet) external view returns (bool);
+    function notifyCallback(bool _isIncrease) external;
 
-    function signPuppet(address _puppet, uint256 _allowance) external;
+    function onLiquidation(bytes memory _puppetPositionData) external;
 
-    function unsignPuppet(address _puppet) external;
-
-    function setAllowance(address _puppet, uint256 _allowance) external;
-
-    function approveIncreasePosition() external;
-
-    function rejectIncreasePosition() external;
-
-    function approveDecreasePosition() external;
-
-    function rejectDecreasePosition() external;
+    function setPuppetRoute(address _puppetRoute) external;
 
     // ====================== Events ======================
 
     event NotifyCallback(bool isIncrease);
-    event Liquidated();
-    event ApprovePositionRequest();
-    event RejectPositionRequest();
-    event CreateIncreasePosition(bytes32 indexed positionKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
-    event CreateDecreasePosition(bytes32 indexed positionKey, uint256 minOut, uint256 collateralDeltaUSD, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
 
     // ====================== Errors ======================
 
-    error NotCallbackTarget();
-    error NotOwner();
-    error WaitingForCallback();
-    error NotTrader();
     error NotPuppetRoute();
-    error NotKeeper();
+    error NotTrader();
     error PositionStillAlive();
-    error KeyError();
 }

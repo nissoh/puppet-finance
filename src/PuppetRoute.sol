@@ -3,7 +3,7 @@ pragma solidity ^0.8.17;
 
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import {IGMXReader} from "./interfaces/IGMXReader.sol";
-import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
+import {IGMXVault} from "./interfaces/IGMXVault.sol";
 
 import "./BaseRoute.sol";
 
@@ -12,11 +12,12 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
-    uint256 private totalAmount;
+    uint256 private totalAssets;
     uint256 private totalSupply;
 
     bool public isPositionOpen;
     bool public isIncrease;
+    bool public isRejected;
 
     EnumerableMap.AddressToUintMap private puppetShares;
 
@@ -26,10 +27,11 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
 
     constructor(
         address _puppetOrchestrator,
+        address _owner,
         address _collateralToken, 
         address _indexToken, 
         bool _isLong
-        ) BaseRoute(_puppetOrchestrator, _collateralToken, _indexToken, _isLong) {
+        ) BaseRoute(_puppetOrchestrator, _owner, _collateralToken, _indexToken, _isLong) {
 
         traderRoute = ITraderRoute(msg.sender);
     }
@@ -68,16 +70,12 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             _getFees(_requiredAssets);
             _createDecreasePosition(_positionData);
         }
-
-        emit PositionCreated(_isIncrease);
     }
 
     function closePosition(bytes memory _positionData) external {
         createPosition(_positionData, false);
 
         if (_isOpenInterest()) revert PositionStillAlive();
-
-        emit PositionClosed();
     }
 
     // ====================== liquidation ======================
@@ -111,7 +109,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             _resetPosition();
         }
 
-        emit PositionApproved(_isIncrease);
+        emit ApprovePositionRequest();
     }
 
     function rejectPositionRequest() external override nonReentrant onlyCallbackTarget {
@@ -127,7 +125,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             }
         }
 
-        emit PositionRejected(_isIncrease);
+        emit RejectPositionRequest();
     }
 
     // ====================== Owner functions ======================
@@ -143,9 +141,9 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             = abi.decode(_positionData, (uint256, uint256, uint256, uint256, uint256));
 
         address[] memory _path = new address[](1);
-        _path[0] = _collateralToken;
+        _path[0] = collateralToken;
 
-        IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn + _executionFee }(
+        bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn + _executionFee }(
             _path,
             indexToken,
             _minOut,
@@ -167,9 +165,9 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             = abi.decode(_positionData, (uint256, uint256, uint256, uint256, uint256));
 
         address[] memory _path = new address[](1);
-        _path[0] = _collateralToken;
+        _path[0] = collateralToken;
 
-        IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition{ value: _executionFee }(
+        bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition{ value: _executionFee }(
             _path,
             indexToken,
             _collateralDelta,
@@ -185,7 +183,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
 
         if (puppetOrchestrator.getRouteForPositionKey(_positionKey) != address(this)) revert KeyError();
 
-        emit CreateDecreasePosition(_positionKey, _minOut, _collateralDeltaUSD, _sizeDelta, _acceptablePrice, _executionFee);
+        emit CreateDecreasePosition(_positionKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
     function _getFees(uint256 _requiredAssets) internal {
@@ -257,7 +255,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             for (uint256 i = 0; i < _puppets.length; i++) {
                 address _puppet = _puppets[i];
                 uint256 _shares = EnumerableMap.get(puppetShares, _puppet);
-                uint256 _assets = convertToAssets(_balance, _totalSupply, _shares);
+                uint256 _assets = _convertToAssets(_balance, _totalSupply, _shares);
                 if (_shares == 0 || _assets == 0) revert ZeroAmount();
 
                 puppetOrchestrator.creditPuppetAccount(_assets, _puppet);
@@ -285,7 +283,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
     }
 
     function _isLiquidated() internal view returns (bool) {
-        (uint256 state, ) = IVault(puppetOrchestrator.getGMXVault()).validateLiquidation(address(this), collateralToken, indexToken, isLong, false);
+        (uint256 state, ) = IGMXVault(puppetOrchestrator.getGMXVault()).validateLiquidation(address(this), collateralToken, indexToken, isLong, false);
 
         return state > 0;
     }
@@ -325,7 +323,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             _shares = (_assets * _totalSupply) / _totalAssets;
         }
 
-        if (_shares == 0) revert ZeroShares();
+        if (_shares == 0) revert ZeroAmount();
     }
 
     function _convertToAssets(uint256 _totalAssets, uint256 _totalSupply, uint256 _shares) internal pure returns (uint256 _assets) {
