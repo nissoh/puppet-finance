@@ -34,7 +34,7 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
     // ====================== GMXPositionRouter functions ======================
     
     function gmxPositionCallback(bytes32 _positionKey, bool _isExecuted, bool) external override onlyGMXPositionRouter {
-        IRoute _route = IRoute(puppetOrchestrator.getRouteForPositionKey(_positionKey));
+        IRoute _route = IRoute(puppetOrchestrator.getTraderRouteForPositionKey(_positionKey));
 
         if (_isExecuted) {
             _route.approvePositionRequest();

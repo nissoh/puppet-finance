@@ -67,13 +67,13 @@ interface IPuppetOrchestrator {
 
     function getKeeper() external view returns (address);
 
-    function getRouteForPositionKey(bytes32 _positionKey) external view returns (address);
+    function getTraderRouteForPositionKey(bytes32 _positionKey) external view returns (address);
 
     function getRouteForRouteKey(bytes32 _routeKey) external view returns (address _traderRoute, address _puppetRoute);
 
-    function getPuppetAllowance(address _puppet, address _route) external view returns (uint256);
+    function getPuppetAllowance(address _puppet, address _traderRoute) external view returns (uint256);
 
-    function getPuppetsForRoute(bytes32 _key) external view returns (address[] memory);
+    function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory);
 
     function isPuppetSolvent(address _puppet) external view returns (bool);
 

@@ -68,7 +68,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
     // TraderRoute Functions
     // ============================================================================================
 
-    function createPosition(bytes memory _positionData, bool _isIncrease) public nonReentrant onlyKeeperOrTraderRoute {
+    function createPosition(bytes memory _positionData, bool _isIncrease) public nonReentrant onlyKeeperOrTraderRoute returns (bytes32 _positionKey) {
         if (isWaitingForCallback) revert WaitingForCallback();
 
         isWaitingForCallback = true;
@@ -82,10 +82,10 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             } else {
                 _getFeesAndCollateral(_requiredAssets);
             }
-            _createIncreasePosition(_positionData);
+            _positionKey = _createIncreasePosition(_positionData);
         } else {
             _getFees(_requiredAssets);
-            _createDecreasePosition(_positionData);
+            _positionKey = _createDecreasePosition(_positionData);
         }
     }
 
@@ -164,7 +164,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
     // Internal Functions
     // ============================================================================================
 
-    function _createIncreasePosition(bytes memory _positionData) internal override {
+    function _createIncreasePosition(bytes memory _positionData) internal override returns (bytes32 _positionKey) {
         (uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee)
             = abi.decode(_positionData, (uint256, uint256, uint256, uint256, uint256));
 
@@ -172,7 +172,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
         _path[0] = collateralToken;
 
         // slither-disable-next-line arbitrary-send-eth
-        bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn + _executionFee }(
+        _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn + _executionFee }(
             _path,
             indexToken,
             _minOut,
@@ -189,7 +189,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
         emit CreateIncreasePosition(_positionKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _createDecreasePosition(bytes memory _positionData) internal override {
+    function _createDecreasePosition(bytes memory _positionData) internal override returns (bytes32 _positionKey) {
         (uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee)
             = abi.decode(_positionData, (uint256, uint256, uint256, uint256, uint256));
 
@@ -197,7 +197,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
         _path[0] = collateralToken;
 
         // slither-disable-next-line arbitrary-send-eth
-        bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition{ value: _executionFee }(
+        _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition{ value: _executionFee }(
             _path,
             indexToken,
             _collateralDelta,
@@ -211,7 +211,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             puppetOrchestrator.getCallbackTarget()
         );
 
-        if (puppetOrchestrator.getRouteForPositionKey(_positionKey) != address(this)) revert KeyError();
+        if (puppetOrchestrator.getTraderRouteForPositionKey(_positionKey) != address(this)) revert KeyError();
 
         emit CreateDecreasePosition(_positionKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
+import "forge-std/console.sol";
+
 import {PuppetRoute} from "./PuppetRoute.sol";
 import {IPositionValidator} from "./interfaces/IPositionValidator.sol";
 
@@ -62,7 +64,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
     // Trader Functions
     // ============================================================================================
 
-    function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable nonReentrant {
+    function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable nonReentrant returns (bytes32 _positionKey) {
         if (isWaitingForCallback) revert WaitingForCallback();
         if (msg.sender != trader) revert NotTrader();
 
@@ -72,7 +74,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
 
         IPositionValidator(puppetOrchestrator.getPositionValidator()).validatePositionParameters(_traderData, _puppetsData, _isIncrease, _isPuppetIncrease);
 
-        _isIncrease ? _createIncreasePosition(_traderData) : _createDecreasePosition(_traderData);
+        _positionKey = _isIncrease ? _createIncreasePosition(_traderData) : _createDecreasePosition(_traderData);
     }
 
     // ============================================================================================
@@ -134,7 +136,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
     // Internal Functions
     // ============================================================================================
 
-    function _createIncreasePosition(bytes memory _positionData) internal override {
+    function _createIncreasePosition(bytes memory _positionData) internal override returns (bytes32 _positionKey) {
         (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee) = abi.decode(_positionData, (uint256, uint256, uint256, uint256));
 
         uint256 _amountIn = msg.value;
@@ -143,7 +145,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         address[] memory _path = new address[](1);
         _path[0] = collateralToken;
 
-        bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn }(
+        _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn }(
             _path,
             indexToken,
             _minOut,
@@ -160,14 +162,14 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         emit CreateIncreasePosition(_positionKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _createDecreasePosition(bytes memory _positionData) internal override {
+    function _createDecreasePosition(bytes memory _positionData) internal override returns (bytes32 _positionKey) {
         (uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee)
             = abi.decode(_positionData, (uint256, uint256, uint256, uint256, uint256));
 
         address[] memory _path = new address[](1);
         _path[0] = collateralToken;
 
-        bytes32 _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition{ value: msg.value }(
+        _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition{ value: msg.value }(
             _path,
             indexToken,
             _collateralDelta,
@@ -181,7 +183,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
             puppetOrchestrator.getCallbackTarget()
         );
 
-        if (puppetOrchestrator.getRouteForPositionKey(_positionKey) != address(this)) revert KeyError();
+        if (puppetOrchestrator.getTraderRouteForPositionKey(_positionKey) != address(this)) revert KeyError();
 
         emit CreateDecreasePosition(_positionKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }

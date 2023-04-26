@@ -102,8 +102,8 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         return keccak256(abi.encodePacked(_account, _collateralToken, _indexToken, _isLong));
     }
 
-    function getPuppetsForRoute(bytes32 _key) external view override returns (address[] memory _puppets) {
-        EnumerableSet.AddressSet storage _puppetsSet = routeInfo[_key].puppets;
+    function getPuppetsForRoute(bytes32 _routeKey) external view override returns (address[] memory _puppets) {
+        EnumerableSet.AddressSet storage _puppetsSet = routeInfo[_routeKey].puppets;
         _puppets = new address[](EnumerableSet.length(_puppetsSet));
 
         for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
@@ -123,7 +123,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         return puppetDepositAccount[_puppet] >= (totalAllowance * solvencyMargin);
     }
 
-    function getRouteForPositionKey(bytes32 _positionKey) external view override returns (address) {
+    function getTraderRouteForPositionKey(bytes32 _positionKey) external view override returns (address) {
         return positionKeyToTraderRoute[_positionKey];
     }
 
@@ -132,8 +132,8 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         _puppetRoute = routeInfo[_routeKey].puppetRoute;
     }
 
-    function getPuppetAllowance(address _puppet, address _route) external view override returns (uint256 _allowance) {
-        return EnumerableMap.get(puppetAllowances[_puppet], _route);
+    function getPuppetAllowance(address _puppet, address _traderRoute) external view override returns (uint256 _allowance) {
+        return EnumerableMap.get(puppetAllowances[_puppet], _traderRoute);
     }
 
     function getGMXRouter() external view override returns (address) {

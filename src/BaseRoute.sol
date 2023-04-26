@@ -77,8 +77,8 @@ contract BaseRoute is ReentrancyGuard, IRoute {
     // Internal Functions
     // ============================================================================================
 
-    function _createIncreasePosition(bytes memory _positionData) internal virtual {}
-    function _createDecreasePosition(bytes memory _positionData) internal virtual {}
+    function _createIncreasePosition(bytes memory _positionData) internal virtual returns (bytes32 _positionKey) {}
+    function _createDecreasePosition(bytes memory _positionData) internal virtual returns (bytes32 _positionKey) {}
     function _repayBalance() internal virtual {}
 
     function _isLiquidated() internal view returns (bool) {

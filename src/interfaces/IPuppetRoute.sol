@@ -7,7 +7,7 @@ interface IPuppetRoute {
     // Mutated Functions
     // ============================================================================================
 
-    function createPosition(bytes memory _positionData, bool _isIncrease) external;
+    function createPosition(bytes memory _positionData, bool _isIncrease) external returns (bytes32 _positionKey);
 
     function closePosition(bytes memory _positionData) external;
 
