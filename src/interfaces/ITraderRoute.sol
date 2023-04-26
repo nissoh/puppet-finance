@@ -3,9 +3,9 @@ pragma solidity 0.8.17;
 
 interface ITraderRoute {
 
-    // ====================== Functions ======================
-
-    function getTraderAmountIn() external view returns (uint256);
+    // ============================================================================================
+    // Mutated Functions
+    // ============================================================================================
 
     function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable;
 
@@ -15,15 +15,25 @@ interface ITraderRoute {
 
     function setPuppetRoute(address _puppetRoute) external;
 
+    // ============================================================================================
+    // View Functions
+    // ============================================================================================
+
+    function getTraderAmountIn() external view returns (uint256);
+
     function getPuppetRoute() external view returns (address);
 
     function getIsWaitingForCallback() external view returns (bool);
 
-    // ====================== Events ======================
+    // ============================================================================================
+    // Events
+    // ============================================================================================
 
     event NotifyCallback();
 
-    // ====================== Errors ======================
+    // ============================================================================================
+    // Errors
+    // ============================================================================================
 
     error NotPuppetRoute();
     error NotTrader();

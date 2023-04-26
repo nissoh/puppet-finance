@@ -11,17 +11,22 @@ contract TraderRoute is BaseRoute, ITraderRoute {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
+    // collateral amount trader sent to create position. Used to limit a puppet's position size
     uint256 private traderAmountIn;
 
     address public trader;
 
+    // indicates if the puppet position should be increased or decreased
     bool public isPuppetIncrease;
 
+    // the data to pass to the puppet createPosition function
     bytes private puppetPositionData;
 
     IPuppetRoute public puppetRoute;
 
-    // ====================== Constructor ======================
+    // ============================================================================================
+    // Constructor
+    // ============================================================================================
 
     constructor(
         address _puppetOrchestrator,
@@ -37,7 +42,9 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         trader = _trader;
     }
 
-    // ====================== View functions ======================
+    // ============================================================================================
+    // View Functions
+    // ============================================================================================
 
     function getTraderAmountIn() external view returns (uint256) {
         return traderAmountIn;
@@ -51,7 +58,9 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         return isWaitingForCallback;
     }
 
-    // ====================== Trader functions ======================
+    // ============================================================================================
+    // Trader Functions
+    // ============================================================================================
 
     function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable nonReentrant {
         if (isWaitingForCallback) revert WaitingForCallback();
@@ -66,7 +75,9 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         _isIncrease ? _createIncreasePosition(_traderData) : _createDecreasePosition(_traderData);
     }
 
-    // ====================== PuppetRoute ======================
+    // ============================================================================================
+    // PuppetRoute Functions
+    // ============================================================================================
 
     function notifyCallback() external nonReentrant {
         if (msg.sender != owner && msg.sender != address(puppetRoute)) revert NotPuppetRoute();
@@ -76,7 +87,9 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         emit NotifyCallback();
     }
 
-    // ====================== liquidation ======================
+    // ============================================================================================
+    // On Liquidation
+    // ============================================================================================
 
     function onLiquidation(bytes memory _puppetPositionData) external nonReentrant {
         if (msg.sender != owner && msg.sender != puppetOrchestrator.getKeeper()) revert NotKeeper();
@@ -89,7 +102,9 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         emit Liquidated();
     }
 
-    // ====================== request callback ======================
+    // ============================================================================================
+    // Callback Functions
+    // ============================================================================================
 
     function approvePositionRequest() external override nonReentrant onlyCallbackTarget {
         _repayBalance();
@@ -107,13 +122,17 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         emit RejectPositionRequest();
     }
 
-    // ====================== Owner functions ======================
+    // ============================================================================================
+    // Owner Functions
+    // ============================================================================================
 
     function setPuppetRoute(address _puppetRoute) external onlyOwner {
         puppetRoute = PuppetRoute(_puppetRoute);
     }
 
-    // ====================== Internal functions ======================
+    // ============================================================================================
+    // Internal Functions
+    // ============================================================================================
 
     function _createIncreasePosition(bytes memory _positionData) internal override {
         (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee) = abi.decode(_positionData, (uint256, uint256, uint256, uint256));
@@ -136,7 +155,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
             puppetOrchestrator.getCallbackTarget()
         );
 
-        puppetOrchestrator.updatePositionKeyToRouteAddress(_positionKey);
+        puppetOrchestrator.updatePositionKeyToTraderRoute(_positionKey);
 
         emit CreateIncreasePosition(_positionKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }

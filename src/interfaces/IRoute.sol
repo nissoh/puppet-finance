@@ -3,6 +3,10 @@ pragma solidity 0.8.17;
 
 interface IRoute {
 
+    // ============================================================================================
+    // Mutated Functions
+    // ============================================================================================
+
     function approvePositionRequest() external;
 
     function rejectPositionRequest() external;
@@ -11,7 +15,9 @@ interface IRoute {
 
     function approvePlugin() external;
 
-    // ====================== Events ======================
+    // ============================================================================================
+    // Events
+    // ============================================================================================
 
     event Liquidated();
     event ApprovePositionRequest();
@@ -20,7 +26,9 @@ interface IRoute {
     event CreateIncreasePosition(bytes32 indexed positionKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event CreateDecreasePosition(bytes32 indexed positionKey, uint256 minOut, uint256 collateralDeltaUSD, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
 
-    // ====================== Errors ======================
+    // ============================================================================================
+    // Errors
+    // ============================================================================================
 
     error WaitingForCallback();
     error NotCallbackTarget();

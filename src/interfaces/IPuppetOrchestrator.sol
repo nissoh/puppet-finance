@@ -3,15 +3,23 @@ pragma solidity 0.8.17;
 
 interface IPuppetOrchestrator {
 
-    // ====================== Functions ======================
+    // ============================================================================================
+    // Mutated Functions
+    // ============================================================================================
+
+    // Trader
 
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external returns (bytes32);
+
+    // Puppet
 
     function depositToAccount(uint256 _assets, address _puppet) external payable;
 
     function withdrawFromAccount(uint256 _assets, address _receiver) external;
 
-    function toggleRouteSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external;
+    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external;
+
+    // Route
 
     function debitPuppetAccount(uint256 _amount, address _puppet) external;
 
@@ -19,9 +27,11 @@ interface IPuppetOrchestrator {
 
     function liquidatePuppet(address _puppet, bytes32 _positionKey) external;
 
-    function updatePositionKeyToRouteAddress(bytes32 _positionKey) external;
+    function updatePositionKeyToTraderRoute(bytes32 _positionKey) external;
 
     function sendFunds(uint256 _amount) external;
+
+    // Owner
 
     function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter) external;
 
@@ -35,7 +45,11 @@ interface IPuppetOrchestrator {
 
     function setOwner(address _owner) external;
 
-    function getTraderAccountKey(address _account, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
+    // ============================================================================================
+    // View Functions
+    // ============================================================================================
+
+    function getTraderRouteKey(address _account, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
 
     function getGMXRouter() external view returns (address);
 
@@ -55,25 +69,31 @@ interface IPuppetOrchestrator {
 
     function getRouteForPositionKey(bytes32 _positionKey) external view returns (address);
 
+    function getRouteForRouteKey(bytes32 _routeKey) external view returns (address _traderRoute, address _puppetRoute);
+
     function getPuppetAllowance(address _puppet, address _route) external view returns (uint256);
 
     function getPuppetsForRoute(bytes32 _key) external view returns (address[] memory);
 
     function isPuppetSolvent(address _puppet) external view returns (bool);
 
-    // ====================== Events ======================
+    // ============================================================================================
+    // Events
+    // ============================================================================================
 
     event RegisterRoute(address indexed trader, address _traderRoute, address _puppetRoute, address indexed collateralToken, address indexed indexToken, bool isLong);
     event DepositToAccount(uint256 assets, address indexed caller, address indexed puppet);
     event WithdrawFromAccount(uint256 assets, address indexed receiver, address indexed puppet);
-    event ToggleRouteSubscription(address[] traders, uint256[] allowances, address indexed puppet, address indexed collateralToken, address indexed indexToken, bool isLong, bool sign);    
+    event UpdateRoutesSubscription(address[] traders, uint256[] allowances, address indexed puppet, address indexed collateralToken, address indexed indexToken, bool isLong, bool sign);    
     event DebitPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
     event CreditPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
     event LiquidatePuppet(address indexed _puppet, bytes32 indexed _positionKey, address indexed _liquidator);
-    event UpdatePositionKeyToRouteAddress(bytes32 indexed _positionKey, address indexed _routeAddress);
+    event UpdatePositionKeyToTraderRoute(bytes32 indexed _positionKey, address indexed _routeAddress);
     event SendFunds(uint256 _amount, address indexed _sender);
 
-    // ====================== Errors ======================
+    // ============================================================================================
+    // Errors
+    // ============================================================================================
 
     error RouteAlreadyRegistered();
     error NotOwner();

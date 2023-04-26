@@ -26,7 +26,9 @@ contract BaseRoute is ReentrancyGuard, IRoute {
 
     IPuppetOrchestrator public puppetOrchestrator;
 
-    // ====================== Constructor ======================
+    // ============================================================================================
+    // Constructor
+    // ============================================================================================
 
     constructor(address _puppetOrchestrator, address _owner, address _collateralToken, address _indexToken, bool _isLong) {
         puppetOrchestrator = IPuppetOrchestrator(_puppetOrchestrator);
@@ -38,7 +40,9 @@ contract BaseRoute is ReentrancyGuard, IRoute {
         IGMXRouter(puppetOrchestrator.getGMXRouter()).approvePlugin(puppetOrchestrator.getGMXPositionRouter());
     }
 
-    // ====================== Modifiers ======================
+    // ============================================================================================
+    // Modifiers
+    // ============================================================================================
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -50,12 +54,16 @@ contract BaseRoute is ReentrancyGuard, IRoute {
         _;
     }
 
-    // ====================== request callback ======================
+    // ============================================================================================
+    // Callback Functions
+    // ============================================================================================
 
     function approvePositionRequest() external virtual nonReentrant onlyCallbackTarget {}
     function rejectPositionRequest() external virtual nonReentrant onlyCallbackTarget {}
 
-    // ====================== Owner functions ======================
+    // ============================================================================================
+    // Owner Functions
+    // ============================================================================================
 
     function setPuppetOrchestrator(address _puppetOrchestrator) external virtual onlyOwner {
         puppetOrchestrator = IPuppetOrchestrator(_puppetOrchestrator);
@@ -65,7 +73,9 @@ contract BaseRoute is ReentrancyGuard, IRoute {
         IGMXRouter(puppetOrchestrator.getGMXRouter()).approvePlugin(puppetOrchestrator.getGMXPositionRouter());
     }
 
-    // ====================== Internal functions ======================
+    // ============================================================================================
+    // Internal Functions
+    // ============================================================================================
 
     function _createIncreasePosition(bytes memory _positionData) internal virtual {}
     function _createDecreasePosition(bytes memory _positionData) internal virtual {}

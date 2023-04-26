@@ -29,7 +29,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         EnumerableSet.AddressSet puppets;
     }
 
-    uint256 solvencyMargin;
+    uint256 public solvencyMargin; // require puppet's balance to be `solvencyMargin` times more than the amount of his total allowances
 
     address public owner;
     address private gmxRouter;
@@ -42,15 +42,17 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
 
     bytes32 private referralCode;
 
-    mapping(bytes32 => RouteInfo) private routeInfo;
-    mapping(address => bool) public isRoute;
+    mapping(bytes32 => RouteInfo) private routeInfo; // routeKey => RouteInfo
+    mapping(address => bool) public isRoute; // traderRoute => isRoute
 
     mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => traderRoute => allowance
-    mapping(address => uint256) public puppetDepositAccount;
+    mapping(address => uint256) public puppetDepositAccount; // puppet => deposit account balance
 
-    mapping(bytes32 => address) private positionKeyToRouteAddress;
+    mapping(bytes32 => address) private positionKeyToTraderRoute; // GMX position key => traderRoute address
 
-    // ====================== Constructor ======================
+    // ============================================================================================
+    // Constructor
+    // ============================================================================================
 
     constructor(
         address _owner,
@@ -78,7 +80,9 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         solvencyMargin = 2; // require puppet's balance to be 2x the amount of his total allowances
     }
 
-    // ====================== Modifiers ======================
+    // ============================================================================================
+    // Modifiers
+    // ============================================================================================
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -90,155 +94,46 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         _;
     }
 
-    // ====================== Trader Functions ======================
+    // ============================================================================================
+    // View Functions
+    // ============================================================================================
 
-    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external override nonReentrant returns (bytes32 _routeKey) {
-        address _trader = msg.sender;
-        _routeKey = getTraderAccountKey(_trader, _collateralToken, _indexToken, _isLong);
-        if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
-
-        address _traderRoute = address(new TraderRoute(msg.sender, owner, _trader, _collateralToken, _indexToken, _isLong));
-        address _puppetRoute = ITraderRoute(_traderRoute).getPuppetRoute();
-
-        RouteInfo storage _routeInfo = routeInfo[_routeKey];
-        
-        _routeInfo.traderRoute = _traderRoute;
-        _routeInfo.puppetRoute = _puppetRoute;
-        _routeInfo.collateralToken = _collateralToken;
-        _routeInfo.indexToken = _indexToken;
-        _routeInfo.isLong = _isLong;
-        _routeInfo.isRegistered = true;
-
-        isRoute[_traderRoute] = true;
-        isRoute[_puppetRoute] = true;
-
-        emit RegisterRoute(_trader, _traderRoute, _puppetRoute, _collateralToken, _indexToken, _isLong);
+    function getTraderRouteKey(address _account, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_account, _collateralToken, _indexToken, _isLong));
     }
 
-    // ====================== Puppet Functions ======================
+    function getPuppetsForRoute(bytes32 _key) external view override returns (address[] memory _puppets) {
+        EnumerableSet.AddressSet storage _puppetsSet = routeInfo[_key].puppets;
+        _puppets = new address[](EnumerableSet.length(_puppetsSet));
 
-    function depositToAccount(uint256 _assets, address _puppet) external payable override nonReentrant {
-        if (_assets == 0) revert ZeroAmount();
-        if (msg.value != _assets) revert InvalidAmount();
-
-        puppetDepositAccount[_puppet] += _assets;
-
-        emit DepositToAccount(_assets, msg.sender, _puppet);
+        for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
+            _puppets[i] = EnumerableSet.at(_puppetsSet, i);
+        }
     }
 
-    function withdrawFromAccount(uint256 _assets, address _receiver) external override nonReentrant {
-        if (_assets == 0) revert ZeroAmount();
+    function isPuppetSolvent(address _puppet) public view override returns (bool) {
+        uint256 totalAllowance;
+        EnumerableMap.AddressToUintMap storage _allowances = puppetAllowances[_puppet];
 
-        address _puppet = msg.sender;
-        puppetDepositAccount[_puppet] -= _assets;
-
-        if (!isPuppetSolvent(_puppet)) revert InsufficientPuppetFunds();
-
-        payable(_receiver).sendValue(_assets);
-
-        emit WithdrawFromAccount(_assets, _receiver, _puppet);
-    }
-
-    function toggleRouteSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external override nonReentrant {
-        if (_traders.length != _allowances.length) revert MismatchedInputArrays();
-
-        address _puppet = msg.sender;
-        for (uint256 i = 0; i < _traders.length; i++) {
-            bytes32 _routeKey = getTraderAccountKey(_traders[i], _collateralToken, _indexToken, _isLong);
-            RouteInfo storage _routeInfo = routeInfo[_routeKey];
-
-            if (!_routeInfo.isRegistered) revert RouteNotRegistered();
-            if (ITraderRoute(_routeInfo.traderRoute).getIsWaitingForCallback()) revert WaitingForCallback();
-            if (IPuppetRoute(_routeInfo.puppetRoute).getIsPositionOpen()) revert PositionIsOpen();
-
-            if (_sign) {
-                EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, _allowances[i]);
-
-                if (!EnumerableSet.contains(_routeInfo.puppets, _puppet)) {
-                    EnumerableSet.add(_routeInfo.puppets, _puppet);
-                }
-            } else {
-                EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, 0);
-
-                if (EnumerableSet.contains(_routeInfo.puppets, _puppet)) {
-                    EnumerableSet.remove(_routeInfo.puppets, _puppet);
-                }
-            }
+        for (uint256 i = 0; i < EnumerableMap.length(_allowances); i++) {
+            (, uint256 _allowance) = EnumerableMap.at(_allowances, i);
+            totalAllowance += _allowance;
         }
 
-        if (!isPuppetSolvent(_puppet)) revert InsufficientPuppetFunds();
-
-        emit ToggleRouteSubscription(_traders, _allowances, _puppet, _collateralToken, _indexToken, _isLong, _sign);
+        return puppetDepositAccount[_puppet] >= (totalAllowance * solvencyMargin);
     }
 
-    // ====================== Route functions ======================
-
-    function debitPuppetAccount(uint256 _amount, address _puppet) external override onlyRoute {
-        puppetDepositAccount[_puppet] -= _amount;
-
-        emit DebitPuppetAccount(_amount, _puppet, msg.sender);
+    function getRouteForPositionKey(bytes32 _positionKey) external view override returns (address) {
+        return positionKeyToTraderRoute[_positionKey];
     }
 
-    function creditPuppetAccount(uint256 _amount, address _puppet) external override onlyRoute {
-        puppetDepositAccount[_puppet] += _amount;
-
-        emit CreditPuppetAccount(_amount, _puppet, msg.sender);
+    function getRouteForRouteKey(bytes32 _routeKey) external view override returns (address _traderRoute, address _puppetRoute) {
+        _traderRoute = routeInfo[_routeKey].traderRoute;
+        _puppetRoute = routeInfo[_routeKey].puppetRoute;
     }
 
-    function liquidatePuppet(address _puppet, bytes32 _positionKey) external onlyRoute {
-        RouteInfo storage _routeInfo = routeInfo[_positionKey];
-        
-        EnumerableSet.remove(_routeInfo.puppets, _puppet);
-        EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, 0);
-
-        emit LiquidatePuppet(_puppet, _positionKey, msg.sender);
-    }
-
-    function updatePositionKeyToRouteAddress(bytes32 _positionKey) external onlyRoute {
-        positionKeyToRouteAddress[_positionKey] = msg.sender;
-
-        emit UpdatePositionKeyToRouteAddress(_positionKey, msg.sender);
-    }
-
-    function sendFunds(uint256 _amount) external onlyRoute {
-        payable(msg.sender).sendValue(_amount);
-
-        emit SendFunds(_amount, msg.sender);
-    }
-
-    // ====================== Owner Functions ======================
-
-    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter) external onlyOwner {
-        gmxRouter = _gmxRouter;
-        gmxReader = _gmxReader;
-        gmxVault = _gmxVault;
-        gmxPositionRouter = _gmxPositionRouter;
-    }
-
-    function setCallbackTarget(address _callbackTarget) external onlyOwner {
-        callbackTarget = _callbackTarget;
-    }
-
-    function setReferralCode(bytes32 _referralCode) external onlyOwner {
-        referralCode = _referralCode;
-    }
-
-    function setSolvencyMargin(uint256 _solvencyMargin) external onlyOwner {
-        solvencyMargin = _solvencyMargin;
-    }
-
-    function setPositionValidator(address _positionValidator) external onlyOwner {
-        positionValidator = _positionValidator;
-    }
-
-    function setOwner(address _owner) external onlyOwner {
-        owner = _owner;
-    }
-    
-    // ====================== View Functions ======================
-
-    function getTraderAccountKey(address _account, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_account, _collateralToken, _indexToken, _isLong));
+    function getPuppetAllowance(address _puppet, address _route) external view override returns (uint256 _allowance) {
+        return EnumerableMap.get(puppetAllowances[_puppet], _route);
     }
 
     function getGMXRouter() external view override returns (address) {
@@ -273,32 +168,157 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         return keeper;
     }
 
-    function getRouteForPositionKey(bytes32 _positionKey) external view override returns (address) {
-        return positionKeyToRouteAddress[_positionKey];
+    // ============================================================================================
+    // Trader Functions
+    // ============================================================================================
+
+    // slither-disable-next-line reentrancy-no-eth
+    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external override nonReentrant returns (bytes32 _routeKey) {
+        address _trader = msg.sender;
+        _routeKey = getTraderRouteKey(_trader, _collateralToken, _indexToken, _isLong);
+        if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
+
+        address _traderRoute = address(new TraderRoute(address(this), owner, _trader, _collateralToken, _indexToken, _isLong));
+        address _puppetRoute = ITraderRoute(_traderRoute).getPuppetRoute();
+
+        RouteInfo storage _routeInfo = routeInfo[_routeKey];
+        
+        _routeInfo.traderRoute = _traderRoute;
+        _routeInfo.puppetRoute = _puppetRoute;
+        _routeInfo.collateralToken = _collateralToken;
+        _routeInfo.indexToken = _indexToken;
+        _routeInfo.isLong = _isLong;
+        _routeInfo.isRegistered = true;
+
+        isRoute[_traderRoute] = true;
+        isRoute[_puppetRoute] = true;
+
+        emit RegisterRoute(_trader, _traderRoute, _puppetRoute, _collateralToken, _indexToken, _isLong);
     }
 
-    function getPuppetAllowance(address _puppet, address _route) external view override returns (uint256 _allowance) {
-        return EnumerableMap.get(puppetAllowances[_puppet], _route);
+    // ============================================================================================
+    // Puppet Functions
+    // ============================================================================================
+
+    function depositToAccount(uint256 _assets, address _puppet) external payable override nonReentrant {
+        if (_assets == 0) revert ZeroAmount();
+        if (msg.value != _assets) revert InvalidAmount();
+
+        puppetDepositAccount[_puppet] += _assets;
+
+        emit DepositToAccount(_assets, msg.sender, _puppet);
     }
 
-    function getPuppetsForRoute(bytes32 _key) external view override returns (address[] memory _puppets) {
-        EnumerableSet.AddressSet storage _puppetsSet = routeInfo[_key].puppets;
-        _puppets = new address[](EnumerableSet.length(_puppetsSet));
+    function withdrawFromAccount(uint256 _assets, address _receiver) external override nonReentrant {
+        if (_assets == 0) revert ZeroAmount();
 
-        for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
-            _puppets[i] = EnumerableSet.at(_puppetsSet, i);
+        address _puppet = msg.sender;
+        puppetDepositAccount[_puppet] -= _assets;
+
+        if (!isPuppetSolvent(_puppet)) revert InsufficientPuppetFunds();
+
+        payable(_receiver).sendValue(_assets);
+
+        emit WithdrawFromAccount(_assets, _receiver, _puppet);
+    }
+
+    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external override nonReentrant {
+        if (_traders.length != _allowances.length) revert MismatchedInputArrays();
+
+        address _puppet = msg.sender;
+        for (uint256 i = 0; i < _traders.length; i++) {
+            bytes32 _routeKey = getTraderRouteKey(_traders[i], _collateralToken, _indexToken, _isLong);
+            RouteInfo storage _routeInfo = routeInfo[_routeKey];
+
+            if (!_routeInfo.isRegistered) revert RouteNotRegistered();
+            if (ITraderRoute(_routeInfo.traderRoute).getIsWaitingForCallback()) revert WaitingForCallback();
+            if (IPuppetRoute(_routeInfo.puppetRoute).getIsPositionOpen()) revert PositionIsOpen();
+
+            if (_sign) {
+                EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, _allowances[i]);
+
+                if (!EnumerableSet.contains(_routeInfo.puppets, _puppet)) {
+                    EnumerableSet.add(_routeInfo.puppets, _puppet);
+                }
+            } else {
+                EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, 0);
+
+                if (EnumerableSet.contains(_routeInfo.puppets, _puppet)) {
+                    EnumerableSet.remove(_routeInfo.puppets, _puppet);
+                }
+            }
         }
+
+        if (!isPuppetSolvent(_puppet)) revert InsufficientPuppetFunds();
+
+        emit UpdateRoutesSubscription(_traders, _allowances, _puppet, _collateralToken, _indexToken, _isLong, _sign);
     }
 
-    function isPuppetSolvent(address _puppet) public view override returns (bool) {
-        uint256 totalAllowance;
-        EnumerableMap.AddressToUintMap storage _allowances = puppetAllowances[_puppet];
+    // ============================================================================================
+    // Route Functions
+    // ============================================================================================
 
-        for (uint256 i = 0; i < EnumerableMap.length(_allowances); i++) {
-            (, uint256 _allowance) = EnumerableMap.at(_allowances, i);
-            totalAllowance += _allowance;
-        }
+    function debitPuppetAccount(uint256 _amount, address _puppet) external override onlyRoute {
+        puppetDepositAccount[_puppet] -= _amount;
 
-        return puppetDepositAccount[_puppet] >= (totalAllowance * solvencyMargin);
+        emit DebitPuppetAccount(_amount, _puppet, msg.sender);
+    }
+
+    function creditPuppetAccount(uint256 _amount, address _puppet) external override onlyRoute {
+        puppetDepositAccount[_puppet] += _amount;
+
+        emit CreditPuppetAccount(_amount, _puppet, msg.sender);
+    }
+
+    function liquidatePuppet(address _puppet, bytes32 _positionKey) external onlyRoute {
+        RouteInfo storage _routeInfo = routeInfo[_positionKey];
+        
+        EnumerableSet.remove(_routeInfo.puppets, _puppet);
+        EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, 0);
+
+        emit LiquidatePuppet(_puppet, _positionKey, msg.sender);
+    }
+
+    function updatePositionKeyToTraderRoute(bytes32 _positionKey) external onlyRoute {
+        positionKeyToTraderRoute[_positionKey] = msg.sender;
+
+        emit UpdatePositionKeyToTraderRoute(_positionKey, msg.sender);
+    }
+
+    function sendFunds(uint256 _amount) external onlyRoute {
+        payable(msg.sender).sendValue(_amount);
+
+        emit SendFunds(_amount, msg.sender);
+    }
+
+    // ============================================================================================
+    // Owner Functions
+    // ============================================================================================
+
+    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter) external onlyOwner {
+        gmxRouter = _gmxRouter;
+        gmxReader = _gmxReader;
+        gmxVault = _gmxVault;
+        gmxPositionRouter = _gmxPositionRouter;
+    }
+
+    function setCallbackTarget(address _callbackTarget) external onlyOwner {
+        callbackTarget = _callbackTarget;
+    }
+
+    function setReferralCode(bytes32 _referralCode) external onlyOwner {
+        referralCode = _referralCode;
+    }
+
+    function setSolvencyMargin(uint256 _solvencyMargin) external onlyOwner {
+        solvencyMargin = _solvencyMargin;
+    }
+
+    function setPositionValidator(address _positionValidator) external onlyOwner {
+        positionValidator = _positionValidator;
+    }
+
+    function setOwner(address _owner) external onlyOwner {
+        owner = _owner;
     }
 }
