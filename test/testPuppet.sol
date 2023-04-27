@@ -184,10 +184,19 @@ contract testPuppet is Test {
 
         assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), false, "_testCreateInitialPosition: E0");
 
+        vm.expectRevert(); // reverts with NotTrader()
+        ITraderRoute(traderRoute).createPosition(_traderData, _puppetsData, true, true);
+
         vm.startPrank(trader);
+
+        vm.expectRevert(); // reverts with `Arithmetic over/underflow` (on subtracting _executionFee from _amountInTrader) 
+        ITraderRoute(traderRoute).createPosition(_traderData, _puppetsData, true, true);
+
         bytes32 _positionKey = ITraderRoute(traderRoute).createPosition{ value: _amountInTrader }(_traderData, _puppetsData, true, true);
 
         assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), true, "_testCreateInitialPosition: E1");
         assertEq(puppetOrchestrator.getTraderRouteForPositionKey(_positionKey), address(traderRoute), "_testCreateInitialPosition: E2");
+
+        // keeper - 0x11D62807dAE812a0F1571243460Bf94325F43BB7
     }
 }
