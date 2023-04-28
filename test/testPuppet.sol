@@ -7,6 +7,8 @@ import "forge-std/console.sol";
 import {AggregatorV3Interface} from "@chainlink/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 import {PuppetOrchestrator} from "../src/PuppetOrchestrator.sol";
+import {PuppetRoute} from "../src/PuppetRoute.sol";
+import {TraderRoute} from "../src/TraderRoute.sol";
 import {PositionValidator} from "../src/PositionValidator.sol";
 import {PositionRouterCallbackReceiver} from "../src/PositionRouterCallbackReceiver.sol";
 
@@ -172,7 +174,7 @@ contract testPuppet is Test {
     // open position
     // add collateral + increase size
     function _testCreateInitialPosition() internal {
-        (, int256 _price,,,) = priceFeed.latestRoundData();
+        // (, int256 _price,,,) = priceFeed.latestRoundData();
 
         uint256 _minOut = 0; // _minOut can be zero if no swap is required
         // increase _price by 20%
@@ -188,11 +190,9 @@ contract testPuppet is Test {
         uint256 _sizeDeltaTrader = _size / 50;
         uint256 _sizeDeltaPuppet = _size / 50;
 
-        // the amount of tokenIn you want to deposit as collateral
+        // the amount of tokenIn to deposit as collateral
         uint256 _amountInTrader = 10 ether;
-        uint256 _amountInPuppet = 10 ether;
-        console.log("amountInTrader: %s", _amountInTrader);
-        console.log("amountInPuppet: %s", 10 ether);
+        uint256 _amountInPuppet = _getAllowanceForRoute();
 
         bytes memory _traderData = abi.encode(_minOut, _sizeDeltaTrader, _acceptablePrice, _executionFee);
         bytes memory _puppetsData = abi.encode(_amountInPuppet, _minOut, _sizeDeltaPuppet, _acceptablePrice, _executionFee);
@@ -215,21 +215,31 @@ contract testPuppet is Test {
         assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), true, "_testCreateInitialPosition: E1");
         assertEq(puppetOrchestrator.getTraderRouteForPositionKey(_positionKey), address(traderRoute), "_testCreateInitialPosition: E2");
 
-        // keeper - 0x11D62807dAE812a0F1571243460Bf94325F43BB7
-        vm.startPrank(address(0x11D62807dAE812a0F1571243460Bf94325F43BB7));
+        vm.startPrank(address(0x11D62807dAE812a0F1571243460Bf94325F43BB7)); // keeper
         IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).executeIncreasePositions(type(uint256).max, payable(traderRoute));
 
         if (_isOpenInterest(traderRoute)) {
-            // create position succeeded
-            revert("not implemented");
-        } else {
-            // create position failed
-            // assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), false, "_testCreateInitialPosition: E3");
-            // assertEq(address(traderRoute).balance, 0, "_testCreateInitialPosition: E4");
-            // assertEq(address(trader).balance, _traderBalanceBefore, "_testCreateInitialPosition: E5");
+            assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), true, "_testCreateInitialPosition: E3");
+            assertTrue(address(trader).balance < _traderBalanceBefore, "_testCreateInitialPosition: E4");
 
+            if (TraderRoute(payable(traderRoute)).isPuppetIncrease()) {
+                _testPuppetRouteOnIncrease();
+            } else {
+                revert("not tested");
+            }
+            // revert("OpenInterest");
+        } else {
+            assertEq(address(traderRoute).balance, 0, "_testCreateInitialPosition: E5");
+            assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), false, "_testCreateInitialPosition: E6");
+            assertEq(address(trader).balance, _traderBalanceBefore, "_testCreateInitialPosition: E7");
+            revert("!OpenInterest"); // current config should open a position. i want to know if it fails
         }
-        revert("asd");
+    }
+
+    function _testPuppetRouteOnIncrease() internal {
+        assertEq(PuppetRoute(puppetRoute).getIsPositionOpen(), false, "_testPuppetRouteOnIncrease: E0");
+        assertEq(PuppetRoute(puppetRoute).isWaitingForCallback(), true, "_testPuppetRouteOnIncrease: E1");
+        assertEq(PuppetRoute(puppetRoute).isIncrease(), true, "_testPuppetRouteOnIncrease: E2");
     }
 
     // ============================================================================================
@@ -241,4 +251,7 @@ contract testPuppet is Test {
 
         return _size > 0 && _collateral > 0;
     }
+
+    // TODO
+    function _getAllowanceForRoute
 }

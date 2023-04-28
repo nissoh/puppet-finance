@@ -6,6 +6,8 @@ import {IGMXReader} from "./interfaces/IGMXReader.sol";
 
 import "./BaseRoute.sol";
 
+import "forge-std/console.sol";
+
 contract PuppetRoute is BaseRoute, IPuppetRoute {
 
     using SafeERC20 for IERC20;
@@ -266,6 +268,11 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             _totalAssets += _assets;
         }
 
+        console.log("_totalAssets", _totalAssets);
+        console.log("_requiredAssets", _requiredAssets);
+        // 1 1500000000000000000
+        // 1 10000180000000000000
+
         if (_totalAssets != _requiredAssets) revert AssetsAmonutMismatch();
 
         totalSupply = _totalSupply;
@@ -325,6 +332,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
         return _amountIn + _executionFee;
     }
 
+    // TODO - fix so it's like in test
     function _isOpenInterest() internal view returns (bool) {
         address[] memory _collateralTokens = new address[](1);
         address[] memory _indexTokens = new address[](1);
