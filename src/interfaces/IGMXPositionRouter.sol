@@ -41,4 +41,9 @@ interface IGMXPositionRouter {
         bool _withdrawETH,
         address _callbackTarget
     ) external payable returns (bytes32);
+
+    function executeIncreasePositions(
+        uint256 _endIndex,
+        address payable _executionFeeReceiver
+    ) external;
 }
