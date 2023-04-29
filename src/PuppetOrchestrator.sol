@@ -48,7 +48,7 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
     mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => traderRoute => allowance
     mapping(address => uint256) public puppetDepositAccount; // puppet => deposit account balance
 
-    mapping(bytes32 => address) private positionKeyToTraderRoute; // GMX position key => traderRoute address
+    mapping(bytes32 => address) private requestKeyToRoute; // GMX position key => trader/puppet route address
 
     // ============================================================================================
     // Constructor
@@ -123,8 +123,8 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         return puppetDepositAccount[_puppet] >= (totalAllowance * solvencyMargin);
     }
 
-    function getTraderRouteForPositionKey(bytes32 _positionKey) external view override returns (address) {
-        return positionKeyToTraderRoute[_positionKey];
+    function getRouteForRequestKey(bytes32 _requestKey) external view override returns (address) {
+        return requestKeyToRoute[_requestKey];
     }
 
     function getRouteForRouteKey(bytes32 _routeKey) external view override returns (address _traderRoute, address _puppetRoute) {
@@ -270,19 +270,19 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
         emit CreditPuppetAccount(_amount, _puppet, msg.sender);
     }
 
-    function liquidatePuppet(address _puppet, bytes32 _positionKey) external onlyRoute {
-        RouteInfo storage _routeInfo = routeInfo[_positionKey];
+    function liquidatePuppet(address _puppet, bytes32 _routeKey) external onlyRoute {
+        RouteInfo storage _routeInfo = routeInfo[_routeKey];
         
         EnumerableSet.remove(_routeInfo.puppets, _puppet);
         EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, 0);
 
-        emit LiquidatePuppet(_puppet, _positionKey, msg.sender);
+        emit LiquidatePuppet(_puppet, _routeKey, msg.sender);
     }
 
-    function updatePositionKeyToTraderRoute(bytes32 _positionKey) external onlyRoute {
-        positionKeyToTraderRoute[_positionKey] = msg.sender;
+    function updateRequestKeyToRoute(bytes32 _requestKey) external onlyRoute {
+        requestKeyToRoute[_requestKey] = msg.sender;
 
-        emit UpdatePositionKeyToTraderRoute(_positionKey, msg.sender);
+        emit UpdateRequestKeyToRoute(_requestKey, msg.sender);
     }
 
     function sendFunds(uint256 _amount) external onlyRoute {
@@ -321,4 +321,10 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
     function setOwner(address _owner) external onlyOwner {
         owner = _owner;
     }
+
+    // ============================================================================================
+    // Receive Function
+    // ============================================================================================
+
+    receive() external payable {}
 }

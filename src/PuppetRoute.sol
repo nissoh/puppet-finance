@@ -13,8 +13,8 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
-    uint256 private totalAssets;
-    uint256 private totalSupply;
+    uint256 public totalAssets;
+    uint256 public totalSupply;
 
     address public trader;
 
@@ -66,11 +66,15 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
         return isPositionOpen;
     }
 
+    function getPuppetShares(address _puppet) external view returns (uint256) {
+        return EnumerableMap.get(puppetShares, _puppet);
+    }
+
     // ============================================================================================
     // TraderRoute Functions
     // ============================================================================================
 
-    function createPosition(bytes memory _positionData, bool _isIncrease) public nonReentrant onlyKeeperOrTraderRoute returns (bytes32 _positionKey) {
+    function createPosition(bytes memory _positionData, bool _isIncrease) public nonReentrant onlyKeeperOrTraderRoute returns (bytes32 _requestKey) {
         if (isWaitingForCallback) revert WaitingForCallback();
 
         isWaitingForCallback = true;
@@ -84,10 +88,10 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             } else {
                 _getFeesAndCollateral(_requiredAssets);
             }
-            _positionKey = _createIncreasePosition(_positionData);
+            _requestKey = _createIncreasePosition(_positionData);
         } else {
             _getFees(_requiredAssets);
-            _positionKey = _createDecreasePosition(_positionData);
+            _requestKey = _createDecreasePosition(_positionData);
         }
     }
 
@@ -128,8 +132,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
 
         _repayBalance();
 
-        bool _isIncrease = isIncrease;
-        if (!_isIncrease && !_isOpenInterest()) {
+        if (!isIncrease && !_isOpenInterest()) {
             _resetPosition();
         }
 
@@ -141,8 +144,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
         isRejected = true;
         isWaitingForCallback = false;
 
-        bool _isIncrease = isIncrease;
-        if (_isIncrease) {
+        if (isIncrease) {
             _repayBalance();
 
             if (!isPositionOpen) {
@@ -165,7 +167,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
     // Internal Functions
     // ============================================================================================
 
-    function _createIncreasePosition(bytes memory _positionData) internal override returns (bytes32 _positionKey) {
+    function _createIncreasePosition(bytes memory _positionData) internal override returns (bytes32 _requestKey) {
         (uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee)
             = abi.decode(_positionData, (uint256, uint256, uint256, uint256, uint256));
 
@@ -173,7 +175,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
         _path[0] = collateralToken;
 
         // slither-disable-next-line arbitrary-send-eth
-        _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn + _executionFee }(
+        _requestKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn + _executionFee }(
             _path,
             indexToken,
             _minOut,
@@ -185,12 +187,12 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             puppetOrchestrator.getCallbackTarget()
         );
 
-        puppetOrchestrator.updatePositionKeyToTraderRoute(_positionKey);
+        puppetOrchestrator.updateRequestKeyToRoute(_requestKey);
 
-        emit CreateIncreasePosition(_positionKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
+        emit CreateIncreasePosition(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _createDecreasePosition(bytes memory _positionData) internal override returns (bytes32 _positionKey) {
+    function _createDecreasePosition(bytes memory _positionData) internal override returns (bytes32 _requestKey) {
         (uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee)
             = abi.decode(_positionData, (uint256, uint256, uint256, uint256, uint256));
 
@@ -198,7 +200,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
         _path[0] = collateralToken;
 
         // slither-disable-next-line arbitrary-send-eth
-        _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition{ value: _executionFee }(
+        _requestKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition{ value: _executionFee }(
             _path,
             indexToken,
             _collateralDelta,
@@ -212,9 +214,9 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             puppetOrchestrator.getCallbackTarget()
         );
 
-        if (puppetOrchestrator.getTraderRouteForPositionKey(_positionKey) != address(this)) revert KeyError();
+        if (puppetOrchestrator.getRouteForRequestKey(_requestKey) != address(this)) revert KeyError();
 
-        emit CreateDecreasePosition(_positionKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
+        emit CreateDecreasePosition(_requestKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
     function _getFees(uint256 _requiredAssets) internal {
@@ -243,8 +245,8 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
         uint256 _totalSupply;
         uint256 _totalAssets;
         uint256 _traderAmountIn = traderRoute.getTraderAmountIn();
-        bytes32 _key = puppetOrchestrator.getTraderRouteKey(trader, collateralToken, indexToken, isLong);
-        address[] memory _puppets = puppetOrchestrator.getPuppetsForRoute(_key);
+        bytes32 _routeKey = puppetOrchestrator.getTraderRouteKey(trader, collateralToken, indexToken, isLong);
+        address[] memory _puppets = puppetOrchestrator.getPuppetsForRoute(_routeKey);
         for (uint256 i = 0; i < _puppets.length; i++) {
             address _puppet = _puppets[i];
             uint256 _assets = puppetOrchestrator.getPuppetAllowance(_puppet, address(traderRoute));
@@ -254,7 +256,7 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             if (puppetOrchestrator.isPuppetSolvent(_puppet)) {
                 puppetOrchestrator.debitPuppetAccount(_assets, _puppet);
             } else {
-                puppetOrchestrator.liquidatePuppet(_puppet, _key);
+                puppetOrchestrator.liquidatePuppet(_puppet, _routeKey);
                 continue;
             }
 
@@ -360,6 +362,10 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             _assets = (_shares * _totalAssets) / _totalSupply;
         }
     }
+
+    // ============================================================================================
+    // Receive Function
+    // ============================================================================================
 
     receive() external payable {}
 }

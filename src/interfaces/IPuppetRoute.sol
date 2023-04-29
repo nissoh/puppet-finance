@@ -7,7 +7,7 @@ interface IPuppetRoute {
     // Mutated Functions
     // ============================================================================================
 
-    function createPosition(bytes memory _positionData, bool _isIncrease) external returns (bytes32 _positionKey);
+    function createPosition(bytes memory _positionData, bool _isIncrease) external returns (bytes32 _requestKey);
 
     function closePosition(bytes memory _positionData) external;
 
@@ -20,6 +20,8 @@ interface IPuppetRoute {
     // ============================================================================================
 
     function getIsPositionOpen() external view returns (bool);
+
+    function getPuppetShares(address _puppet) external view returns (uint256);
 
     // ============================================================================================
     // Events

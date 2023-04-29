@@ -5,6 +5,8 @@ interface IGMXVault {
 
     function validateLiquidation(address _account, address _collateralToken, address _indexToken, bool _isLong, bool _raise) external view returns (uint256, uint256);
 
+    function getPositionKey(address _account, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
+
     // returns:
     // 0: position.size
     // 1: position.collateral

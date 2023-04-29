@@ -25,9 +25,9 @@ interface IPuppetOrchestrator {
 
     function creditPuppetAccount(uint256 _amount, address _puppet) external;
 
-    function liquidatePuppet(address _puppet, bytes32 _positionKey) external;
+    function liquidatePuppet(address _puppet, bytes32 _routeKey) external;
 
-    function updatePositionKeyToTraderRoute(bytes32 _positionKey) external;
+    function updateRequestKeyToRoute(bytes32 _requestKey) external;
 
     function sendFunds(uint256 _amount) external;
 
@@ -67,7 +67,7 @@ interface IPuppetOrchestrator {
 
     function getKeeper() external view returns (address);
 
-    function getTraderRouteForPositionKey(bytes32 _positionKey) external view returns (address);
+    function getRouteForRequestKey(bytes32 _requestKey) external view returns (address);
 
     function getRouteForRouteKey(bytes32 _routeKey) external view returns (address _traderRoute, address _puppetRoute);
 
@@ -88,7 +88,7 @@ interface IPuppetOrchestrator {
     event DebitPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
     event CreditPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
     event LiquidatePuppet(address indexed _puppet, bytes32 indexed _positionKey, address indexed _liquidator);
-    event UpdatePositionKeyToTraderRoute(bytes32 indexed _positionKey, address indexed _routeAddress);
+    event UpdateRequestKeyToRoute(bytes32 indexed _requestKey, address indexed _routeAddress);
     event SendFunds(uint256 _amount, address indexed _sender);
 
     // ============================================================================================

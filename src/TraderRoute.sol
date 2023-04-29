@@ -66,7 +66,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
     // Trader Functions
     // ============================================================================================
 
-    function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable nonReentrant returns (bytes32 _positionKey) {
+    function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable nonReentrant returns (bytes32 _requestKey) {
         if (isWaitingForCallback) revert WaitingForCallback();
         if (msg.sender != trader) revert NotTrader();
 
@@ -76,7 +76,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
 
         IPositionValidator(puppetOrchestrator.getPositionValidator()).validatePositionParameters(_traderData, _puppetsData, _isIncrease, _isPuppetIncrease);
 
-        _positionKey = _isIncrease ? _createIncreasePosition(_traderData) : _createDecreasePosition(_traderData);
+        _requestKey = _isIncrease ? _createIncreasePosition(_traderData) : _createDecreasePosition(_traderData);
     }
 
     // ============================================================================================
@@ -95,12 +95,13 @@ contract TraderRoute is BaseRoute, ITraderRoute {
     // Keeper Functions
     // ============================================================================================
 
-    function createPuppetPosition() external nonReentrant onlyKeeper {
+    /// @notice using a keeper here to avoid GMX PositionRouter reverting on reentrancy
+    function createPuppetPosition() external nonReentrant onlyKeeper returns (bytes32 _requestKey) {
         if (!isRequestApproved) revert PositionNotApproved();
 
         isRequestApproved = false;
 
-        isPuppetIncrease ? puppetRoute.createPosition(puppetPositionData, true) : puppetRoute.createPosition(puppetPositionData, false);
+        _requestKey = isPuppetIncrease ? puppetRoute.createPosition(puppetPositionData, true) : puppetRoute.createPosition(puppetPositionData, false);
 
         emit CreatePuppetPosition();
     }
@@ -147,7 +148,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
     // Internal Functions
     // ============================================================================================
 
-    function _createIncreasePosition(bytes memory _positionData) internal override returns (bytes32 _positionKey) {
+    function _createIncreasePosition(bytes memory _positionData) internal override returns (bytes32 _requestKey) {
         (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee) = abi.decode(_positionData, (uint256, uint256, uint256, uint256));
 
         uint256 _amountIn = msg.value;
@@ -156,7 +157,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
         address[] memory _path = new address[](1);
         _path[0] = collateralToken;
 
-        _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn }(
+        _requestKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn }(
             _path,
             indexToken,
             _minOut,
@@ -168,19 +169,19 @@ contract TraderRoute is BaseRoute, ITraderRoute {
             puppetOrchestrator.getCallbackTarget()
         );
 
-        puppetOrchestrator.updatePositionKeyToTraderRoute(_positionKey);
+        puppetOrchestrator.updateRequestKeyToRoute(_requestKey);
 
-        emit CreateIncreasePosition(_positionKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
+        emit CreateIncreasePosition(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _createDecreasePosition(bytes memory _positionData) internal override returns (bytes32 _positionKey) {
+    function _createDecreasePosition(bytes memory _positionData) internal override returns (bytes32 _requestKey) {
         (uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee)
             = abi.decode(_positionData, (uint256, uint256, uint256, uint256, uint256));
 
         address[] memory _path = new address[](1);
         _path[0] = collateralToken;
 
-        _positionKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition{ value: msg.value }(
+        _requestKey = IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).createDecreasePosition{ value: msg.value }(
             _path,
             indexToken,
             _collateralDelta,
@@ -194,9 +195,9 @@ contract TraderRoute is BaseRoute, ITraderRoute {
             puppetOrchestrator.getCallbackTarget()
         );
 
-        if (puppetOrchestrator.getTraderRouteForPositionKey(_positionKey) != address(this)) revert KeyError();
+        if (puppetOrchestrator.getRouteForRequestKey(_requestKey) != address(this)) revert KeyError();
 
-        emit CreateDecreasePosition(_positionKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
+        emit CreateDecreasePosition(_requestKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
     function _repayBalance() internal override {
@@ -205,6 +206,10 @@ contract TraderRoute is BaseRoute, ITraderRoute {
 
         emit RepayBalance(_totalAssets);
     }
+
+    // ============================================================================================
+    // Receive Function
+    // ============================================================================================
 
     receive() external payable {}
 }

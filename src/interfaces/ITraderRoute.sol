@@ -7,11 +7,11 @@ interface ITraderRoute {
     // Mutated Functions
     // ============================================================================================
 
-    function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable returns (bytes32 _positionKey) ;
+    function createPosition(bytes memory _traderData, bytes memory _puppetsData, bool _isIncrease, bool _isPuppetIncrease) external payable returns (bytes32 _requestKey) ;
 
     function notifyCallback() external;
 
-    function createPuppetPosition() external;
+    function createPuppetPosition() external returns (bytes32 _requestKey);
 
     function onLiquidation(bytes memory _puppetPositionData) external;
 
