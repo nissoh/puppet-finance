@@ -328,19 +328,10 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
         return _amountIn + _executionFee;
     }
 
-    // TODO - fix so it's like in test
     function _isOpenInterest() internal view returns (bool) {
-        address[] memory _collateralTokens = new address[](1);
-        address[] memory _indexTokens = new address[](1);
-        bool[] memory _isLong = new bool[](1);
+        (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(puppetOrchestrator.getGMXVault()).getPosition(address(this), collateralToken, indexToken, isLong);
 
-        _collateralTokens[0] = collateralToken;
-        _indexTokens[0] = indexToken;
-        _isLong[0] = isLong;
-
-        uint256[] memory _response = IGMXReader(puppetOrchestrator.getGMXReader()).getPositions(puppetOrchestrator.getGMXVault(), address(this), _collateralTokens, _indexTokens, _isLong);
-
-        return _response[0] > 0 && _response[1] > 0;
+        return _size > 0 && _collateral > 0;
     }
 
     function _convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) internal pure returns (uint256 _shares) {
