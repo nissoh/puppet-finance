@@ -351,10 +351,4 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             _assets = (_shares * _totalAssets) / _totalSupply;
         }
     }
-
-    // ============================================================================================
-    // Receive Function
-    // ============================================================================================
-
-    receive() external payable {}
 }

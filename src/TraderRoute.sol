@@ -206,10 +206,4 @@ contract TraderRoute is BaseRoute, ITraderRoute {
 
         emit RepayBalance(_totalAssets);
     }
-
-    // ============================================================================================
-    // Receive Function
-    // ============================================================================================
-
-    receive() external payable {}
 }
