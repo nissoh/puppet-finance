@@ -54,6 +54,11 @@ contract BaseRoute is ReentrancyGuard, IRoute {
         _;
     }
 
+    modifier onlyKeeper() {
+        if (msg.sender != owner && msg.sender != puppetOrchestrator.getKeeper()) revert NotKeeper();
+        _;
+    }
+
     // ============================================================================================
     // Callback Functions
     // ============================================================================================

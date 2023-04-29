@@ -21,6 +21,7 @@ contract testPuppet is Test {
 
     address owner;
     address trader;
+    address keeper;
     address alice;
     address bob;
     address yossi;
@@ -49,26 +50,27 @@ contract testPuppet is Test {
 
         owner = address(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
         trader = address(0xa0Ee7A142d267C1f36714E4a8F75612F20a79720);
+        keeper = address(0x976EA74026E726554dB657fA54763abd0C3a0aa9);
         alice = address(0xFa0C696bC56AE0d256D34a307c447E80bf92Dd41);
         bob = address(0x864e4b0c28dF7E2f317FF339CebDB5224F47220e);
         yossi = address(0x77Ee01E3d0E05b4afF42105Fe004520421248261);
 
         vm.deal(owner, 100 ether);
         vm.deal(trader, 100 ether);
+        vm.deal(keeper, 100 ether);
         vm.deal(alice, 100 ether);
         vm.deal(bob, 100 ether);
         vm.deal(yossi, 100 ether);
 
         PositionValidator _positionValidator = new PositionValidator();
 
-        address _keeper = address(0);
         address _gmxRouter = 0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064;
         address _gmxReader = 0x22199a49A999c351eF7927602CFB187ec3cae489;
         address _gmxVault = 0x489ee077994B6658eAfA855C308275EAd8097C4A;
         address _gmxPositionRouter = 0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868;
         bytes32 _referralCode = bytes32(0);
         positionRouterCallbackReceiver = new PositionRouterCallbackReceiver(owner, _gmxPositionRouter);
-        puppetOrchestrator = new PuppetOrchestrator(owner, address(_positionValidator), _keeper, _gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, address(positionRouterCallbackReceiver), _referralCode);
+        puppetOrchestrator = new PuppetOrchestrator(owner, address(_positionValidator), keeper, _gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, address(positionRouterCallbackReceiver), _referralCode);
 
         vm.prank(owner);
         positionRouterCallbackReceiver.setPuppetOrchestrator(address(puppetOrchestrator));
@@ -132,6 +134,7 @@ contract testPuppet is Test {
         assertEq(puppetOrchestrator.puppetDepositAccount(yossi), _assets, "_testPuppetDeposit: E2");
 
         assertEq(address(puppetOrchestrator).balance, _assets * 3, "_testPuppetDeposit: E3");
+        assertTrue(address(puppetOrchestrator).balance > 0, "_testPuppetDeposit: E4");
     }
 
     function _testUpdateRoutesSubscription(bytes32 _routeKey) internal {
@@ -165,6 +168,10 @@ contract testPuppet is Test {
         assertEq(puppetOrchestrator.getPuppetsForRoute(_routeKey)[2], yossi, "_testUpdateRoutesSubscription: E7");
         assertEq(puppetOrchestrator.getPuppetsForRoute(_routeKey).length, 3, "_testUpdateRoutesSubscription: E8");
         vm.stopPrank();
+
+        assertTrue(puppetOrchestrator.getPuppetAllowance(alice, traderRoute) > 0, "_testUpdateRoutesSubscription: E9");
+        assertTrue(puppetOrchestrator.getPuppetAllowance(bob, traderRoute) > 0, "_testUpdateRoutesSubscription: E10");
+        assertTrue(puppetOrchestrator.getPuppetAllowance(yossi, traderRoute) > 0, "_testUpdateRoutesSubscription: E11");
     }
 
     //
@@ -192,7 +199,7 @@ contract testPuppet is Test {
 
         // the amount of tokenIn to deposit as collateral
         uint256 _amountInTrader = 10 ether;
-        uint256 _amountInPuppet = _getAllowanceForRoute();
+        uint256 _amountInPuppet = _getAllowanceForRoute(_amountInTrader - _executionFee) - _executionFee;
 
         bytes memory _traderData = abi.encode(_minOut, _sizeDeltaTrader, _acceptablePrice, _executionFee);
         bytes memory _puppetsData = abi.encode(_amountInPuppet, _minOut, _sizeDeltaPuppet, _acceptablePrice, _executionFee);
@@ -213,14 +220,19 @@ contract testPuppet is Test {
         vm.stopPrank();
 
         assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), true, "_testCreateInitialPosition: E1");
+        assertEq(ITraderRoute(traderRoute).getTraderAmountIn(), _amountInTrader - _executionFee, "_testCreateInitialPosition: E02");
         assertEq(puppetOrchestrator.getTraderRouteForPositionKey(_positionKey), address(traderRoute), "_testCreateInitialPosition: E2");
 
-        vm.startPrank(address(0x11D62807dAE812a0F1571243460Bf94325F43BB7)); // keeper
+        vm.prank(address(0x11D62807dAE812a0F1571243460Bf94325F43BB7)); // keeper
         IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).executeIncreasePositions(type(uint256).max, payable(traderRoute));
 
         if (_isOpenInterest(traderRoute)) {
             assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), true, "_testCreateInitialPosition: E3");
             assertTrue(address(trader).balance < _traderBalanceBefore, "_testCreateInitialPosition: E4");
+            assertTrue(TraderRoute(payable(traderRoute)).isRequestApproved(), "_testCreateInitialPosition: E5");
+
+            vm.startPrank(puppetOrchestrator.getKeeper());
+            ITraderRoute(traderRoute).createPuppetPosition();
 
             if (TraderRoute(payable(traderRoute)).isPuppetIncrease()) {
                 _testPuppetRouteOnIncrease();
@@ -237,9 +249,9 @@ contract testPuppet is Test {
     }
 
     function _testPuppetRouteOnIncrease() internal {
-        assertEq(PuppetRoute(puppetRoute).getIsPositionOpen(), false, "_testPuppetRouteOnIncrease: E0");
-        assertEq(PuppetRoute(puppetRoute).isWaitingForCallback(), true, "_testPuppetRouteOnIncrease: E1");
-        assertEq(PuppetRoute(puppetRoute).isIncrease(), true, "_testPuppetRouteOnIncrease: E2");
+        assertEq(PuppetRoute(payable(puppetRoute)).getIsPositionOpen(), false, "_testPuppetRouteOnIncrease: E0");
+        assertEq(PuppetRoute(payable(puppetRoute)).isWaitingForCallback(), true, "_testPuppetRouteOnIncrease: E1");
+        assertEq(PuppetRoute(payable(puppetRoute)).isIncrease(), true, "_testPuppetRouteOnIncrease: E2");
     }
 
     // ============================================================================================
@@ -252,6 +264,17 @@ contract testPuppet is Test {
         return _size > 0 && _collateral > 0;
     }
 
-    // TODO
-    function _getAllowanceForRoute
+    function _getAllowanceForRoute(uint256 _traderAmountIn) internal returns (uint256 _totalAllowance) {
+        bytes32 _routeKey = puppetOrchestrator.getTraderRouteKey(trader, collateralToken, indexToken, isLong);
+        address[] memory _puppets = puppetOrchestrator.getPuppetsForRoute(_routeKey);
+
+        for (uint256 i = 0; i < _puppets.length; i++) {
+            address _puppet = _puppets[i];
+            uint256 _allowance = puppetOrchestrator.getPuppetAllowance(_puppet, traderRoute);
+            if (_allowance > _traderAmountIn) _allowance = _traderAmountIn;
+            _totalAllowance += _allowance;
+
+            assertTrue(_allowance > 0, "_getAllowanceForRoute: E1");
+        }
+    }
 }

@@ -49,7 +49,7 @@ interface IPuppetOrchestrator {
     // View Functions
     // ============================================================================================
 
-    function getTraderRouteKey(address _account, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
+    function getTraderRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
 
     function getGMXRouter() external view returns (address);
 

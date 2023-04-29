@@ -18,8 +18,10 @@ contract TraderRoute is BaseRoute, ITraderRoute {
 
     address public trader;
 
-    // indicates if the puppet position should be increased or decreased
+    // indicates whether the puppet position should be increased or decreased
     bool public isPuppetIncrease;
+    // indicates whether the puppet position should be created
+    bool public isRequestApproved;
 
     // the data to pass to the puppet createPosition function
     bytes private puppetPositionData;
@@ -90,11 +92,20 @@ contract TraderRoute is BaseRoute, ITraderRoute {
     }
 
     // ============================================================================================
-    // On Liquidation
+    // Keeper Functions
     // ============================================================================================
 
-    function onLiquidation(bytes memory _puppetPositionData) external nonReentrant {
-        if (msg.sender != owner && msg.sender != puppetOrchestrator.getKeeper()) revert NotKeeper();
+    function createPuppetPosition() external nonReentrant onlyKeeper {
+        if (!isRequestApproved) revert PositionNotApproved();
+
+        isRequestApproved = false;
+
+        isPuppetIncrease ? puppetRoute.createPosition(puppetPositionData, true) : puppetRoute.createPosition(puppetPositionData, false);
+
+        emit CreatePuppetPosition();
+    }
+
+    function onLiquidation(bytes memory _puppetPositionData) external nonReentrant onlyKeeper {
         if (!_isLiquidated()) revert PositionStillAlive();
 
         _repayBalance();
@@ -111,7 +122,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
     function approvePositionRequest() external override nonReentrant onlyCallbackTarget {
         _repayBalance();
 
-        isPuppetIncrease ? puppetRoute.createPosition(puppetPositionData, true) : puppetRoute.createPosition(puppetPositionData, false);
+        isRequestApproved = true;
 
         emit ApprovePositionRequest();
     }
@@ -128,7 +139,7 @@ contract TraderRoute is BaseRoute, ITraderRoute {
     // Owner Functions
     // ============================================================================================
 
-    function setPuppetRoute(address _puppetRoute) external onlyOwner {
+    function setPuppetRoute(address payable _puppetRoute) external onlyOwner {
         puppetRoute = PuppetRoute(_puppetRoute);
     }
 

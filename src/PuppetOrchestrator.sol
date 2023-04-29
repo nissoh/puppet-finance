@@ -98,8 +98,8 @@ contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
     // View Functions
     // ============================================================================================
 
-    function getTraderRouteKey(address _account, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_account, _collateralToken, _indexToken, _isLong));
+    function getTraderRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
     }
 
     function getPuppetsForRoute(bytes32 _routeKey) external view override returns (address[] memory _puppets) {

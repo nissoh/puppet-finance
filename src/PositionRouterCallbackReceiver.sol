@@ -12,14 +12,18 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
 
     IPuppetOrchestrator puppetOrchestrator;
 
-    // ====================== Constructor ======================
+    // ============================================================================================
+    // Constructor
+    // ============================================================================================
 
     constructor(address _owner, address _gmxPositionRouter) {
         owner = _owner;
         gmxPositionRouter = _gmxPositionRouter;
     }
 
-    // ====================== Modifiers ======================
+    // ============================================================================================
+    // Modifiers
+    // ============================================================================================
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -31,8 +35,10 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
         _;
     }
 
-    // ====================== GMXPositionRouter functions ======================
-    
+    // ============================================================================================
+    // GMXPositionRouter Functions
+    // ============================================================================================
+
     function gmxPositionCallback(bytes32 _positionKey, bool _isExecuted, bool) external override onlyGMXPositionRouter {
         IRoute _route = IRoute(puppetOrchestrator.getTraderRouteForPositionKey(_positionKey));
 
@@ -45,7 +51,9 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
         emit GMXPositionCallback(_positionKey, address(_route), _isExecuted);
     }
 
-    // ====================== Owner functions ======================
+    // ============================================================================================
+    // Owner Functions
+    // ============================================================================================
 
     function setPuppetOrchestrator(address _puppetOrchestrator) external onlyOwner {
         puppetOrchestrator = IPuppetOrchestrator(_puppetOrchestrator);
@@ -59,11 +67,15 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
         owner = _owner;
     }
 
-    // ====================== Events ======================
+    // ============================================================================================
+    // Events
+    // ============================================================================================
 
     event GMXPositionCallback(bytes32 indexed _positionKey, address indexed _route, bool indexed _isExecuted);
 
-    // ====================== Errors ======================
+    // ============================================================================================
+    // Errors
+    // ============================================================================================
 
     error NotOwner();
     error NotGMXPositionRouter();

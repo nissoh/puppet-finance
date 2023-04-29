@@ -98,12 +98,11 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
     }
 
     // ============================================================================================
-    // On Liquidation
+    // Keeper Functions
     // ============================================================================================
 
     // slither-disable-next-line reentrancy-eth
-    function onLiquidation() external nonReentrant {
-        if (msg.sender != owner && msg.sender != puppetOrchestrator.getKeeper()) revert NotKeeper();
+    function onLiquidation() external nonReentrant onlyKeeper {
         if (!_isLiquidated()) revert PositionStillAlive();
 
         isWaitingForCallback = false;
@@ -268,11 +267,6 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             _totalAssets += _assets;
         }
 
-        console.log("_totalAssets", _totalAssets);
-        console.log("_requiredAssets", _requiredAssets);
-        // 1 1500000000000000000
-        // 1 10000180000000000000
-
         if (_totalAssets != _requiredAssets) revert AssetsAmonutMismatch();
 
         totalSupply = _totalSupply;
@@ -366,4 +360,6 @@ contract PuppetRoute is BaseRoute, IPuppetRoute {
             _assets = (_shares * _totalAssets) / _totalSupply;
         }
     }
+
+    receive() external payable {}
 }

@@ -11,9 +11,11 @@ interface ITraderRoute {
 
     function notifyCallback() external;
 
+    function createPuppetPosition() external;
+
     function onLiquidation(bytes memory _puppetPositionData) external;
 
-    function setPuppetRoute(address _puppetRoute) external;
+    function setPuppetRoute(address payable _puppetRoute) external;
 
     // ============================================================================================
     // View Functions
@@ -30,6 +32,7 @@ interface ITraderRoute {
     // ============================================================================================
 
     event NotifyCallback();
+    event CreatePuppetPosition();
 
     // ============================================================================================
     // Errors
@@ -38,4 +41,5 @@ interface ITraderRoute {
     error NotPuppetRoute();
     error NotTrader();
     error PositionStillAlive();
+    error PositionNotApproved();
 }
