@@ -6,8 +6,6 @@ import {IGMXReader} from "./interfaces/IGMXReader.sol";
 
 import "./BaseRoute.sol";
 
-import "forge-std/console.sol";
-
 contract PuppetRoute is BaseRoute, IPuppetRoute {
 
     using SafeERC20 for IERC20;
