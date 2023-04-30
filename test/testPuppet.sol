@@ -50,12 +50,12 @@ contract testPuppet is Test {
         arbitrumFork = vm.createFork(ARBITRUM_RPC_URL);
         vm.selectFork(arbitrumFork);
 
-        owner = address(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
-        trader = address(0xa0Ee7A142d267C1f36714E4a8F75612F20a79720);
-        keeper = address(0x976EA74026E726554dB657fA54763abd0C3a0aa9);
-        alice = address(0xFa0C696bC56AE0d256D34a307c447E80bf92Dd41);
-        bob = address(0x864e4b0c28dF7E2f317FF339CebDB5224F47220e);
-        yossi = address(0x77Ee01E3d0E05b4afF42105Fe004520421248261);
+        owner = makeAddr("owner");
+        trader = makeAddr("trader");
+        keeper = makeAddr("keeper");
+        alice = makeAddr("alice");
+        bob = makeAddr("bob");
+        yossi = makeAddr("yossi");
 
         vm.deal(owner, 100 ether);
         vm.deal(trader, 100 ether);
