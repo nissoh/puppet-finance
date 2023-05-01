@@ -19,12 +19,13 @@ import {ITraderRoute} from "../src/interfaces/ITraderRoute.sol";
 
 contract testPuppet is Test {
 
-    address owner;
-    address trader;
-    address keeper;
-    address alice;
-    address bob;
-    address yossi;
+    address owner = makeAddr("owner");
+    address trader = makeAddr("trader");
+    address keeper = makeAddr("keeper");
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
+    address yossi = makeAddr("yossi");
+
     address traderRoute;
     address puppetRoute;
 
@@ -49,13 +50,6 @@ contract testPuppet is Test {
         string memory ARBITRUM_RPC_URL = vm.envString("ARBITRUM_RPC_URL");
         arbitrumFork = vm.createFork(ARBITRUM_RPC_URL);
         vm.selectFork(arbitrumFork);
-
-        owner = makeAddr("owner");
-        trader = makeAddr("trader");
-        keeper = makeAddr("keeper");
-        alice = makeAddr("alice");
-        bob = makeAddr("bob");
-        yossi = makeAddr("yossi");
 
         vm.deal(owner, 100 ether);
         vm.deal(trader, 100 ether);
@@ -85,6 +79,7 @@ contract testPuppet is Test {
         uint256 _assets = 1 ether;
 
         bytes32 _routeKey = _testRegisterRoute();
+
         _testPuppetDeposit(_assets);
         _testUpdateRoutesSubscription(_routeKey);
 
@@ -187,10 +182,7 @@ contract testPuppet is Test {
         // (, int256 _price,,,) = priceFeed.latestRoundData();
 
         uint256 _minOut = 0; // _minOut can be zero if no swap is required
-        // increase _price by 20%
-        uint256 _acceptablePrice = type(uint256).max; 
-        // uint256 _acceptablePrice = uint256(_price); // the USD value of the max (for longs) or min (for shorts) index price acceptable when executing the request
-        // _acceptablePrice = _acceptablePrice - (_acceptablePrice / 20); // decrease _acceptablePrice by 5%
+        uint256 _acceptablePrice = type(uint256).max; // the USD value of the max (for longs) or min (for shorts) index price acceptable when executing the request
         uint256 _executionFee = 180000000000000; // can be set to PositionRouter.minExecutionFee() https://arbiscan.io/address/0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868#readContract#F26
 
         // TODO - // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
@@ -219,6 +211,7 @@ contract testPuppet is Test {
         vm.expectRevert(); // reverts with `Arithmetic over/underflow` (on subtracting _executionFee from _amountInTrader) 
         ITraderRoute(traderRoute).createPosition(_traderData, _puppetsData, true, true);
 
+        // 1. createPosition
         bytes32 _requestKey = ITraderRoute(traderRoute).createPosition{ value: _amountInTrader }(_traderData, _puppetsData, true, true);
         vm.stopPrank();
 
@@ -234,6 +227,7 @@ contract testPuppet is Test {
         ITraderRoute(traderRoute).createPuppetPosition();
         vm.stopPrank();
         
+        // 2. executePosition
         vm.startPrank(GMXPositionRouterKeeper); // keeper
         IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).executeIncreasePositions(type(uint256).max, payable(traderRoute));
         vm.stopPrank();
@@ -248,6 +242,7 @@ contract testPuppet is Test {
             uint256 _yossiDepositBalanceBefore = puppetOrchestrator.puppetDepositAccount(yossi);
             uint256 _puppetOrchestratorBalanceBefore = address(puppetOrchestrator).balance;
 
+            // 3. createPuppetPosition
             vm.startPrank(puppetOrchestrator.getKeeper());
             _requestKey = ITraderRoute(traderRoute).createPuppetPosition();
             vm.stopPrank();
@@ -265,6 +260,7 @@ contract testPuppet is Test {
             _yossiDepositBalanceBefore = puppetOrchestrator.puppetDepositAccount(yossi);
             _puppetOrchestratorBalanceBefore = address(puppetOrchestrator).balance;
 
+            // 4. executePuppetPosition
             vm.startPrank(GMXPositionRouterKeeper); // keeper
             IGMXPositionRouter(puppetOrchestrator.getGMXPositionRouter()).executeIncreasePositions(type(uint256).max, payable(puppetRoute));
             vm.stopPrank();
