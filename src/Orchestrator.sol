@@ -12,9 +12,9 @@ import {TraderRoute} from "./TraderRoute.sol";
 
 import {IPuppetRoute} from "./interfaces/IPuppetRoute.sol";
 import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
-import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
+import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
 
-contract PuppetOrchestrator is ReentrancyGuard, IPuppetOrchestrator {
+contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
