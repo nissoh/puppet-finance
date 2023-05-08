@@ -17,7 +17,7 @@ interface IRoute {
 
     function approvePlugin() external;
 
-    function setPuppetOrchestrator(address _puppetOrchestrator) external;
+    function setOrchestrator(address _orchestrator) external;
 
     // ============================================================================================
     // Events
@@ -29,6 +29,7 @@ interface IRoute {
     event RepayBalance(uint256 _totalAssets);
     event CreateIncreasePosition(bytes32 indexed positionKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event CreateDecreasePosition(bytes32 indexed positionKey, uint256 minOut, uint256 collateralDeltaUSD, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
+    event ResetPosition();
 
     // ============================================================================================
     // Errors
@@ -39,4 +40,8 @@ interface IRoute {
     error NotOwner();
     error KeyError();
     error NotKeeper();
+    error ZeroAmount();
+    error InvalidExecutionFee();
+    error PositionStillAlive();
+    error NotTrader();
 }

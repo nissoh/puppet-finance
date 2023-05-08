@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
@@ -14,7 +15,7 @@ import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
 import {IPositionValidator} from "./interfaces/IPositionValidator.sol";
 import {IRoute} from "./interfaces/IRoute.sol";
 
-contract Route is IRoute {
+contract Route is ReentrancyGuard, IRoute {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
@@ -29,6 +30,7 @@ contract Route is IRoute {
     
     bool public isLong;
     bool public isWaitingForCallback;
+    bool public isPositionOpen;
 
     EnumerableMap.AddressToUintMap participantShares;
 
@@ -46,7 +48,7 @@ contract Route is IRoute {
         indexToken = _indexToken;
         isLong = _isLong;
 
-        IGMXRouter(_orchestrator.getGMXRouter()).approvePlugin(_orchestrator.getGMXPositionRouter());
+        IGMXRouter(orchestrator.getGMXRouter()).approvePlugin(orchestrator.getGMXPositionRouter());
     }
 
     // ============================================================================================
@@ -107,6 +109,7 @@ contract Route is IRoute {
 
     function approvePositionRequest() external override nonReentrant onlyCallbackTarget {
         isWaitingForCallback = false;
+        isPositionOpen = true;
 
         // TODO: for allowing several position requests at a time - _writeShares() to storage only here
         // _writeShares();
@@ -181,8 +184,8 @@ contract Route is IRoute {
         }
     }
 
-    function _createIncreasePosition(bytes memory _positionData, uint256 _traderAmountIn, uint256 _puppetsAmountIn, uint256 _executionFee) internal override returns (bytes32 _requestKey) {
-        (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice) = abi.decode(_positionData, (uint256, uint256, uint256));
+    function _createIncreasePosition(bytes memory _traderPositionData, uint256 _traderAmountIn, uint256 _puppetsAmountIn, uint256 _executionFee) internal returns (bytes32 _requestKey) {
+        (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice) = abi.decode(_traderPositionData, (uint256, uint256, uint256));
 
         address[] memory _path = new address[](1);
         _path[0] = collateralToken;
@@ -206,9 +209,9 @@ contract Route is IRoute {
         emit CreateIncreasePosition(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _createDecreasePosition(bytes memory _positionData, uint256 _executionFee) internal override returns (bytes32 _requestKey) {
+    function _createDecreasePosition(bytes memory _traderPositionData, uint256 _executionFee) internal returns (bytes32 _requestKey) {
         (uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut)
-            = abi.decode(_positionData, (uint256, uint256, uint256, uint256));
+            = abi.decode(_traderPositionData, (uint256, uint256, uint256, uint256));
 
         address[] memory _path = new address[](1);
         _path[0] = collateralToken;
@@ -232,7 +235,7 @@ contract Route is IRoute {
         emit CreateDecreasePosition(_requestKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _repayBalance() internal override {
+    function _repayBalance() internal {
         uint256 _totalAssets = address(this).balance;
         if (_totalAssets > 0) {
             uint256 _totalSupply = totalSupply;
@@ -271,6 +274,7 @@ contract Route is IRoute {
     }
 
     function _resetPosition() internal {
+        isPositionOpen = false;
         totalAssets = 0;
         totalSupply = 0;
         for (uint256 i = 0; i < EnumerableMap.length(participantShares); i++) {

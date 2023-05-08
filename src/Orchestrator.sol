@@ -188,7 +188,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
         RouteInfo storage _routeInfo = routeInfo[_routeKey];
         
-        _routeInfo.traderRoute = _route;
+        _routeInfo.route = _route;
         _routeInfo.collateralToken = _collateralToken;
         _routeInfo.indexToken = _indexToken;
         _routeInfo.isLong = _isLong;
@@ -233,9 +233,10 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
             bytes32 _routeKey = getRouteKey(_traders[i], _collateralToken, _indexToken, _isLong);
             RouteInfo storage _routeInfo = routeInfo[_routeKey];
 
+            Route _route = Route(payable(_routeInfo.route));
             if (!_routeInfo.isRegistered) revert RouteNotRegistered();
-            if (ITraderRoute(_routeInfo.route).getIsWaitingForCallback()) revert WaitingForCallback();
-            if (ITraderRoute(_routeInfo.route).getIsPositionOpen()) revert PositionIsOpen();
+            if (_route.isWaitingForCallback()) revert WaitingForCallback();
+            if (_route.isPositionOpen()) revert PositionIsOpen();
 
             if (_sign) {
                 EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.route, _allowances[i]);
@@ -277,7 +278,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         RouteInfo storage _routeInfo = routeInfo[_routeKey];
         
         EnumerableSet.remove(_routeInfo.puppets, _puppet);
-        EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, 0);
+        EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.route, 0);
 
         emit LiquidatePuppet(_puppet, _routeKey, msg.sender);
     }

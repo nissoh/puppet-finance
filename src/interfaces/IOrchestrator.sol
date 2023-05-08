@@ -35,6 +35,8 @@ interface IOrchestrator {
 
     function getPrizePoolDistributor() external view returns (address);
 
+    function getReferralRebatesSender() external view returns (address);
+
     // ============================================================================================
     // Mutated Functions
     // ============================================================================================
@@ -65,15 +67,13 @@ interface IOrchestrator {
 
     // Owner
 
-    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter) external;
+    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender) external;
 
-    function setCallbackTarget(address _callbackTarget) external;
+    function setPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper) external;
 
     function setReferralCode(bytes32 _referralCode) external;
 
     function setSolvencyMargin(uint256 _solvencyMargin) external;
-
-    function setPositionValidator(address _positionValidator) external;
 
     function setOwner(address _owner) external;
 
