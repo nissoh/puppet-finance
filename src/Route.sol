@@ -111,9 +111,6 @@ contract Route is ReentrancyGuard, IRoute {
         isWaitingForCallback = false;
         isPositionOpen = true;
 
-        // TODO: for allowing several position requests at a time - _writeShares() to storage only here
-        // _writeShares();
-
         _updateLastPositionOpenedTimestamp(); // used to limit the number of position that can be opened in a given time period
 
         _repayBalance();
