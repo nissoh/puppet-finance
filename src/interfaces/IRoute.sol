@@ -19,6 +19,8 @@ interface IRoute {
 
     function setOrchestrator(address _orchestrator) external;
 
+    function rescueStuckTokens(address _token, address _to) external;
+
     // ============================================================================================
     // Events
     // ============================================================================================
@@ -30,6 +32,9 @@ interface IRoute {
     event CreateIncreasePosition(bytes32 indexed positionKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event CreateDecreasePosition(bytes32 indexed positionKey, uint256 minOut, uint256 collateralDeltaUSD, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event ResetPosition();
+    event PluginApproved();
+    event OrchestratorSet(address indexed _orchestrator);
+    event StuckTokensRescued(address token, address to);
 
     // ============================================================================================
     // Errors

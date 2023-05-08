@@ -130,12 +130,23 @@ contract Route is ReentrancyGuard, IRoute {
     // Owner Functions
     // ============================================================================================
 
-    function approvePlugin() external virtual onlyOwner {
+    function approvePlugin() external onlyOwner {
         IGMXRouter(orchestrator.getGMXRouter()).approvePlugin(orchestrator.getGMXPositionRouter());
+
+        emit PluginApproved();
     }
 
-    function setOrchestrator(address _orchestrator) external virtual onlyOwner {
+    function setOrchestrator(address _orchestrator) external onlyOwner {
         orchestrator = IOrchestrator(_orchestrator);
+
+        emit OrchestratorSet(_orchestrator);
+    }
+
+    function rescueStuckTokens(address _token, address _to) external onlyOwner {
+        if (address(this).balance > 0) payable(_to).sendValue(address(this).balance);
+        if (_token != address(0) && IERC20(_token).balanceOf(address(this)) > 0) IERC20(_token).safeTransfer(_to, IERC20(_token).balanceOf(address(this)));
+
+        emit StuckTokensRescued(_token, _to);
     }
 
     // ============================================================================================

@@ -9,7 +9,5 @@ contract PrizePoolDistributor {
     // Receive Function
     // ============================================================================================
 
-    receive() external payable {
-        if (orchestrator.getReferralRebatesSender() == msg.sender) payable(orchestrator.getPrizePoolDistributor()).sendValue(msg.value);
-    }
+    receive() external payable {}
 }
