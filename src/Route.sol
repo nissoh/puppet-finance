@@ -114,6 +114,8 @@ contract Route is ReentrancyGuard, IRoute {
         // TODO: for allowing several position requests at a time - _writeShares() to storage only here
         // _writeShares();
 
+        _updateLastPositionOpenedTimestamp(); // used to limit the number of position that can be opened in a given time period
+
         _repayBalance();
 
         emit ApprovePositionRequest();
@@ -152,7 +154,12 @@ contract Route is ReentrancyGuard, IRoute {
             address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
             for (uint256 i = 0; i < _puppets.length; i++) {
                 address _puppet = _puppets[i];
-                uint256 _assets = orchestrator.getPuppetAllowance(_puppet, address(this));
+                if (!_isOpenInterest() && !orchestrator.canOpenNewPosition(address(this), _puppet)) {
+                    orchestrator.liquidatePuppet(_puppet, _routeKey);
+                }
+
+                uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
+                uint256 _assets = (_traderAmountIn * _allowancePercentage) / 100;
 
                 if (_assets > _traderAmountIn) _assets = _traderAmountIn;
 
@@ -289,6 +296,15 @@ contract Route is ReentrancyGuard, IRoute {
         (uint256 state, ) = IGMXVault(orchestrator.getGMXVault()).validateLiquidation(address(this), collateralToken, indexToken, isLong, false);
 
         return state > 0;
+    }
+
+    function _updateLastPositionOpenedTimestamp() internal {
+        bytes32 _routeKey = orchestrator.getRouteKey(trader, collateralToken, indexToken, isLong);
+        address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
+        for (uint256 i = 0; i < _puppets.length; i++) {
+            address _puppet = _puppets[i];
+            orchestrator.updateLastPositionOpenedTimestamp(address(this), _puppet);
+        }
     }
 
     function _convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) internal pure returns (uint256 _shares) {

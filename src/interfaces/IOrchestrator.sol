@@ -13,9 +13,11 @@ interface IOrchestrator {
 
     function isPuppetSolvent(address _puppet) external view returns (bool);
 
+    function canOpenNewPosition(address _route, address _puppet) external view returns (bool);
+
     function getRouteForRequestKey(bytes32 _requestKey) external view returns (address);
 
-    function getPuppetAllowance(address _puppet, address _route) external view returns (uint256);
+    function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256);
 
     function getGMXRouter() external view returns (address);
 
@@ -61,6 +63,8 @@ interface IOrchestrator {
 
     function liquidatePuppet(address _puppet, bytes32 _routeKey) external;
 
+    function updateLastPositionOpenedTimestamp(address _route, address _puppet) external;
+
     function updateRequestKeyToRoute(bytes32 _requestKey) external;
 
     function sendFunds(uint256 _amount) external;
@@ -69,11 +73,7 @@ interface IOrchestrator {
 
     function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender) external;
 
-    function setPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper) external;
-
-    function setReferralCode(bytes32 _referralCode) external;
-
-    function setSolvencyMargin(uint256 _solvencyMargin) external;
+    function setPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external;
 
     function setOwner(address _owner) external;
 
@@ -84,12 +84,17 @@ interface IOrchestrator {
     event RegisterRoute(address indexed trader, address _route, address indexed collateralToken, address indexed indexToken, bool isLong);
     event DepositToAccount(uint256 assets, address indexed caller, address indexed puppet);
     event WithdrawFromAccount(uint256 assets, address indexed receiver, address indexed puppet);
+    event UpdateLastPositionOpenedTimestamp(address indexed _route, address indexed _puppet, uint256 _timestamp);
     event UpdateRoutesSubscription(address[] traders, uint256[] allowances, address indexed puppet, address indexed collateralToken, address indexed indexToken, bool isLong, bool sign);    
     event DebitPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
     event CreditPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
     event LiquidatePuppet(address indexed _puppet, bytes32 indexed _positionKey, address indexed _liquidator);
     event UpdateRequestKeyToRoute(bytes32 indexed _requestKey, address indexed _routeAddress);
     event SendFunds(uint256 _amount, address indexed _sender);
+    event SetThrottleLimit(address indexed puppet, uint256 throttleLimit);
+    event SetGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
+    event SetPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode);
+    event SetOwner(address _owner);
 
     // ============================================================================================
     // Errors
@@ -105,4 +110,6 @@ interface IOrchestrator {
     error RouteNotRegistered();
     error WaitingForCallback();
     error PositionIsOpen();
+    error InvalidAllowancePercentage();
+    error InvalidTokenAddress();
 }
