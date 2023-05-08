@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity 0.8.17;
 
 import {IPositionRouterCallbackReceiver} from "./interfaces/IPositionRouterCallbackReceiver.sol";
-import {IPuppetOrchestrator} from "./interfaces/IPuppetOrchestrator.sol";
+import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
 import {IRoute} from "./interfaces/IRoute.sol";
 
 contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
@@ -10,7 +10,7 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
     address public owner;
     address public gmxPositionRouter;
 
-    IPuppetOrchestrator puppetOrchestrator;
+    IOrchestrator orchestrator;
 
     // ============================================================================================
     // Constructor
@@ -40,7 +40,7 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
     // ============================================================================================
 
     function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool) external override onlyGMXPositionRouter {
-        IRoute _route = IRoute(puppetOrchestrator.getRouteForRequestKey(_requestKey));
+        IRoute _route = IRoute(orchestrator.getRouteForRequestKey(_requestKey));
 
         if (_isExecuted) {
             _route.approvePositionRequest();
@@ -55,8 +55,8 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
     // Owner Functions
     // ============================================================================================
 
-    function setPuppetOrchestrator(address _puppetOrchestrator) external onlyOwner {
-        puppetOrchestrator = IPuppetOrchestrator(_puppetOrchestrator);
+    function setOrchestrator(address _orchestrator) external onlyOwner {
+        orchestrator = IOrchestrator(_orchestrator);
     }
 
     function setGMXPositionRouter(address _gmxPositionRouter) external onlyOwner {

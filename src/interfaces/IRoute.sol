@@ -7,13 +7,17 @@ interface IRoute {
     // Mutated Functions
     // ============================================================================================
 
+    function createPositionRequest(bytes memory _traderPositionData, uint256 _executionFee, bool _isIncrease) external payable returns (bytes32 _requestKey);
+
+    function onLiquidation() external;
+
     function approvePositionRequest() external;
 
     function rejectPositionRequest() external;
 
-    function setPuppetOrchestrator(address _puppetOrchestrator) external;
-
     function approvePlugin() external;
+
+    function setPuppetOrchestrator(address _puppetOrchestrator) external;
 
     // ============================================================================================
     // Events

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity 0.8.17;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
@@ -8,10 +8,8 @@ import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {TraderRoute} from "./TraderRoute.sol";
+import {Route} from "./Route.sol";
 
-import {IPuppetRoute} from "./interfaces/IPuppetRoute.sol";
-import {ITraderRoute} from "./interfaces/ITraderRoute.sol";
 import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
 
 contract Orchestrator is ReentrancyGuard, IOrchestrator {
@@ -20,8 +18,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     using Address for address payable;
 
     struct RouteInfo {
-        address traderRoute;
-        address puppetRoute;
+        address route;
         address collateralToken;
         address indexToken;
         bool isLong;
@@ -32,23 +29,25 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     uint256 public solvencyMargin; // require puppet's balance to be `solvencyMargin` times more than the amount of his total allowances
 
     address public owner;
+    address private prizePoolDistributor;
+    address private callbackTarget;
+    address private positionValidator;
+    address private keeper;
+    address private referralRebatesSender;
     address private gmxRouter;
     address private gmxReader;
     address private gmxVault;
     address private gmxPositionRouter;
-    address private callbackTarget;
-    address private positionValidator;
-    address private keeper;
 
     bytes32 private referralCode;
 
     mapping(bytes32 => RouteInfo) private routeInfo; // routeKey => RouteInfo
-    mapping(address => bool) public isRoute; // traderRoute => isRoute
+    mapping(address => bool) public isRoute; // Route => isRoute
 
-    mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => traderRoute => allowance
+    mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => Route => allowance
     mapping(address => uint256) public puppetDepositAccount; // puppet => deposit account balance
 
-    mapping(bytes32 => address) private requestKeyToRoute; // GMX position key => trader/puppet route address
+    mapping(bytes32 => address) private requestKeyToRoute; // GMX position key => Route address
 
     // ============================================================================================
     // Constructor
@@ -56,25 +55,29 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
     constructor(
         address _owner,
+        address _prizePoolDistributor,
+        address _callbackTarget,
         address _positionValidator,
         address _keeper,
+        address _referralRebatesSender,
         address _gmxRouter,
         address _gmxReader,
         address _gmxVault,
         address _gmxPositionRouter,
-        address _callbackTarget,
         bytes32 _referralCode
     ) {
         owner = _owner;
+        prizePoolDistributor = _prizePoolDistributor;
+        callbackTarget = _callbackTarget;
         positionValidator = _positionValidator;
         keeper = _keeper;
 
+        referralRebatesSender = _referralRebatesSender;
         gmxRouter = _gmxRouter;
         gmxReader = _gmxReader;
         gmxVault = _gmxVault;
         gmxPositionRouter = _gmxPositionRouter;
 
-        callbackTarget = _callbackTarget;
         referralCode = _referralCode;
 
         solvencyMargin = 2; // require puppet's balance to be 2x the amount of his total allowances
@@ -98,7 +101,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // View Functions
     // ============================================================================================
 
-    function getTraderRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
+    function getRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
     }
 
@@ -127,13 +130,8 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         return requestKeyToRoute[_requestKey];
     }
 
-    function getRouteForRouteKey(bytes32 _routeKey) external view override returns (address _traderRoute, address _puppetRoute) {
-        _traderRoute = routeInfo[_routeKey].traderRoute;
-        _puppetRoute = routeInfo[_routeKey].puppetRoute;
-    }
-
-    function getPuppetAllowance(address _puppet, address _traderRoute) external view override returns (uint256 _allowance) {
-        return EnumerableMap.get(puppetAllowances[_puppet], _traderRoute);
+    function getPuppetAllowance(address _puppet, address _route) external view override returns (uint256 _allowance) {
+        return EnumerableMap.get(puppetAllowances[_puppet], _route);
     }
 
     function getGMXRouter() external view override returns (address) {
@@ -168,6 +166,14 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         return keeper;
     }
 
+    function getPrizePoolDistributor() external view override returns (address) {
+        return prizePoolDistributor;
+    }
+
+    function getReferralRebatesSender() external view override returns (address) {
+        return referralRebatesSender;
+    }
+
     // ============================================================================================
     // Trader Functions
     // ============================================================================================
@@ -175,25 +181,22 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // slither-disable-next-line reentrancy-no-eth
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external override nonReentrant returns (bytes32 _routeKey) {
         address _trader = msg.sender;
-        _routeKey = getTraderRouteKey(_trader, _collateralToken, _indexToken, _isLong);
+        _routeKey = getRouteKey(_trader, _collateralToken, _indexToken, _isLong);
         if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
-        address _traderRoute = address(new TraderRoute(address(this), owner, _trader, _collateralToken, _indexToken, _isLong));
-        address _puppetRoute = ITraderRoute(_traderRoute).getPuppetRoute();
+        address _route = address(new Route(address(this), owner, _trader, _collateralToken, _indexToken, _isLong));
 
         RouteInfo storage _routeInfo = routeInfo[_routeKey];
         
-        _routeInfo.traderRoute = _traderRoute;
-        _routeInfo.puppetRoute = _puppetRoute;
+        _routeInfo.traderRoute = _route;
         _routeInfo.collateralToken = _collateralToken;
         _routeInfo.indexToken = _indexToken;
         _routeInfo.isLong = _isLong;
         _routeInfo.isRegistered = true;
 
-        isRoute[_traderRoute] = true;
-        isRoute[_puppetRoute] = true;
+        isRoute[_route] = true;
 
-        emit RegisterRoute(_trader, _traderRoute, _puppetRoute, _collateralToken, _indexToken, _isLong);
+        emit RegisterRoute(_trader, _route, _collateralToken, _indexToken, _isLong);
     }
 
     // ============================================================================================
@@ -227,21 +230,21 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _traders.length; i++) {
-            bytes32 _routeKey = getTraderRouteKey(_traders[i], _collateralToken, _indexToken, _isLong);
+            bytes32 _routeKey = getRouteKey(_traders[i], _collateralToken, _indexToken, _isLong);
             RouteInfo storage _routeInfo = routeInfo[_routeKey];
 
             if (!_routeInfo.isRegistered) revert RouteNotRegistered();
-            if (ITraderRoute(_routeInfo.traderRoute).getIsWaitingForCallback()) revert WaitingForCallback();
-            if (IPuppetRoute(_routeInfo.puppetRoute).getIsPositionOpen()) revert PositionIsOpen();
+            if (ITraderRoute(_routeInfo.route).getIsWaitingForCallback()) revert WaitingForCallback();
+            if (ITraderRoute(_routeInfo.route).getIsPositionOpen()) revert PositionIsOpen();
 
             if (_sign) {
-                EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, _allowances[i]);
+                EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.route, _allowances[i]);
 
                 if (!EnumerableSet.contains(_routeInfo.puppets, _puppet)) {
                     EnumerableSet.add(_routeInfo.puppets, _puppet);
                 }
             } else {
-                EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.traderRoute, 0);
+                EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.route, 0);
 
                 if (EnumerableSet.contains(_routeInfo.puppets, _puppet)) {
                     EnumerableSet.remove(_routeInfo.puppets, _puppet);
@@ -295,15 +298,19 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // Owner Functions
     // ============================================================================================
 
-    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter) external onlyOwner {
+    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender) external onlyOwner {
         gmxRouter = _gmxRouter;
         gmxReader = _gmxReader;
         gmxVault = _gmxVault;
         gmxPositionRouter = _gmxPositionRouter;
+        referralRebatesSender = _referralRebatesSender;
     }
 
-    function setCallbackTarget(address _callbackTarget) external onlyOwner {
+    function setPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper) external onlyOwner {
+        prizePoolDistributor = _prizePoolDistributor;
         callbackTarget = _callbackTarget;
+        positionValidator = _positionValidator;
+        keeper = _keeper;
     }
 
     function setReferralCode(bytes32 _referralCode) external onlyOwner {
@@ -312,10 +319,6 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
     function setSolvencyMargin(uint256 _solvencyMargin) external onlyOwner {
         solvencyMargin = _solvencyMargin;
-    }
-
-    function setPositionValidator(address _positionValidator) external onlyOwner {
-        positionValidator = _positionValidator;
     }
 
     function setOwner(address _owner) external onlyOwner {

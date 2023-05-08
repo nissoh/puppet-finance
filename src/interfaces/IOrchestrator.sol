@@ -1,7 +1,39 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-interface IPuppetOrchestrator {
+interface IOrchestrator {
+
+    // ============================================================================================
+    // View Functions
+    // ============================================================================================
+
+    function getRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
+
+    function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory);
+
+    function isPuppetSolvent(address _puppet) external view returns (bool);
+
+    function getRouteForRequestKey(bytes32 _requestKey) external view returns (address);
+
+    function getPuppetAllowance(address _puppet, address _route) external view returns (uint256);
+
+    function getGMXRouter() external view returns (address);
+
+    function getGMXReader() external view returns (address);
+
+    function getGMXVault() external view returns (address);
+
+    function getGMXPositionRouter() external view returns (address);
+
+    function getCallbackTarget() external view returns (address);
+
+    function getReferralCode() external view returns (bytes32);
+
+    function getPositionValidator() external view returns (address);
+
+    function getKeeper() external view returns (address);
+
+    function getPrizePoolDistributor() external view returns (address);
 
     // ============================================================================================
     // Mutated Functions
@@ -46,42 +78,10 @@ interface IPuppetOrchestrator {
     function setOwner(address _owner) external;
 
     // ============================================================================================
-    // View Functions
-    // ============================================================================================
-
-    function getTraderRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
-
-    function getGMXRouter() external view returns (address);
-
-    function getGMXReader() external view returns (address);
-
-    function getGMXVault() external view returns (address);
-
-    function getGMXPositionRouter() external view returns (address);
-
-    function getCallbackTarget() external view returns (address);
-
-    function getReferralCode() external view returns (bytes32);
-
-    function getPositionValidator() external view returns (address);
-
-    function getKeeper() external view returns (address);
-
-    function getRouteForRequestKey(bytes32 _requestKey) external view returns (address);
-
-    function getRouteForRouteKey(bytes32 _routeKey) external view returns (address _traderRoute, address _puppetRoute);
-
-    function getPuppetAllowance(address _puppet, address _traderRoute) external view returns (uint256);
-
-    function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory);
-
-    function isPuppetSolvent(address _puppet) external view returns (bool);
-
-    // ============================================================================================
     // Events
     // ============================================================================================
 
-    event RegisterRoute(address indexed trader, address _traderRoute, address _puppetRoute, address indexed collateralToken, address indexed indexToken, bool isLong);
+    event RegisterRoute(address indexed trader, address _route, address indexed collateralToken, address indexed indexToken, bool isLong);
     event DepositToAccount(uint256 assets, address indexed caller, address indexed puppet);
     event WithdrawFromAccount(uint256 assets, address indexed receiver, address indexed puppet);
     event UpdateRoutesSubscription(address[] traders, uint256[] allowances, address indexed puppet, address indexed collateralToken, address indexed indexToken, bool isLong, bool sign);    
