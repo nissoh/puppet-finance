@@ -86,6 +86,7 @@ contract PrizePoolDistributor is ReentrancyGuard {
 
     function _getRouteCRPNL(address _route) internal {
         // TODO
+        // fetch realized PnL at the end of last distribution, and the start of this distribution, delta is the CRPNL
     }
 
     // ============================================================================================
