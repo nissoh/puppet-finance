@@ -27,6 +27,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     }
 
     uint256 public solvencyMargin; // require puppet's balance to be `solvencyMargin` times more than the amount of his total allowances
+    uint256 public managementFeePercentage;
 
     address public owner;
     address private prizePoolDistributor;
@@ -40,6 +41,8 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     address private gmxPositionRouter;
 
     bytes32 private referralCode;
+
+    address[] private routes;
 
     mapping(bytes32 => RouteInfo) private routeInfo; // routeKey => RouteInfo
     mapping(address => bool) public isRoute; // Route => isRoute
@@ -107,7 +110,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
     }
 
-    function getPuppetsForRoute(bytes32 _routeKey) external view override returns (address[] memory _puppets) {
+    function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory _puppets) {
         EnumerableSet.AddressSet storage _puppetsSet = routeInfo[_routeKey].puppets;
         _puppets = new address[](EnumerableSet.length(_puppetsSet));
 
@@ -116,7 +119,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         }
     }
 
-    function isPuppetSolvent(address _puppet) public view override returns (bool) {
+    function isPuppetSolvent(address _puppet) public view returns (bool) {
         uint256 totalAllowance;
         EnumerableMap.AddressToUintMap storage _allowances = puppetAllowances[_puppet];
 
@@ -129,57 +132,65 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         return puppetDepositAccount[_puppet] >= (totalAllowance * solvencyMargin);
     }
 
-    function canOpenNewPosition(address _route, address _puppet) public view override returns (bool) {
+    function canOpenNewPosition(address _route, address _puppet) public view returns (bool) {
         uint256 lastOpened = lastPositionOpenedTimestamp[_route][_puppet];
         return (block.timestamp - lastOpened) >= throttleLimits[_puppet];
     }
 
-    function getRouteForRequestKey(bytes32 _requestKey) external view override returns (address) {
+    function getRouteForRequestKey(bytes32 _requestKey) external view returns (address) {
         return requestKeyToRoute[_requestKey];
     }
 
-    function getPuppetAllowancePercentage(address _puppet, address _route) external view override returns (uint256 _allowance) {
+    function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance) {
         return EnumerableMap.get(puppetAllowances[_puppet], _route);
     }
 
-    function getGMXRouter() external view override returns (address) {
+    function getRoutes() external view returns (address[] memory) {
+        return routes;
+    }
+
+    function getGMXRouter() external view returns (address) {
         return gmxRouter;
     }
 
-    function getGMXReader() external view override returns (address) {
+    function getGMXReader() external view returns (address) {
         return gmxReader;
     }
 
-    function getGMXVault() external view override returns (address) {
+    function getGMXVault() external view returns (address) {
         return gmxVault;
     }
 
-    function getGMXPositionRouter() external view override returns (address) {
+    function getGMXPositionRouter() external view returns (address) {
         return gmxPositionRouter;
     }
 
-    function getCallbackTarget() external view override returns (address) {
+    function getCallbackTarget() external view returns (address) {
         return callbackTarget;
     }
 
-    function getReferralCode() external view override returns (bytes32) {
+    function getReferralCode() external view returns (bytes32) {
         return referralCode;
     }
 
-    function getPositionValidator() external view override returns (address) {
+    function getPositionValidator() external view returns (address) {
         return positionValidator;
     }
 
-    function getKeeper() external view override returns (address) {
+    function getKeeper() external view returns (address) {
         return keeper;
     }
 
-    function getPrizePoolDistributor() external view override returns (address) {
+    function getPrizePoolDistributor() external view returns (address) {
         return prizePoolDistributor;
     }
 
-    function getReferralRebatesSender() external view override returns (address) {
+    function getReferralRebatesSender() external view returns (address) {
         return referralRebatesSender;
+    }
+
+    function getManagementFeePercentage() external view returns (uint256) {
+        return managementFeePercentage;
     }
 
     // ============================================================================================
@@ -187,7 +198,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // ============================================================================================
 
     // slither-disable-next-line reentrancy-no-eth
-    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external override nonReentrant returns (bytes32 _routeKey) {
+    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert InvalidTokenAddress();
 
         address _trader = msg.sender;
@@ -205,6 +216,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         _routeInfo.isRegistered = true;
 
         isRoute[_route] = true;
+        routes.push(_route);
 
         emit RegisterRoute(_trader, _route, _collateralToken, _indexToken, _isLong);
     }
@@ -213,7 +225,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // Puppet Functions
     // ============================================================================================
 
-    function depositToAccount(uint256 _assets, address _puppet) external payable override nonReentrant {
+    function depositToAccount(uint256 _assets, address _puppet) external payable nonReentrant {
         if (_assets == 0) revert ZeroAmount();
         if (msg.value != _assets) revert InvalidAmount();
 
@@ -222,7 +234,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         emit DepositToAccount(_assets, msg.sender, _puppet);
     }
 
-    function withdrawFromAccount(uint256 _assets, address _receiver) external override nonReentrant {
+    function withdrawFromAccount(uint256 _assets, address _receiver) external nonReentrant {
         if (_assets == 0) revert ZeroAmount();
 
         address _puppet = msg.sender;
@@ -235,7 +247,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         emit WithdrawFromAccount(_assets, _receiver, _puppet);
     }
 
-    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external override nonReentrant {
+    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external nonReentrant {
         if (_traders.length != _allowances.length) revert MismatchedInputArrays();
 
         address _puppet = msg.sender;
@@ -343,6 +355,12 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         referralCode = _referralCode;
 
         emit SetPuppetUtils(_prizePoolDistributor, _callbackTarget, _positionValidator, _keeper, _solvencyMargin, _referralCode);
+    }
+
+    function setManagementFeePercentage(uint256 _percentage) external onlyOwner {
+        if (_percentage > 100) revert InvalidPercentage(); // up to 1% allowed
+
+        managementFeePercentage = _percentage;
     }
 
     function setOwner(address _owner) external onlyOwner {

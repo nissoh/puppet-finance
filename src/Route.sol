@@ -155,6 +155,8 @@ contract Route is ReentrancyGuard, IRoute {
 
     function _getPuppetsAssetsAndAllocateShares(uint256 _traderAmountIn) internal returns (uint256 _puppetsAmountIn) {
         if (_traderAmountIn > 0) {
+            uint256 _totalManagementFee;
+            uint256 _managementFeePercentage = orchestrator.getManagementFeePercentage();
             uint256 _totalSupply = totalSupply;
             uint256 _totalAssets = totalAssets;
             address _trader = trader;
@@ -178,9 +180,16 @@ contract Route is ReentrancyGuard, IRoute {
                     continue;
                 }
 
-                uint256 _shares = _convertToShares(_totalAssets, _totalSupply, _assets);
-
                 _puppetsAmountIn += _assets;
+
+                if (_managementFeePercentage > 0) {
+                    uint256 _managementFee = (_assets * _managementFeePercentage) / 10000;
+
+                    _totalManagementFee += _managementFee;
+                    _assets -= _managementFee;
+                }
+
+                uint256 _shares = _convertToShares(_totalAssets, _totalSupply, _assets);
 
                 EnumerableMap.set(participantShares, _puppet, _shares);
 
@@ -196,6 +205,7 @@ contract Route is ReentrancyGuard, IRoute {
             totalAssets = _totalAssets;
 
             orchestrator.sendFunds(_puppetsAmountIn);
+            if (_totalManagementFee > 0) payable(owner).sendValue(_totalManagementFee);
         }
     }
 

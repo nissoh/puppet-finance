@@ -19,6 +19,8 @@ interface IOrchestrator {
 
     function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256);
 
+    function getRoutes() external view returns (address[] memory);
+
     function getGMXRouter() external view returns (address);
 
     function getGMXReader() external view returns (address);
@@ -38,6 +40,8 @@ interface IOrchestrator {
     function getPrizePoolDistributor() external view returns (address);
 
     function getReferralRebatesSender() external view returns (address);
+
+    function getManagementFeePercentage() external view returns (uint256);
 
     // ============================================================================================
     // Mutated Functions
@@ -74,6 +78,8 @@ interface IOrchestrator {
     function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender) external;
 
     function setPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external;
+
+    function setManagementFeePercentage(uint256 _percentage) external;
 
     function setOwner(address _owner) external;
 
@@ -112,4 +118,5 @@ interface IOrchestrator {
     error PositionIsOpen();
     error InvalidAllowancePercentage();
     error InvalidTokenAddress();
+    error InvalidPercentage();
 }

@@ -84,7 +84,7 @@ contract PrizePoolDistributor is ReentrancyGuard {
     // Internal Functions
     // ============================================================================================
 
-    function _getRouteCRPNL(address _route) internal {
+    function _getRouteCRPNL(address _route) internal returns (uint256 _routeCRPNL) {
         // TODO
         // fetch realized PnL at the end of last distribution, and the start of this distribution, delta is the CRPNL
     }
@@ -94,4 +94,18 @@ contract PrizePoolDistributor is ReentrancyGuard {
     // ============================================================================================
  
     receive() external payable {}
+
+    // ============================================================================================
+    // Events
+    // ============================================================================================
+
+    event PrizePoolDistributed(uint256 totalCRPNL, uint256 prizePoolAmountInUSD, uint256 startDistributionTime);
+    event Claimed(address route, address receiver, uint256 prizePoolShare);
+
+    // ============================================================================================
+    // Errors
+    // ============================================================================================
+
+    error NotEnoughTimePassed();
+    error ZeroCRPNL();
 }
