@@ -50,7 +50,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     mapping(address => uint256) public throttleLimits;
     mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => Route => allowance percentage
     mapping(address => mapping(address => uint256)) public lastPositionOpenedTimestamp; // Route => puppet => timestamp
-    mapping(address => uint256) public puppetDepositAccount; // puppet => deposit account balance
+    mapping(address => mapping(address => uint256)) public puppetDepositAccount; // puppet => asset => balance
 
     mapping(bytes32 => address) private requestKeyToRoute; // GMX position key => Route address
 
@@ -119,17 +119,19 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         }
     }
 
-    function isPuppetSolvent(address _puppet) public view returns (bool) {
+    function isPuppetSolvent(address _asset, address _puppet) public view returns (bool) {
         uint256 totalAllowance;
+        uint256 _puppetBalance = puppetDepositAccount[_asset][_puppet];
         EnumerableMap.AddressToUintMap storage _allowances = puppetAllowances[_puppet];
-
         for (uint256 i = 0; i < EnumerableMap.length(_allowances); i++) {
-            (, uint256 _allowancePercentage) = EnumerableMap.at(_allowances, i);
-            uint256 _allowance = (puppetDepositAccount[_puppet] * _allowancePercentage) / 100;
-            totalAllowance += _allowance;
+            (address _route, uint256 _allowancePercentage) = EnumerableMap.at(_allowances, i);
+            if (Route(_route).collateralToken() == _asset) {
+                uint256 _allowance = (_puppetBalance * _allowancePercentage) / 100;
+                totalAllowance += _allowance;
+            }
         }
 
-        return puppetDepositAccount[_puppet] >= (totalAllowance * solvencyMargin);
+        return _puppetBalance >= (totalAllowance * solvencyMargin);
     }
 
     function canOpenNewPosition(address _route, address _puppet) public view returns (bool) {
@@ -143,6 +145,10 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
     function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance) {
         return EnumerableMap.get(puppetAllowances[_puppet], _route);
+    }
+
+    function getPuppetAccountBalance(address _asset, address _puppet) external view returns (uint256) {
+        return puppetDepositAccount[_asset][_puppet];
     }
 
     function getRoutes() external view returns (address[] memory) {
@@ -225,26 +231,37 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // Puppet Functions
     // ============================================================================================
 
-    function depositToAccount(uint256 _assets, address _puppet) external payable nonReentrant {
-        if (_assets == 0) revert ZeroAmount();
-        if (msg.value != _assets) revert InvalidAmount();
+    function depositToAccount(uint256 _amount, address _asset, address _puppet) external payable nonReentrant {
+        if (_amount == 0) revert ZeroAmount();
 
-        puppetDepositAccount[_puppet] += _assets;
+        if (msg.value > 0) {
+            if (_amount != msg.value) revert InvalidAmount();
+            if (_asset != ETH) revert InvalidAssetAddress();
+        } else {
+            if (msg.value != 0) revert InvalidAmount();
+            IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
+        }
 
-        emit DepositToAccount(_assets, msg.sender, _puppet);
+        puppetDepositAccount[_asset][_puppet] += _amount;
+
+        emit DepositToAccount(_amount, _asset, msg.sender, _puppet);
     }
 
-    function withdrawFromAccount(uint256 _assets, address _receiver) external nonReentrant {
-        if (_assets == 0) revert ZeroAmount();
+    function withdrawFromAccount(uint256 _amount, address _asset, address _receiver) external nonReentrant {
+        if (_amount == 0) revert ZeroAmount();
 
         address _puppet = msg.sender;
-        puppetDepositAccount[_puppet] -= _assets;
+        puppetDepositAccount[_asset][_puppet] -= _amount;
 
-        if (!isPuppetSolvent(_puppet)) revert InsufficientPuppetFunds();
+        if (!isPuppetSolvent(_asset, _puppet)) revert InsufficientPuppetFunds();
 
-        payable(_receiver).sendValue(_assets);
+        if (_asset == ETH) {
+            payable(_receiver).sendValue(_amount);
+        } else {
+            IERC20(_asset).safeTransfer(_receiver, _amount);
+        }
 
-        emit WithdrawFromAccount(_assets, _receiver, _puppet);
+        emit WithdrawFromAccount(_amount, _asset, _receiver, _puppet);
     }
 
     function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external nonReentrant {
@@ -277,7 +294,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
             }
         }
 
-        if (!isPuppetSolvent(_puppet)) revert InsufficientPuppetFunds();
+        if (!isPuppetSolvent(_collateralToken, _puppet)) revert InsufficientPuppetFunds();
 
         emit UpdateRoutesSubscription(_traders, _allowances, _puppet, _collateralToken, _indexToken, _isLong, _sign);
     }
@@ -293,14 +310,14 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // Route Functions
     // ============================================================================================
 
-    function debitPuppetAccount(uint256 _amount, address _puppet) external onlyRoute {
-        puppetDepositAccount[_puppet] -= _amount;
+    function debitPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
+        puppetDepositAccount[_asset][_puppet] -= _amount;
 
         emit DebitPuppetAccount(_amount, _puppet, msg.sender);
     }
 
-    function creditPuppetAccount(uint256 _amount, address _puppet) external onlyRoute {
-        puppetDepositAccount[_puppet] += _amount;
+    function creditPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
+        puppetDepositAccount[_asset][_puppet] += _amount;
 
         emit CreditPuppetAccount(_amount, _puppet, msg.sender);
     }
@@ -326,10 +343,15 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         emit UpdateRequestKeyToRoute(_requestKey, msg.sender);
     }
 
-    function sendFunds(uint256 _amount) external onlyRoute {
-        payable(msg.sender).sendValue(_amount);
+    function sendFunds(uint256 _amount, address _asset) external onlyRoute {
+        address _route = msg.sender;
+        if (_asset == ETH) {
+            payable(_route).sendValue(_amount);
+        } else {
+            IERC20(_asset).safeTransfer(_route, _amount);
+        }
 
-        emit SendFunds(_amount, msg.sender);
+        emit SendFunds(_amount, _route);
     }
 
     // ============================================================================================
