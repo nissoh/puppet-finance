@@ -71,22 +71,20 @@ contract Route is ReentrancyGuard, IRoute {
     // Trader Functions
     // ============================================================================================
 
-    function createPositionRequest(bytes memory _traderPositionData, uint256 _executionFee, bool _isIncrease) external payable nonReentrant returns (bytes32 _requestKey) {
+    function createPositionRequest(bytes memory _traderPositionData, bool _isIncrease) external payable nonReentrant returns (bytes32 _requestKey) {
         if (isWaitingForCallback) revert WaitingForCallback();
         if (msg.sender != trader) revert NotTrader();
-        if (msg.value < _executionFee) revert InvalidExecutionFee();
 
         isWaitingForCallback = true;
 
         uint256 _traderAmountIn;
         uint256 _puppetsAmountIn;
         if (_isIncrease) {
-            _traderAmountIn = msg.value - _executionFee;
+            _traderAmountIn = _getTraderAssetsAndAllocateShares(_traderPositionData);
             _puppetsAmountIn = _getPuppetsAssetsAndAllocateShares(_traderAmountIn);
-            _requestKey = _createIncreasePosition(_traderPositionData, _traderAmountIn, _puppetsAmountIn, _executionFee);
+            _requestKey = _createIncreasePosition(_traderPositionData, _traderAmountIn, _puppetsAmountIn);
         } else {
-            if (msg.value != _executionFee) revert InvalidExecutionFee();
-            _requestKey = _createDecreasePosition(_traderPositionData, _executionFee);
+            _requestKey = _createDecreasePosition(_traderPositionData);
         }
 
         IPositionValidator(orchestrator.getPositionValidator()).validatePositionParameters(_traderPositionData, _traderAmountIn, _puppetsAmountIn, _isIncrease);
@@ -146,7 +144,7 @@ contract Route is ReentrancyGuard, IRoute {
 
     function rescueStuckTokens(address _token, address _to) external onlyOwner {
         if (address(this).balance > 0) payable(_to).sendValue(address(this).balance);
-        if (_token != address(0) && IERC20(_token).balanceOf(address(this)) > 0) IERC20(_token).safeTransfer(_to, IERC20(_token).balanceOf(address(this)));
+        if (IERC20(_token).balanceOf(address(this)) > 0) IERC20(_token).safeTransfer(_to, IERC20(_token).balanceOf(address(this)));
 
         emit StuckTokensRescued(_token, _to);
     }
@@ -154,6 +152,17 @@ contract Route is ReentrancyGuard, IRoute {
     // ============================================================================================
     // Internal Functions
     // ============================================================================================
+
+    function _getTraderAssetsAndAllocateShares(address[] memory _path, uint256 _swapMinOut) internal returns (uint256 _traderAmountIn) {
+        address _toToken = _path[_path.length - 1];
+        if (_toToken != collateralToken) revert InvalidPath();
+
+        uint256 _before = IERC20(_toToken).balanceOf(address(this));
+        IGMXRouter(_router).swap(_path, _amount, _swapMinOut, address(this));
+        _amount = IERC20(_toToken).balanceOf(address(this)) - _before;
+        // TODO - finish
+        // TODO - remove ETH support, only use WETH
+    }
 
     function _getPuppetsAssetsAndAllocateShares(uint256 _traderAmountIn) internal returns (uint256 _puppetsAmountIn) {
         if (_traderAmountIn > 0) {
@@ -163,11 +172,12 @@ contract Route is ReentrancyGuard, IRoute {
             uint256 _totalAssets = totalAssets;
             address _trader = trader;
             address _collateralToken = collateralToken;
+            bool _isOI = _isOpenInterest();
             bytes32 _routeKey = orchestrator.getRouteKey(_trader, _collateralToken, indexToken, isLong);
             address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
             for (uint256 i = 0; i < _puppets.length; i++) {
                 address _puppet = _puppets[i];
-                if (!_isOpenInterest() && !orchestrator.canOpenNewPosition(address(this), _puppet)) {
+                if (!_isOI && !orchestrator.canOpenNewPosition(address(this), _puppet)) {
                     orchestrator.liquidatePuppet(_puppet, _routeKey);
                 }
 
@@ -218,17 +228,20 @@ contract Route is ReentrancyGuard, IRoute {
         }
     }
 
-    function _createIncreasePosition(bytes memory _traderPositionData, uint256 _traderAmountIn, uint256 _puppetsAmountIn, uint256 _executionFee) internal returns (bytes32 _requestKey) {
-        (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice) = abi.decode(_traderPositionData, (uint256, uint256, uint256));
+    function _createIncreasePosition(bytes memory _traderPositionData, uint256 _traderAmountIn, uint256 _puppetsAmountIn) internal returns (bytes32 _requestKey) {
+        (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee) = abi.decode(_traderPositionData, (uint256, uint256, uint256, uint256));
+
+        if (msg.value < _executionFee) revert InvalidExecutionFee();
 
         address[] memory _path = new address[](1);
         _path[0] = collateralToken;
 
-        uint256 _amountIn = _traderAmountIn + _puppetsAmountIn + _executionFee;
+        uint256 _amountIn = _traderAmountIn + _puppetsAmountIn;
 
-        _requestKey = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).createIncreasePositionETH{ value: _amountIn } (
+        _requestKey = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).createIncreasePosition{ value: _executionFee } (
             _path,
             indexToken,
+            _amountIn,
             _minOut,
             _sizeDelta,
             isLong,
@@ -243,9 +256,11 @@ contract Route is ReentrancyGuard, IRoute {
         emit CreateIncreasePosition(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _createDecreasePosition(bytes memory _traderPositionData, uint256 _executionFee) internal returns (bytes32 _requestKey) {
-        (uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut)
-            = abi.decode(_traderPositionData, (uint256, uint256, uint256, uint256));
+    function _createDecreasePosition(bytes memory _traderPositionData) internal returns (bytes32 _requestKey) {
+        (uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee)
+            = abi.decode(_traderPositionData, (uint256, uint256, uint256, uint256, uint256));
+
+        if (msg.value != _executionFee) revert InvalidExecutionFee();
 
         address[] memory _path = new address[](1);
         _path[0] = collateralToken;
