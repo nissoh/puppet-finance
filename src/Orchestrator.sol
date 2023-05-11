@@ -40,6 +40,8 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     address private gmxVault;
     address private gmxPositionRouter;
 
+    address internal constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // the address representing ETH
+
     bytes32 private referralCode;
 
     address[] private routes;
@@ -47,7 +49,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     mapping(bytes32 => RouteInfo) private routeInfo; // routeKey => RouteInfo
     mapping(address => bool) public isRoute; // Route => isRoute
 
-    mapping(address => uint256) public throttleLimits;
+    mapping(address => uint256) public throttleLimits; // puppet => throttle limit (in seconds)
     mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => Route => allowance percentage
     mapping(address => mapping(address => uint256)) public lastPositionOpenedTimestamp; // Route => puppet => timestamp
     mapping(address => mapping(address => uint256)) public puppetDepositAccount; // puppet => asset => balance
@@ -125,7 +127,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         EnumerableMap.AddressToUintMap storage _allowances = puppetAllowances[_puppet];
         for (uint256 i = 0; i < EnumerableMap.length(_allowances); i++) {
             (address _route, uint256 _allowancePercentage) = EnumerableMap.at(_allowances, i);
-            if (Route(_route).collateralToken() == _asset) {
+            if (Route(payable(_route)).collateralToken() == _asset) {
                 uint256 _allowance = (_puppetBalance * _allowancePercentage) / 100;
                 totalAllowance += _allowance;
             }
@@ -135,8 +137,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     }
 
     function canOpenNewPosition(address _route, address _puppet) public view returns (bool) {
-        uint256 lastOpened = lastPositionOpenedTimestamp[_route][_puppet];
-        return (block.timestamp - lastOpened) >= throttleLimits[_puppet];
+        return (block.timestamp - lastPositionOpenedTimestamp[_route][_puppet]) >= throttleLimits[_puppet];
     }
 
     function getRouteForRequestKey(bytes32 _requestKey) external view returns (address) {

@@ -11,13 +11,15 @@ interface IOrchestrator {
 
     function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory);
 
-    function isPuppetSolvent(address _puppet) external view returns (bool);
+    function isPuppetSolvent(address _asset, address _puppet) external view returns (bool);
 
     function canOpenNewPosition(address _route, address _puppet) external view returns (bool);
 
     function getRouteForRequestKey(bytes32 _requestKey) external view returns (address);
 
     function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256);
+
+    function getPuppetAccountBalance(address _asset, address _puppet) external view returns (uint256);
 
     function getRoutes() external view returns (address[] memory);
 
@@ -53,17 +55,17 @@ interface IOrchestrator {
 
     // Puppet
 
-    function depositToAccount(uint256 _assets, address _puppet) external payable;
+    function depositToAccount(uint256 _amount, address _asset, address _puppet) external payable;
 
-    function withdrawFromAccount(uint256 _assets, address _receiver) external;
+    function withdrawFromAccount(uint256 _amount, address _asset, address _receiver) external;
 
     function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external;
 
     // Route
 
-    function debitPuppetAccount(uint256 _amount, address _puppet) external;
+    function debitPuppetAccount(uint256 _amount, address _asset, address _puppet) external;
 
-    function creditPuppetAccount(uint256 _amount, address _puppet) external;
+    function creditPuppetAccount(uint256 _amount, address _asset, address _puppet) external;
 
     function liquidatePuppet(address _puppet, bytes32 _routeKey) external;
 
@@ -71,7 +73,7 @@ interface IOrchestrator {
 
     function updateRequestKeyToRoute(bytes32 _requestKey) external;
 
-    function sendFunds(uint256 _amount) external;
+    function sendFunds(uint256 _amount, address _asset) external;
 
     // Owner
 
@@ -88,8 +90,8 @@ interface IOrchestrator {
     // ============================================================================================
 
     event RegisterRoute(address indexed trader, address _route, address indexed collateralToken, address indexed indexToken, bool isLong);
-    event DepositToAccount(uint256 assets, address indexed caller, address indexed puppet);
-    event WithdrawFromAccount(uint256 assets, address indexed receiver, address indexed puppet);
+    event DepositToAccount(uint256 amount, address indexed asset, address indexed caller, address indexed puppet);
+    event WithdrawFromAccount(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
     event UpdateLastPositionOpenedTimestamp(address indexed _route, address indexed _puppet, uint256 _timestamp);
     event UpdateRoutesSubscription(address[] traders, uint256[] allowances, address indexed puppet, address indexed collateralToken, address indexed indexToken, bool isLong, bool sign);    
     event DebitPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
@@ -119,4 +121,5 @@ interface IOrchestrator {
     error InvalidAllowancePercentage();
     error InvalidTokenAddress();
     error InvalidPercentage();
+    error InvalidAssetAddress();
 }

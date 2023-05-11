@@ -27,8 +27,11 @@ contract Route is ReentrancyGuard, IRoute {
     address public trader;
     address public collateralToken;
     address public indexToken;
-    
+
+    address internal constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // the address representing ETH
+
     bool public isLong;
+    bool public isPositionOpen;
     bool public isWaitingForCallback;
 
     EnumerableMap.AddressToUintMap participantShares;
@@ -108,6 +111,7 @@ contract Route is ReentrancyGuard, IRoute {
 
     function approvePositionRequest() external override nonReentrant onlyCallbackTarget {
         isWaitingForCallback = false;
+        isPositionOpen = true;
 
         _updateLastPositionOpenedTimestamp(); // used to limit the number of position that can be opened in a given time period
 
@@ -215,7 +219,7 @@ contract Route is ReentrancyGuard, IRoute {
     }
 
     function _createIncreasePosition(bytes memory _traderPositionData, uint256 _traderAmountIn, uint256 _puppetsAmountIn, uint256 _executionFee) internal returns (bytes32 _requestKey) {
-        (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice) = abi.decode(_traderPositionData, (address[], uint256, uint256, uint256));
+        (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice) = abi.decode(_traderPositionData, (uint256, uint256, uint256));
 
         address[] memory _path = new address[](1);
         _path[0] = collateralToken;
@@ -313,6 +317,8 @@ contract Route is ReentrancyGuard, IRoute {
     }
 
     function _resetPosition() internal {
+        isPositionOpen = false;
+
         totalAssets = 0;
         totalSupply = 0;
         for (uint256 i = 0; i < EnumerableMap.length(participantShares); i++) {
