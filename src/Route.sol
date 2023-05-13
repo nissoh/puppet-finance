@@ -23,6 +23,7 @@ contract Route is ReentrancyGuard, IRoute {
 
     uint256 totalSupply;
     uint256 totalAssets;
+    uint256 pnlBefore;
 
     address public owner;
     address public trader;
@@ -413,7 +414,7 @@ contract Route is ReentrancyGuard, IRoute {
         // TODO
     }
 
-    function _getPnL() internal {
+    function _getPnL() internal returns (uint256 _pnl) {
         // TODO
     }
 
