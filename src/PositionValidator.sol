@@ -6,4 +6,8 @@ contract PositionValidator {
     function validatePositionParameters(bytes memory _traderPositionData, uint256 _traderAmountIn, uint256 _puppetsAmountIn, bool _isIncrease) external {
         // TODO
     }
+
+    function validateSwapPath(bytes memory _traderSwapData, address _collateralToken) external {
+        // TODO
+    }
 }

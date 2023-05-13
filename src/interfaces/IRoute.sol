@@ -7,7 +7,9 @@ interface IRoute {
     // Mutated Functions
     // ============================================================================================
 
-    function createPositionRequest(bytes memory _traderPositionData, uint256 _executionFee, bool _isIncrease) external payable returns (bytes32 _requestKey);
+    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, bool _isIncrease) external payable returns (bytes32 _requestKey);
+
+    function createIncreasePositionRequestETH(bytes memory _traderPositionData, uint256 _minOut) external payable returns (bytes32 _requestKey);
 
     function onLiquidation() external;
 
@@ -35,6 +37,8 @@ interface IRoute {
     event PluginApproved();
     event OrchestratorSet(address indexed _orchestrator);
     event StuckTokensRescued(address token, address to);
+    event PuppetsAssetsAndSharesAllocated(uint256 puppetsAmountIn, uint256 totalManagementFee);
+    event TraderAssetsAndSharesAllocated(uint256 traderAmountIn, uint256 traderShares);
 
     // ============================================================================================
     // Errors
@@ -49,4 +53,5 @@ interface IRoute {
     error InvalidExecutionFee();
     error PositionStillAlive();
     error NotTrader();
+    error InvalidPath();
 }

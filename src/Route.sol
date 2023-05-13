@@ -7,6 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
+import {IWETH} from "./interfaces/IWETH.sol";
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IGMXVault} from "./interfaces/IGMXVault.sol";
@@ -29,10 +30,13 @@ contract Route is ReentrancyGuard, IRoute {
     address public indexToken;
 
     address internal constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // the address representing ETH
+    address internal constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
 
     bool public isLong;
     bool public isPositionOpen;
     bool public isWaitingForCallback;
+
+    bytes private traderRepaymentData;
 
     EnumerableMap.AddressToUintMap participantShares;
 
@@ -71,7 +75,7 @@ contract Route is ReentrancyGuard, IRoute {
     // Trader Functions
     // ============================================================================================
 
-    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, bool _isIncrease) external payable nonReentrant returns (bytes32 _requestKey) {
+    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, bool _isIncrease) public payable nonReentrant returns (bytes32 _requestKey) {
         if (isWaitingForCallback) revert WaitingForCallback();
         if (msg.sender != trader) revert NotTrader();
 
@@ -83,15 +87,29 @@ contract Route is ReentrancyGuard, IRoute {
         if (_isIncrease) {
             _traderAmountIn = _getTraderAssetsAndAllocateShares(_traderSwapData);
             _puppetsAmountIn = _getPuppetsAssetsAndAllocateShares(_traderAmountIn);
-            _requestKey = _createIncreasePosition(_traderPositionData, _traderAmountIn, _puppetsAmountIn);
+            _requestKey = _createIncreasePositionRequest(_traderPositionData, _traderAmountIn, _puppetsAmountIn);
         } else {
-            (address[] memory _path,,,) = abi.decode(_traderSwapData, (address[] memory, uint256, address));
-            IPositionValidator(_positionValidator).validateSwapPath(_path, collateralToken);
+            IPositionValidator(_positionValidator).validateSwapPath(_traderSwapData, collateralToken);
             traderRepaymentData = _traderSwapData;
-            _requestKey = _createDecreasePosition(_traderPositionData);
+            _requestKey = _createDecreasePositionRequest(_traderPositionData);
         }
 
         IPositionValidator(_positionValidator).validatePositionParameters(_traderPositionData, _traderAmountIn, _puppetsAmountIn, _isIncrease);
+    }
+
+    function createIncreasePositionRequestETH(bytes memory _traderPositionData, uint256 _minOut) external payable returns (bytes32 _requestKey) {
+        (,,, uint256 _executionFee) = abi.decode(_traderPositionData, (uint256, uint256, uint256, uint256));
+        uint256 _amount = msg.value;
+        address _weth = WETH;
+        
+        IWETH(_weth).deposit{ value: _amount - _executionFee }();
+
+        address[] memory _path = new address[](2);
+        _path[0] = _weth;
+        _path[1] = collateralToken;
+        bytes memory _traderSwapData = abi.encodePacked(_path, _amount, _minOut);
+
+        return createPositionRequest(_traderPositionData, _traderSwapData, true);
     }
 
     // ============================================================================================
@@ -115,7 +133,8 @@ contract Route is ReentrancyGuard, IRoute {
         isWaitingForCallback = false;
         isPositionOpen = true;
 
-        _updateLastPositionOpenedTimestamp(); // used to limit the number of position that can be opened in a given time period
+        // used to limit the number of position that can be opened in a given time period
+        _updateLastPositionOpenedTimestamp();
 
         _repayBalance();
 
@@ -158,7 +177,7 @@ contract Route is ReentrancyGuard, IRoute {
     // ============================================================================================
 
     function _getTraderAssetsAndAllocateShares(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn) {
-        (address[] memory _path, uint256 _amount, uint256 _minOut) = abi.decode(_traderSwapData, (address[] memory, uint256, uint256));
+        (address[] memory _path, uint256 _amount, uint256 _minOut) = abi.decode(_traderSwapData, (address[], uint256, uint256));
 
         if (_amount > 0) {
             address _trader = trader;
@@ -207,32 +226,32 @@ contract Route is ReentrancyGuard, IRoute {
                 }
 
                 uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
-                uint256 _assets = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
+                uint256 _puppetAmountIn = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
 
-                if (_assets > _traderAmountIn) _assets = _traderAmountIn;
+                if (_puppetAmountIn > _traderAmountIn) _puppetAmountIn = _traderAmountIn;
 
                 if (orchestrator.isPuppetSolvent(_collateralToken, _puppet)) {
-                    orchestrator.debitPuppetAccount(_assets, _collateralToken, _puppet);
+                    orchestrator.debitPuppetAccount(_puppetAmountIn, _collateralToken, _puppet);
                 } else {
                     orchestrator.liquidatePuppet(_puppet, _routeKey);
                     continue;
                 }
 
-                _puppetsAmountIn += _assets;
+                _puppetsAmountIn += _puppetAmountIn;
 
                 if (_managementFeePercentage > 0) {
-                    uint256 _managementFee = (_assets * _managementFeePercentage) / 10000;
+                    uint256 _managementFee = (_puppetAmountIn * _managementFeePercentage) / 10000;
 
                     _totalManagementFee += _managementFee;
-                    _assets -= _managementFee;
+                    _puppetAmountIn -= _managementFee;
                 }
 
-                uint256 _shares = _convertToShares(_totalAssets, _totalSupply, _assets);
+                uint256 _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
 
-                EnumerableMap.set(participantShares, _puppet, _shares);
+                EnumerableMap.set(participantShares, _puppet, _puppetShares);
 
-                _totalSupply += _shares;
-                _totalAssets += _assets;
+                _totalSupply += _puppetShares;
+                _totalAssets += _puppetAmountIn;
             }
 
             totalSupply = _totalSupply;
@@ -248,7 +267,7 @@ contract Route is ReentrancyGuard, IRoute {
         }
     }
 
-    function _createIncreasePosition(bytes memory _traderPositionData, uint256 _traderAmountIn, uint256 _puppetsAmountIn) internal returns (bytes32 _requestKey) {
+    function _createIncreasePositionRequest(bytes memory _traderPositionData, uint256 _traderAmountIn, uint256 _puppetsAmountIn) internal returns (bytes32 _requestKey) {
         (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee) = abi.decode(_traderPositionData, (uint256, uint256, uint256, uint256));
 
         if (msg.value != _executionFee) revert InvalidExecutionFee();
@@ -276,7 +295,7 @@ contract Route is ReentrancyGuard, IRoute {
         emit CreateIncreasePosition(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _createDecreasePosition(bytes memory _traderPositionData) internal returns (bytes32 _requestKey) {
+    function _createDecreasePositionRequest(bytes memory _traderPositionData) internal returns (bytes32 _requestKey) {
         (uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut, uint256 _executionFee)
             = abi.decode(_traderPositionData, (uint256, uint256, uint256, uint256, uint256));
 
@@ -295,7 +314,7 @@ contract Route is ReentrancyGuard, IRoute {
             _acceptablePrice,
             _minOut,
             _executionFee,
-            true, // _withdrawETH
+            false, // _withdrawETH
             orchestrator.getCallbackTarget()
         );
 
@@ -341,11 +360,11 @@ contract Route is ReentrancyGuard, IRoute {
     }
 
     function _repayTrader(uint256 _traderAssets) internal {
-        (address[] memory _path, uint256 _minOut, address _recipient) = abi.decode(traderRepaymentData, (address[] memory, uint256, address));
+        (address[] memory _path, uint256 _minOut, address _receiver) = abi.decode(traderRepaymentData, (address[], uint256, address));
         address _fromToken = collateralToken;
         address _toToken = _path[_path.length - 1];
-        if (_fromToken != _toToken) {
-            address _router = orchestrator.getGMXRouter();
+        address _router = orchestrator.getGMXRouter();
+        if (_fromToken != _toToken && _toToken != ETH) {
             _approve(_router, _fromToken, _traderAssets);
 
             uint256 _before = IERC20(_toToken).balanceOf(address(this));
@@ -353,11 +372,15 @@ contract Route is ReentrancyGuard, IRoute {
             _traderAssets = IERC20(_toToken).balanceOf(address(this)) - _before;
         }
 
-        IERC20(_toToken).safeTransfer(_recipient, _traderAssets);
+        if (_toToken == ETH) {
+            IGMXRouter(_router).swapTokensToETH(_path, _traderAssets, _minOut, payable(_receiver));
+        } else {
+            IERC20(_toToken).safeTransfer(_receiver, _traderAssets);
+        }
         
         uint256 _ethBalance = address(this).balance;
         if (_ethBalance > 0) {
-            payable(trader).sendValue(_ethBalance);
+            payable(_receiver).sendValue(_ethBalance);
         }
     }
 
@@ -369,7 +392,6 @@ contract Route is ReentrancyGuard, IRoute {
 
     function _resetPosition() internal {
         isPositionOpen = false;
-
         totalAssets = 0;
         totalSupply = 0;
         for (uint256 i = 0; i < EnumerableMap.length(participantShares); i++) {
