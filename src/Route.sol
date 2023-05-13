@@ -292,6 +292,8 @@ contract Route is ReentrancyGuard, IRoute {
 
         orchestrator.updateRequestKeyToRoute(_requestKey);
 
+        if (!_isOpenInterest()) pnlBefore = _getPnL();
+
         emit CreateIncreasePosition(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
@@ -391,6 +393,11 @@ contract Route is ReentrancyGuard, IRoute {
     }
 
     function _resetPosition() internal {
+        uint256 _pnl = _getPnL();
+        if (_pnl > pnlBefore) {
+            _chargePerformanceFee(_pnl - pnlBefore);
+        }
+
         isPositionOpen = false;
         totalAssets = 0;
         totalSupply = 0;
@@ -400,6 +407,14 @@ contract Route is ReentrancyGuard, IRoute {
         }
 
         emit ResetPosition();
+    }
+
+    function _chargePerformanceFee(uint256 _profit) internal {
+        // TODO
+    }
+
+    function _getPnL() internal {
+        // TODO
     }
 
     function _isLiquidated() internal view returns (bool) {
