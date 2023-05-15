@@ -25,7 +25,16 @@ contract InputValidator {
     }
 
     // ============================================================================================
-    // Functions
+    // Modifiers
+    // ============================================================================================
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert OnlyOwner();
+        _;
+    }
+
+    // ============================================================================================
+    // External Functions
     // ============================================================================================
 
     function validatePositionParameters(bytes memory _traderPositionData, uint256 _traderAmountIn, uint256 _puppetsAmountIn, bool _isIncrease) external {
@@ -48,9 +57,22 @@ contract InputValidator {
     }
 
     // ============================================================================================
+    // Owner Functions
+    // ============================================================================================
+
+    function setOrchestrator(address _orchestrator) external onlyOwner {
+        orchestrator = IOrchestrator(_orchestrator);
+    }
+
+    function setOwner(address _owner) external onlyOwner {
+        owner = _owner;
+    }
+
+    // ============================================================================================
     // Errors
     // ============================================================================================
 
+    error OnlyOwner();
     error InvalidTokenIn();
     error InvalidPathLength();
     error InvalidMaxAmount();
