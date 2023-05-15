@@ -73,7 +73,7 @@ interface IOrchestrator {
 
     function updateRequestKeyToRoute(bytes32 _requestKey) external;
 
-    function sendFunds(uint256 _amount, address _asset) external;
+    function sendFunds(uint256 _amount, address _asset, address _receiver) external;
 
     // Owner
 
@@ -98,7 +98,7 @@ interface IOrchestrator {
     event CreditPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
     event LiquidatePuppet(address indexed _puppet, bytes32 indexed _positionKey, address indexed _liquidator);
     event UpdateRequestKeyToRoute(bytes32 indexed _requestKey, address indexed _routeAddress);
-    event SendFunds(uint256 _amount, address indexed _sender);
+    event SendFunds(uint256 _amount, address indexed _asset, address indexed _receiver);
     event SetThrottleLimit(address indexed puppet, uint256 throttleLimit);
     event SetGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
     event SetPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode);

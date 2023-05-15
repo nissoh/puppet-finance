@@ -344,15 +344,14 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         emit UpdateRequestKeyToRoute(_requestKey, msg.sender);
     }
 
-    function sendFunds(uint256 _amount, address _asset) external onlyRoute {
-        address _route = msg.sender;
+    function sendFunds(uint256 _amount, address _asset, address _receiver) external onlyRoute {
         if (_asset == ETH) {
-            payable(_route).sendValue(_amount);
+            payable(_receiver).sendValue(_amount);
         } else {
-            IERC20(_asset).safeTransfer(_route, _amount);
+            IERC20(_asset).safeTransfer(_receiver, _amount);
         }
 
-        emit SendFunds(_amount, _route);
+        emit SendFunds(_amount, _asset, _receiver);
     }
 
     // ============================================================================================

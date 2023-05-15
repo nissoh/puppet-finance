@@ -23,7 +23,7 @@ contract Route is ReentrancyGuard, IRoute {
 
     uint256 totalSupply;
     uint256 totalAssets;
-    uint256 pnlBefore;
+    uint256 realisedPnl; // realised P&L at the start of a new position. used to calculate the performance fee 
 
     address public owner;
     address public trader;
@@ -259,7 +259,7 @@ contract Route is ReentrancyGuard, IRoute {
             totalAssets = _totalAssets;
 
             // pull funds from Orchestrator
-            orchestrator.sendFunds(_puppetsAmountIn, _collateralToken);
+            orchestrator.sendFunds(_puppetsAmountIn, _collateralToken, address(this));
 
             // send management fee to owner
             if (_totalManagementFee > 0) IERC20(_collateralToken).safeTransfer(owner, _totalManagementFee);
@@ -293,7 +293,7 @@ contract Route is ReentrancyGuard, IRoute {
 
         orchestrator.updateRequestKeyToRoute(_requestKey);
 
-        if (!_isOpenInterest()) pnlBefore = _getPnL();
+        if (!_isOpenInterest()) realisedPnl = _getRealisedPnl();
 
         emit CreateIncreasePosition(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
@@ -394,10 +394,7 @@ contract Route is ReentrancyGuard, IRoute {
     }
 
     function _resetPosition() internal {
-        uint256 _pnl = _getPnL();
-        if (_pnl > pnlBefore) {
-            _chargePerformanceFee(_pnl - pnlBefore);
-        }
+        _chargePerformanceFee();
 
         isPositionOpen = false;
         totalAssets = 0;
@@ -410,12 +407,32 @@ contract Route is ReentrancyGuard, IRoute {
         emit ResetPosition();
     }
 
-    function _chargePerformanceFee(uint256 _profit) internal {
-        // TODO
+    function _chargePerformanceFee() internal {
+        uint256 _currentRealisedPnl = _getRealisedPnl();
+        uint256 _realisedPnlBefore = realisedPnl;
+        if (_currentRealisedPnl > _realisedPnlBefore && (_currentRealisedPnl - _realisedPnlBefore) > 0) {
+            uint256 _performanceFeeAmount = _currentRealisedPnl - _realisedPnlBefore;
+            uint256 _totalAssets = _performanceFeeAmount;
+            uint256 _totalSupply = totalSupply;
+            address _collateralToken = collateralToken;
+            bytes32 _key = orchestrator.getRouteKey(trader, collateralToken, indexToken, isLong);
+            address[] memory _puppets = orchestrator.getPuppetsForRoute(_key);
+            for (uint256 i = 0; i < _puppets.length; i++) {
+                address _puppet = _puppets[i];
+                uint256 _shares = EnumerableMap.get(participantShares, _puppet);
+                uint256 _assets = _convertToAssets(_totalAssets, _totalSupply, _shares);
+
+                orchestrator.debitPuppetAccount(_assets, _collateralToken, _puppet);
+
+                _totalSupply -= _shares;
+                _totalAssets -= _assets;
+            }
+            orchestrator.sendFunds(_performanceFeeAmount, _collateralToken, orchestrator.getPrizePoolDistributor());
+        }
     }
 
-    function _getPnL() internal returns (uint256 _pnl) {
-        // TODO
+    function _getRealisedPnl() internal returns (uint256 _realisedPnl) {
+        (,,,,,_realisedPnl,,) = IGMXVault(orchestrator.getGMXVault()).getPosition(address(this), collateralToken, indexToken, isLong);
     }
 
     function _isLiquidated() internal view returns (bool) {
