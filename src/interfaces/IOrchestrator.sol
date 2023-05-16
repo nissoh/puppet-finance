@@ -35,7 +35,7 @@ interface IOrchestrator {
 
     function getReferralCode() external view returns (bytes32);
 
-    function getPositionValidator() external view returns (address);
+    function getInputValidator() external view returns (address);
 
     function getKeeper() external view returns (address);
 

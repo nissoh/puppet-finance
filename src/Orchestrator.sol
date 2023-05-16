@@ -32,7 +32,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     address public owner;
     address private prizePoolDistributor;
     address private callbackTarget;
-    address private positionValidator;
+    address private inputValidator;
     address private keeper;
     address private referralRebatesSender;
     address private gmxRouter;
@@ -64,7 +64,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         address _owner,
         address _prizePoolDistributor,
         address _callbackTarget,
-        address _positionValidator,
+        address _inputValidator,
         address _keeper,
         address _referralRebatesSender,
         address _gmxRouter,
@@ -76,7 +76,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         owner = _owner;
         prizePoolDistributor = _prizePoolDistributor;
         callbackTarget = _callbackTarget;
-        positionValidator = _positionValidator;
+        inputValidator = _inputValidator;
         keeper = _keeper;
 
         referralRebatesSender = _referralRebatesSender;
@@ -180,8 +180,8 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         return referralCode;
     }
 
-    function getPositionValidator() external view returns (address) {
-        return positionValidator;
+    function getInputValidator() external view returns (address) {
+        return inputValidator;
     }
 
     function getKeeper() external view returns (address) {
@@ -368,15 +368,15 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         emit SetGMXUtils(_gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, _referralRebatesSender);
     }
 
-    function setPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external onlyOwner {
+    function setPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _inputValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external onlyOwner {
         prizePoolDistributor = _prizePoolDistributor;
         callbackTarget = _callbackTarget;
-        positionValidator = _positionValidator;
+        inputValidator = _inputValidator;
         keeper = _keeper;
         solvencyMargin = _solvencyMargin;
         referralCode = _referralCode;
 
-        emit SetPuppetUtils(_prizePoolDistributor, _callbackTarget, _positionValidator, _keeper, _solvencyMargin, _referralCode);
+        emit SetPuppetUtils(_prizePoolDistributor, _callbackTarget, _inputValidator, _keeper, _solvencyMargin, _referralCode);
     }
 
     function setManagementFeePercentage(uint256 _percentage) external onlyOwner {

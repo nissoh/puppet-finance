@@ -13,7 +13,7 @@ import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IGMXVault} from "./interfaces/IGMXVault.sol";
 
 import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
-import {IPositionValidator} from "./interfaces/IPositionValidator.sol";
+import {IInputValidator} from "./interfaces/IInputValidator.sol";
 import {IRoute} from "./interfaces/IRoute.sol";
 
 contract Route is ReentrancyGuard, IRoute {
@@ -84,18 +84,18 @@ contract Route is ReentrancyGuard, IRoute {
 
         uint256 _traderAmountIn;
         uint256 _puppetsAmountIn;
-        address _positionValidator = orchestrator.getPositionValidator();
+        address _inputValidator = orchestrator.getInputValidator();
         if (_isIncrease) {
             _traderAmountIn = _getTraderAssetsAndAllocateShares(_traderSwapData);
             _puppetsAmountIn = _getPuppetsAssetsAndAllocateShares(_traderAmountIn);
             _requestKey = _createIncreasePositionRequest(_traderPositionData, _traderAmountIn, _puppetsAmountIn);
         } else {
-            IPositionValidator(_positionValidator).validateSwapPath(_traderSwapData, collateralToken);
+            IInputValidator(_inputValidator).validateSwapPath(_traderSwapData, collateralToken);
             traderRepaymentData = _traderSwapData;
             _requestKey = _createDecreasePositionRequest(_traderPositionData);
         }
 
-        IPositionValidator(_positionValidator).validatePositionParameters(_traderPositionData, _traderAmountIn, _puppetsAmountIn, _isIncrease);
+        IInputValidator(_inputValidator).validatePositionParameters(_traderPositionData, _traderAmountIn, _puppetsAmountIn, _isIncrease);
     }
 
     function createIncreasePositionRequestETH(bytes memory _traderPositionData, uint256 _minOut) external payable returns (bytes32 _requestKey) {
@@ -431,7 +431,7 @@ contract Route is ReentrancyGuard, IRoute {
         }
     }
 
-    function _getRealisedPnl() internal returns (uint256 _realisedPnl) {
+    function _getRealisedPnl() internal view returns (uint256 _realisedPnl) {
         (,,,,,_realisedPnl,,) = IGMXVault(orchestrator.getGMXVault()).getPosition(address(this), collateralToken, indexToken, isLong);
     }
 
