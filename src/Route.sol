@@ -164,7 +164,32 @@ contract Route is ReentrancyGuard, IRoute {
     }
 
     function _executeRequest(bytes32 _requestKey) internal {
-        // TODO - get request data for the request key and assign shares to participants
+        uint256 _index = requestKeyToIndex[_requestKey];
+        PositionRequest _request = positionRequests[_index];
+
+        uint256 _totalSupply = totalSupply;
+        uint256 _totalAssets = totalAssets;
+        for (uint256 i = 0; i < _request.puppets.length; i++) {
+            address _puppet = _request.puppets[i];
+            uint256 _puppetAmountIn = _request.puppetsAmountsIn[i];
+            uint256 _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
+
+            participantShares.set(_puppet, _puppetShares);
+
+            _totalSupply += _puppetShares;
+            _totalAssets += _puppetAmountIn;
+        }
+
+        uint256 _traderAmountIn = _request.traderAmountIn;
+        uint256 _traderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
+
+        EnumerableMap.set(participantShares, trader, _traderShares);
+
+        _totalSupply += _traderShares;
+        _totalAssets += _traderAmountIn;
+
+        totalSupply = _totalSupply;
+        totalAssets = _totalAssets;
     }
 
     // ============================================================================================
