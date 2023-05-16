@@ -21,6 +21,17 @@ contract Route is ReentrancyGuard, IRoute {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
+    struct PositionRequest {
+        uint256 _puppetsTotalAmountIn,
+        uint256 _traderShares,
+        uint256 _traderAmountIn,
+        uint256 _totalSupply,
+        uint256 _totalAssets,
+        uint256[] _puppetsShares,
+        uint256[] _puppetsAmountsIn,
+        address[] _puppets
+    }
+
     uint256 totalSupply;
     uint256 totalAssets;
     uint256 realisedPnl; // realised P&L at the start of a new position. used to calculate the performance fee 
@@ -82,13 +93,13 @@ contract Route is ReentrancyGuard, IRoute {
 
         isWaitingForCallback = true;
 
-        uint256 _traderAmountIn;
-        uint256 _puppetsAmountIn;
         address _inputValidator = orchestrator.getInputValidator();
         if (_isIncrease) {
-            _traderAmountIn = _getTraderAssetsAndAllocateShares(_traderSwapData);
-            _puppetsAmountIn = _getPuppetsAssetsAndAllocateShares(_traderAmountIn);
-            _requestKey = _createIncreasePositionRequest(_traderPositionData, _traderAmountIn, _puppetsAmountIn);
+            uint256 _traderAmountIn;
+            uint256 _puppetsAmountIn;
+            uint256 _requestIndex;
+            (_traderAmountIn, _puppetsAmountIn, _totalSupply, _totalAssets, _requestIndex) = _getAssetsAndAllocateShares(_traderSwapData);
+            _requestKey = _createIncreasePositionRequest(_traderPositionData, _traderAmountIn, _puppetsAmountIn, _requestIndex);
         } else {
             IInputValidator(_inputValidator).validateSwapPath(_traderSwapData, collateralToken);
             traderRepaymentData = _traderSwapData;
@@ -130,24 +141,30 @@ contract Route is ReentrancyGuard, IRoute {
     // Callback Functions
     // ============================================================================================
 
-    function approvePositionRequest() external override nonReentrant onlyCallbackTarget {
-        isWaitingForCallback = false;
-        isPositionOpen = true;
+    function callback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant onlyCallbackTarget {
+        if (_isExecuted) {
+            isWaitingForCallback = false;
+            isPositionOpen = true;
+            
+            _executeRequest(_requestKey);
 
-        // used to limit the number of position that can be opened in a given time period
-        _updateLastPositionOpenedTimestamp();
+            // used to limit the number of position that can be opened in a given time period
+            if (!_isOpenInterest()) _updateLastPositionOpenedTimestamp();
 
-        _repayBalance();
+            _repayBalance();
 
-        emit ApprovePositionRequest();
+            emit ApprovePositionRequest();
+        } else {
+            isWaitingForCallback = false;
+            
+            _repayBalance();
+            
+            emit RejectPositionRequest();
+        }
     }
 
-    function rejectPositionRequest() external override nonReentrant onlyCallbackTarget {
-        isWaitingForCallback = false;
-
-        _repayBalance();
-
-        emit RejectPositionRequest();
+    function _executeRequest(bytes32 _requestKey) internal {
+        // TODO - get request data for the request key and assign shares to participants
     }
 
     // ============================================================================================
@@ -177,7 +194,17 @@ contract Route is ReentrancyGuard, IRoute {
     // Internal Functions
     // ============================================================================================
 
-    function _getTraderAssetsAndAllocateShares(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn) {
+    function _getAssetsAndAllocateShares(bytes32 _requestKey, bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn, uint256 _puppetsTotalAmountIn, uint256 _totalAssets, uint256 _totalSupply) {
+        uint256 _totalSupply;
+        uint256 _totalAssets;
+
+        (_traderShares, _traderAmountIn, _totalSupply, _totalAssets) = _getTraderAssetsAndAllocateShares(_traderSwapData);
+        (_puppets, _puppetsShares, _puppetsAmountsIn, _puppetsTotalAmountIn, _totalSupply, _totalAssets) = _getPuppetsAssetsAndAllocateShares(_traderAmountIn, _totalSupply, _totalAssets);
+
+        _storePositionRequest(_requestKey, _puppets, _puppetsShares, _puppetsAmountsIn, _puppetsTotalAmountIn, _traderShares, _traderAmountIn, _totalSupply, _totalAssets);
+    }
+
+    function _getTraderAssetsAndAllocateShares(bytes memory _traderSwapData) internal returns (uint256 _traderShares, uint256 _traderAmountIn, uint256 _totalSupply, uint256 _totalAssets) {
         (address[] memory _path, uint256 _amount, uint256 _minOut) = abi.decode(_traderSwapData, (address[], uint256, uint256));
 
         if (_amount > 0) {
@@ -199,27 +226,23 @@ contract Route is ReentrancyGuard, IRoute {
                 _traderAmountIn = IERC20(_toToken).balanceOf(address(this)) - _before;
             }
 
-            uint256 _traderShares = _convertToShares(totalAssets, totalSupply, _traderAmountIn);
-
-            EnumerableMap.set(participantShares, _trader, _traderShares);
-
-            totalSupply += _traderShares;
-            totalAssets += _traderAmountIn;
+            _traderShares = _convertToShares(0, 0, _traderAmountIn);
+            
+            _totalSupply += _traderShares;
+            _totalAssets += _traderAmountIn;
 
             emit TraderAssetsAndSharesAllocated(_traderAmountIn, _traderShares);
         }
     }
 
-    function _getPuppetsAssetsAndAllocateShares(uint256 _traderAmountIn) internal returns (uint256 _puppetsAmountIn) {
+    function _getPuppetsAssetsAndAllocateShares(uint256 _traderAmountIn, uint256 _totalSupply, uint256 _totalAssets) internal returns (address[] memory _puppets, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmountsIn, uint256 _puppetsTotalAmountIn, _totalSupply, _totalAssets) {
         if (_traderAmountIn > 0) {
             uint256 _totalManagementFee;
             uint256 _managementFeePercentage = orchestrator.getManagementFeePercentage();
-            uint256 _totalSupply = totalSupply;
-            uint256 _totalAssets = totalAssets;
             address _collateralToken = collateralToken;
             bool _isOI = _isOpenInterest();
             bytes32 _routeKey = orchestrator.getRouteKey(trader, _collateralToken, indexToken, isLong);
-            address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
+            _puppets = orchestrator.getPuppetsForRoute(_routeKey);
             for (uint256 i = 0; i < _puppets.length; i++) {
                 address _puppet = _puppets[i];
                 if (!_isOI && !orchestrator.canOpenNewPosition(address(this), _puppet)) {
@@ -238,7 +261,7 @@ contract Route is ReentrancyGuard, IRoute {
                     continue;
                 }
 
-                _puppetsAmountIn += _puppetAmountIn;
+                _puppetsTotalAmountIn += _puppetAmountIn;
 
                 if (_managementFeePercentage > 0) {
                     uint256 _managementFee = (_puppetAmountIn * _managementFeePercentage) / 10000;
@@ -249,22 +272,38 @@ contract Route is ReentrancyGuard, IRoute {
 
                 uint256 _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
 
-                EnumerableMap.set(participantShares, _puppet, _puppetShares);
+                _puppetsShares.push(_puppetShares);
+                _puppetsAmountIn.push(_puppetAmountIn);
 
                 _totalSupply += _puppetShares;
                 _totalAssets += _puppetAmountIn;
             }
 
-            totalSupply = _totalSupply;
-            totalAssets = _totalAssets;
-
             // pull funds from Orchestrator
-            orchestrator.sendFunds(_puppetsAmountIn, _collateralToken, address(this));
+            orchestrator.sendFunds(_puppetsTotalAmountIn, _collateralToken, address(this));
 
-            // send management fee to owner
+            // send management fee to owner // TODO - do that only after approval
             if (_totalManagementFee > 0) IERC20(_collateralToken).safeTransfer(owner, _totalManagementFee);
 
-            emit PuppetsAssetsAndSharesAllocated(_puppetsAmountIn, _totalManagementFee);
+            emit PuppetsAssetsAndSharesAllocated(_puppetsTotalAmountIn, _totalManagementFee);
+        }
+    }
+
+    function _storePositionRequest(address[] memory _puppets, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmountsIn, uint256 _puppetsTotalAmountIn, uint256 _traderShares, uint256 _traderAmountIn, uint256 _totalSupply, uint256 _totalAssets) internal {
+        if (_traderAmountIn > 0) {
+            PositionRequest memory _request = PositionRequest({
+                _puppetsTotalAmountIn: _puppetsTotalAmountIn,
+                _traderShares: _traderShares,
+                _traderAmountIn: _traderAmountIn,
+                _totalSupply: _totalSupply,
+                _totalAssets: _totalAssets,
+                _puppetsShares: _puppetsShares,
+                _puppetsAmountsIn: _puppetsAmountsIn,
+                _puppets: _puppets
+            });
+
+            positionRequests[positionRequestsIndex] = _request;
+            positionRequestsIndex += 1;
         }
     }
 
@@ -290,6 +329,8 @@ contract Route is ReentrancyGuard, IRoute {
             orchestrator.getReferralCode(),
             orchestrator.getCallbackTarget()
         );
+
+        requestKeyToIndex[_requestKey] = positionRequestsIndex - 1;
 
         orchestrator.updateRequestKeyToRoute(_requestKey);
 
@@ -327,6 +368,7 @@ contract Route is ReentrancyGuard, IRoute {
     }
 
     function _repayBalance() internal {
+        // TODO - check if we repay balance on a position request that failed, if so, use it's request share data
         address _collateralToken = collateralToken;
         uint256 _totalAssets = IERC20(_collateralToken).balanceOf(address(this));
         if (_totalAssets > 0) {
