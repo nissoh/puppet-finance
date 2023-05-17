@@ -13,9 +13,7 @@ interface IRoute {
 
     function onLiquidation() external;
 
-    function approvePositionRequest() external;
-
-    function rejectPositionRequest() external;
+    function callback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external;
 
     function approvePlugin() external;
 

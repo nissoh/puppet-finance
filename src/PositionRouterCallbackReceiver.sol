@@ -39,14 +39,10 @@ contract PositionRouterCallbackReceiver is IPositionRouterCallbackReceiver {
     // GMXPositionRouter Functions
     // ============================================================================================
 
-    function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool) external override onlyGMXPositionRouter {
+    function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external override onlyGMXPositionRouter {
         IRoute _route = IRoute(orchestrator.getRouteForRequestKey(_requestKey));
 
-        if (_isExecuted) {
-            _route.approvePositionRequest();
-        } else {
-            _route.rejectPositionRequest();
-        }
+        _route.callback(_requestKey, _isExecuted, _isIncrease);
 
         emit GMXPositionCallback(_requestKey, address(_route), _isExecuted);
     }

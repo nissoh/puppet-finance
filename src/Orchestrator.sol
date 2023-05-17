@@ -28,6 +28,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
     uint256 public solvencyMargin; // require puppet's balance to be `solvencyMargin` times more than the amount of his total allowances
     uint256 public managementFeePercentage;
+    uint256 public performanceFeePercentage;
 
     address public owner;
     address private prizePoolDistributor;
@@ -200,6 +201,10 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         return managementFeePercentage;
     }
 
+    function getPerformanceFeePercentage() external view returns (uint256) {
+        return performanceFeePercentage;
+    }
+
     // ============================================================================================
     // Trader Functions
     // ============================================================================================
@@ -275,7 +280,6 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
             Route _route = Route(payable(_routeInfo.route));
             if (!_routeInfo.isRegistered) revert RouteNotRegistered();
-            if (_route.isWaitingForCallback()) revert WaitingForCallback();
             if (_route.isPositionOpen()) revert PositionIsOpen();
 
             if (_sign) {
@@ -379,10 +383,14 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         emit SetPuppetUtils(_prizePoolDistributor, _callbackTarget, _inputValidator, _keeper, _solvencyMargin, _referralCode);
     }
 
-    function setManagementFeePercentage(uint256 _percentage) external onlyOwner {
-        if (_percentage > 100) revert InvalidPercentage(); // up to 1% allowed
+    function setFees(uint256 _managementFeePercentage, uint256 _performanceFeePercentage) external onlyOwner {
+        if (_managementFeePercentage > 100) revert InvalidPercentage(); // up to 1% allowed
+        if (_performanceFeePercentage > 500) revert InvalidPercentage(); // up to 5% allowed
 
-        managementFeePercentage = _percentage;
+        managementFeePercentage = _managementFeePercentage;
+        performanceFeePercentage = _performanceFeePercentage;
+
+        emit SetFees(_managementFeePercentage, _performanceFeePercentage);
     }
 
     function setOwner(address _owner) external onlyOwner {
