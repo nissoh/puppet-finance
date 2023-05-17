@@ -189,25 +189,62 @@ contract Route is ReentrancyGuard, IRoute {
     // Internal Functions
     // ============================================================================================
 
-    function _getAssetsAndAllocateShares(bytes memory _traderSwapData) internal returns (uint256, uint256) {
-        (, uint256 _amount,) = abi.decode(_traderSwapData, (address[], uint256, uint256));
+    function _getAssetsAndAllocateShares(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn, uint256 _puppetsAmountIn) {
+        (,uint256 _amount,) = abi.decode(_traderSwapData, (address[], uint256, uint256));
         if (_amount > 0) {
-            (
-                uint256 _traderShares,
-                uint256 _traderAmountIn,
-                uint256 _totalSupply,
-                uint256 _totalAssets
-            ) = _getTraderAssetsAndAllocateShares(_traderSwapData);
+            // 1. get trader assets and allocate shares
+            _traderAmountIn = _getTraderAssets(_traderSwapData);
 
-            (
-                address[] memory _puppets,
-                uint256[] memory _puppetsShares,
-                uint256[] memory _puppetsAmounts,
-                uint256 _puppetsAmountIn,
-                uint256 _totalSupply,
-                uint256 _totalAssets
-            ) = _getPuppetsAssetsAndAllocateShares(_traderAmountIn, _totalSupply, _totalAssets);
+            uint256 _totalSupply;
+            uint256 _totalAssets;
 
+            uint256 _traderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
+        
+            _totalSupply = _traderShares;
+            _totalAssets = _traderAmountIn;
+
+            // 2. get puppets assets and allocate shares
+            address _collateralToken = collateralToken;
+            bool _isOI = _isOpenInterest();
+            bytes32 _routeKey = orchestrator.getRouteKey(trader, _collateralToken, indexToken, isLong);
+            uint256[] memory _puppetsShares;
+            uint256[] memory _puppetsAmounts;
+            address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
+            for (uint256 i = 0; i < _puppets.length; i++) {
+                address _puppet = _puppets[i];
+                if (!_isOI && !orchestrator.canOpenNewPosition(address(this), _puppet)) {
+                    delete _puppets[i];
+                    orchestrator.liquidatePuppet(_puppet, _routeKey);
+                    continue;
+                }
+
+                uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
+                uint256 _puppetAmountIn = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
+
+                if (_puppetAmountIn > _traderAmountIn) _puppetAmountIn = _traderAmountIn;
+
+                if (orchestrator.isPuppetSolvent(_collateralToken, _puppet)) {
+                    orchestrator.debitPuppetAccount(_puppetAmountIn, _collateralToken, _puppet);
+                } else {
+                    delete _puppets[i];
+                    orchestrator.liquidatePuppet(_puppet, _routeKey);
+                    continue;
+                }
+
+                uint256 _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
+
+                _puppetsShares[_puppetsShares.length] = _puppetShares;
+                _puppetsAmounts[_puppetsAmounts.length] = _puppetAmountIn;
+
+                _puppetsAmountIn += _puppetAmountIn;
+
+                _totalSupply += _puppetShares;
+                _totalAssets += _puppetAmountIn;
+            }
+
+            orchestrator.sendFunds(_puppetsAmountIn, _collateralToken, address(this)); // pull funds from Orchestrator
+
+            // 3. store request data
             IncreasePositionRequest memory _request = IncreasePositionRequest({
                 puppetsAmountIn: _puppetsAmountIn,
                 traderAmountIn: _traderAmountIn,
@@ -220,17 +257,12 @@ contract Route is ReentrancyGuard, IRoute {
             });
 
             increasePositionRequests[increasePositionRequestsIndex] = _request;
-            increasePositionRequestsIndex += 1;
-
-            return (_traderAmountIn, _puppetsAmountIn);
-        } else {
-            increasePositionRequestsIndex += 1;
-
-            return (0, 0);
         }
+
+        increasePositionRequestsIndex += 1;
     }
 
-    function _getTraderAssetsAndAllocateShares(bytes memory _traderSwapData) internal returns (uint256, uint256, uint256, uint256) {
+    function _getTraderAssets(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn) {
         (address[] memory _path, uint256 _amount, uint256 _minOut) = abi.decode(_traderSwapData, (address[], uint256, uint256));
 
         address _trader = trader;
@@ -238,10 +270,6 @@ contract Route is ReentrancyGuard, IRoute {
         if (!isETH) IERC20(_fromToken).safeTransferFrom(_trader, address(this), _amount);
         isETH = false;
 
-        uint256 _traderAmountIn;
-        uint256 _traderShares;
-        uint256 _totalAssets;
-        uint256 _totalSupply;
         if (_fromToken == collateralToken) {
             _traderAmountIn = _amount;
         } else {
@@ -255,74 +283,6 @@ contract Route is ReentrancyGuard, IRoute {
             IGMXRouter(_router).swap(_path, _amount, _minOut, address(this));
             _traderAmountIn = IERC20(_toToken).balanceOf(address(this)) - _before;
         }
-
-        _traderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
-        
-        _totalSupply += _traderShares;
-        _totalAssets += _traderAmountIn;
-
-        return (_traderShares, _traderAmountIn, _totalSupply, _totalAssets);
-    }
-
-    function _getPuppetsAssetsAndAllocateShares(
-        uint256 _traderAmountIn,
-        uint256 _totalSupply,
-        uint256 _totalAssets
-    ) internal returns (address[] memory, uint256[] memory, uint256[] memory, uint256, uint256, uint256) {
-        uint256 _puppetsAmountIn;
-        uint256 _totalManagementFee;
-        uint256 _managementFeePercentage = orchestrator.getManagementFeePercentage();
-        address _collateralToken = collateralToken;
-        bool _isOI = _isOpenInterest();
-        bytes32 _routeKey = orchestrator.getRouteKey(trader, _collateralToken, indexToken, isLong);
-        uint256[] storage _puppetsShares;
-        uint256[] storage _puppetsAmounts;
-        address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
-        for (uint256 i = 0; i < _puppets.length; i++) {
-            address _puppet = _puppets[i];
-            if (!_isOI && !orchestrator.canOpenNewPosition(address(this), _puppet)) {
-                delete _puppets[i];
-                orchestrator.liquidatePuppet(_puppet, _routeKey);
-            }
-
-            uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
-            uint256 _puppetAmountIn = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
-
-            if (_puppetAmountIn > _traderAmountIn) _puppetAmountIn = _traderAmountIn;
-
-            if (orchestrator.isPuppetSolvent(_collateralToken, _puppet)) {
-                orchestrator.debitPuppetAccount(_puppetAmountIn, _collateralToken, _puppet);
-            } else {
-                delete _puppets[i];
-                orchestrator.liquidatePuppet(_puppet, _routeKey);
-                continue;
-            }
-
-            _puppetsAmountIn += _puppetAmountIn;
-
-            if (_managementFeePercentage > 0) {
-                uint256 _managementFee = (_puppetAmountIn * _managementFeePercentage) / 10000;
-
-                _totalManagementFee += _managementFee;
-                _puppetAmountIn -= _managementFee;
-            }
-
-            uint256 _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
-
-            _puppetsShares.push(_puppetShares);
-            _puppetsAmounts.push(_puppetAmountIn);
-
-            _totalSupply += _puppetShares;
-            _totalAssets += _puppetAmountIn;
-        }
-
-        // pull funds from Orchestrator
-        orchestrator.sendFunds(_puppetsAmountIn, _collateralToken, address(this));
-
-        // send management fee to owner // TODO - do that only after approval
-        if (_totalManagementFee > 0) IERC20(_collateralToken).safeTransfer(owner, _totalManagementFee);
-
-        return (_puppets, _puppetsShares, _puppetsAmounts, _puppetsAmountIn, _totalSupply, _totalAssets);
     }
 
     function _executeRequest(bytes32 _requestKey) internal {
@@ -533,7 +493,7 @@ contract Route is ReentrancyGuard, IRoute {
                 _totalAssets -= _assets;
             }
 
-            orchestrator.sendFunds(_performanceFeeAmount, _collateralToken, orchestrator.getPrizePoolDistributor());
+            orchestrator.sendFunds(_performanceFeeAmount, _collateralToken, orchestrator.getRevenueDistributor());
         }
     }
 
@@ -590,6 +550,6 @@ contract Route is ReentrancyGuard, IRoute {
     // ============================================================================================
 
     receive() external payable {
-        if (orchestrator.getReferralRebatesSender() == msg.sender) payable(orchestrator.getPrizePoolDistributor()).sendValue(msg.value);
+        if (orchestrator.getReferralRebatesSender() == msg.sender) payable(orchestrator.getRevenueDistributor()).sendValue(msg.value);
     }
 }

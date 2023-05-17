@@ -39,11 +39,9 @@ interface IOrchestrator {
 
     function getKeeper() external view returns (address);
 
-    function getPrizePoolDistributor() external view returns (address);
+    function getRevenueDistributor() external view returns (address);
 
     function getReferralRebatesSender() external view returns (address);
-
-    function getManagementFeePercentage() external view returns (uint256);
 
     function getPerformanceFeePercentage() external view returns (uint256);
 
@@ -81,9 +79,9 @@ interface IOrchestrator {
 
     function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender) external;
 
-    function setPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external;
+    function setPuppetUtils(address _revenueDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external;
 
-    function setFees(uint256 _managementFeePercentage, uint256 _performanceFeePercentage) external;
+    function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external;
 
     function setOwner(address _owner) external;
 
@@ -103,9 +101,9 @@ interface IOrchestrator {
     event SendFunds(uint256 _amount, address indexed _asset, address indexed _receiver);
     event SetThrottleLimit(address indexed puppet, uint256 throttleLimit);
     event SetGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
-    event SetPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode);
+    event SetPuppetUtils(address _revenueDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode);
     event SetOwner(address _owner);
-    event SetFees(uint256 _managementFeePercentage, uint256 _performanceFeePercentage);
+    event SetPerformanceFeePercentage(uint256 _performanceFeePercentage);
 
     // ============================================================================================
     // Errors

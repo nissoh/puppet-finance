@@ -27,11 +27,10 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     }
 
     uint256 public solvencyMargin; // require puppet's balance to be `solvencyMargin` times more than the amount of his total allowances
-    uint256 public managementFeePercentage;
     uint256 public performanceFeePercentage;
 
     address public owner;
-    address private prizePoolDistributor;
+    address private revenueDistributor;
     address private callbackTarget;
     address private inputValidator;
     address private keeper;
@@ -63,7 +62,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
     constructor(
         address _owner,
-        address _prizePoolDistributor,
+        address _revenueDistributor,
         address _callbackTarget,
         address _inputValidator,
         address _keeper,
@@ -75,7 +74,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         bytes32 _referralCode
     ) {
         owner = _owner;
-        prizePoolDistributor = _prizePoolDistributor;
+        revenueDistributor = _revenueDistributor;
         callbackTarget = _callbackTarget;
         inputValidator = _inputValidator;
         keeper = _keeper;
@@ -189,16 +188,12 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         return keeper;
     }
 
-    function getPrizePoolDistributor() external view returns (address) {
-        return prizePoolDistributor;
+    function getRevenueDistributor() external view returns (address) {
+        return revenueDistributor;
     }
 
     function getReferralRebatesSender() external view returns (address) {
         return referralRebatesSender;
-    }
-
-    function getManagementFeePercentage() external view returns (uint256) {
-        return managementFeePercentage;
     }
 
     function getPerformanceFeePercentage() external view returns (uint256) {
@@ -372,25 +367,23 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         emit SetGMXUtils(_gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, _referralRebatesSender);
     }
 
-    function setPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _inputValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external onlyOwner {
-        prizePoolDistributor = _prizePoolDistributor;
+    function setPuppetUtils(address _revenueDistributor, address _callbackTarget, address _inputValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external onlyOwner {
+        revenueDistributor = _revenueDistributor;
         callbackTarget = _callbackTarget;
         inputValidator = _inputValidator;
         keeper = _keeper;
         solvencyMargin = _solvencyMargin;
         referralCode = _referralCode;
 
-        emit SetPuppetUtils(_prizePoolDistributor, _callbackTarget, _inputValidator, _keeper, _solvencyMargin, _referralCode);
+        emit SetPuppetUtils(_revenueDistributor, _callbackTarget, _inputValidator, _keeper, _solvencyMargin, _referralCode);
     }
 
-    function setFees(uint256 _managementFeePercentage, uint256 _performanceFeePercentage) external onlyOwner {
-        if (_managementFeePercentage > 100) revert InvalidPercentage(); // up to 1% allowed
+    function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external onlyOwner {
         if (_performanceFeePercentage > 500) revert InvalidPercentage(); // up to 5% allowed
 
-        managementFeePercentage = _managementFeePercentage;
         performanceFeePercentage = _performanceFeePercentage;
 
-        emit SetFees(_managementFeePercentage, _performanceFeePercentage);
+        emit SetPerformanceFeePercentage(_performanceFeePercentage);
     }
 
     function setOwner(address _owner) external onlyOwner {

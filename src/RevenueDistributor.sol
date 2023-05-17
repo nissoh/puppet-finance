@@ -7,7 +7,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
 
-contract PrizePoolDistributor is ReentrancyGuard {
+contract RevenueDistributor is ReentrancyGuard {
 
     using Address for address payable;
 
