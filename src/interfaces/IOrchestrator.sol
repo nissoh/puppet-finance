@@ -45,6 +45,8 @@ interface IOrchestrator {
 
     function getManagementFeePercentage() external view returns (uint256);
 
+    function getPerformanceFeePercentage() external view returns (uint256);
+
     // ============================================================================================
     // Mutated Functions
     // ============================================================================================
@@ -81,7 +83,7 @@ interface IOrchestrator {
 
     function setPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external;
 
-    function setManagementFeePercentage(uint256 _percentage) external;
+    function setFees(uint256 _managementFeePercentage, uint256 _performanceFeePercentage) external;
 
     function setOwner(address _owner) external;
 
@@ -103,6 +105,7 @@ interface IOrchestrator {
     event SetGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
     event SetPuppetUtils(address _prizePoolDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode);
     event SetOwner(address _owner);
+    event SetFees(uint256 _managementFeePercentage, uint256 _performanceFeePercentage);
 
     // ============================================================================================
     // Errors
