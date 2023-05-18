@@ -7,23 +7,31 @@ interface IRoute {
     // Mutated Functions
     // ============================================================================================
 
+    // trader
+
     function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, bool _isIncrease) external payable returns (bytes32 _requestKey);
 
-    function createIncreasePositionRequestETH(bytes memory _traderPositionData, uint256 _minOut) external payable returns (bytes32 _requestKey);
+    function createAddCollateralRequestETH(bytes memory _traderPositionData, uint256 _minOut) external payable returns (bytes32 _requestKey);
 
-    function onLiquidation() external;
+    // keeper
 
-    function callback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external;
+    function liquidate() external;
+
+    // owner
 
     function approvePlugin() external;
 
     function setOrchestrator(address _orchestrator) external;
+
+    function updateGMXInfo() external;
 
     function rescueStuckTokens(address _token, address _to) external;
 
     // ============================================================================================
     // Events
     // ============================================================================================
+
+    // TODO - clean events & errors
 
     event Liquidated();
     event ApprovePositionRequest();
@@ -37,13 +45,16 @@ interface IRoute {
     event StuckTokensRescued(address token, address to);
     event PuppetsAssetsAndSharesAllocated(uint256 puppetsAmountIn, uint256 totalManagementFee);
     event TraderAssetsAndSharesAllocated(uint256 traderAmountIn, uint256 traderShares);
+    event CallbackReceived(bytes32 indexed _requestKey, bool indexed _isExecuted, bool indexed _isIncrease);
+    event GMXInfoUpdated();
+    event GlobalInfoUpdated();
 
     // ============================================================================================
     // Errors
     // ============================================================================================
 
     error WaitingForCallback();
-    error NotCallbackTarget();
+    error NotCallbackCaller();
     error NotOwner();
     error KeyError();
     error NotKeeper();
@@ -52,4 +63,9 @@ interface IRoute {
     error PositionStillAlive();
     error NotTrader();
     error InvalidPath();
+    error InvalidValue();
+    error InvalidMaxAmount();
+    error InvalidPathLength();
+    error InvalidTokenIn();
+    error Paused();
 }

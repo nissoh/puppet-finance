@@ -8,9 +8,10 @@ import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {Route} from "./Route.sol";
-
+import {IWETH} from "./interfaces/IWETH.sol";
 import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
+
+import {Route} from "./Route.sol";
 
 contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
@@ -26,21 +27,15 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         EnumerableSet.AddressSet puppets;
     }
 
-    uint256 public solvencyMargin; // require puppet's balance to be `solvencyMargin` times more than the amount of his total allowances
     uint256 public performanceFeePercentage;
 
     address public owner;
     address private revenueDistributor;
-    address private callbackTarget;
-    address private inputValidator;
     address private keeper;
-    address private referralRebatesSender;
-    address private gmxRouter;
-    address private gmxReader;
-    address private gmxVault;
-    address private gmxPositionRouter;
 
-    address internal constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // the address representing ETH
+    address private constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
+
+    bool public paused; // used to pause all routes on update of gmx/global utils
 
     bytes32 private referralCode;
 
@@ -54,7 +49,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     mapping(address => mapping(address => uint256)) public lastPositionOpenedTimestamp; // Route => puppet => timestamp
     mapping(address => mapping(address => uint256)) public puppetDepositAccount; // puppet => asset => balance
 
-    mapping(bytes32 => address) private requestKeyToRoute; // GMX position key => Route address
+    GMXInfo private gmxInfo;
 
     // ============================================================================================
     // Constructor
@@ -63,31 +58,29 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     constructor(
         address _owner,
         address _revenueDistributor,
-        address _callbackTarget,
-        address _inputValidator,
         address _keeper,
-        address _referralRebatesSender,
         address _gmxRouter,
         address _gmxReader,
         address _gmxVault,
         address _gmxPositionRouter,
+        address _gmxCallbackCaller,
+        address _gmxReferralRebatesSender,
         bytes32 _referralCode
     ) {
         owner = _owner;
         revenueDistributor = _revenueDistributor;
-        callbackTarget = _callbackTarget;
-        inputValidator = _inputValidator;
         keeper = _keeper;
 
-        referralRebatesSender = _referralRebatesSender;
-        gmxRouter = _gmxRouter;
-        gmxReader = _gmxReader;
-        gmxVault = _gmxVault;
-        gmxPositionRouter = _gmxPositionRouter;
+        GMXInfo storage _gmxInfo = gmxInfo;
+
+        _gmxInfo.gmxRouter = _gmxRouter;
+        _gmxInfo.gmxReader = _gmxReader;
+        _gmxInfo.gmxVault = _gmxVault;
+        _gmxInfo.gmxPositionRouter = _gmxPositionRouter;
+        _gmxInfo.gmxCallbackCaller = _gmxCallbackCaller;
+        _gmxInfo.gmxReferralRebatesSender = _gmxReferralRebatesSender;
 
         referralCode = _referralCode;
-
-        solvencyMargin = 2; // require puppet's balance to be 2x the amount of his total allowances
     }
 
     // ============================================================================================
@@ -108,6 +101,22 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // View Functions
     // ============================================================================================
 
+    // global
+
+    function getGlobalInfo() external view returns (bytes32, uint256, address, address) {
+        return (referralCode, performanceFeePercentage, keeper, revenueDistributor);
+    }
+
+    function getRoutes() external view returns (address[] memory) {
+        return routes;
+    }
+
+    function getIsPaused() external view returns (bool) {
+        return paused;
+    }
+
+    // route
+
     function getRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
     }
@@ -121,27 +130,10 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         }
     }
 
-    function isPuppetSolvent(address _asset, address _puppet) public view returns (bool) {
-        uint256 totalAllowance;
-        uint256 _puppetBalance = puppetDepositAccount[_asset][_puppet];
-        EnumerableMap.AddressToUintMap storage _allowances = puppetAllowances[_puppet];
-        for (uint256 i = 0; i < EnumerableMap.length(_allowances); i++) {
-            (address _route, uint256 _allowancePercentage) = EnumerableMap.at(_allowances, i);
-            if (Route(payable(_route)).collateralToken() == _asset) {
-                uint256 _allowance = (_puppetBalance * _allowancePercentage) / 100;
-                totalAllowance += _allowance;
-            }
-        }
-
-        return _puppetBalance >= (totalAllowance * solvencyMargin);
-    }
+    // puppet
 
     function canOpenNewPosition(address _route, address _puppet) public view returns (bool) {
         return (block.timestamp - lastPositionOpenedTimestamp[_route][_puppet]) >= throttleLimits[_puppet];
-    }
-
-    function getRouteForRequestKey(bytes32 _requestKey) external view returns (address) {
-        return requestKeyToRoute[_requestKey];
     }
 
     function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance) {
@@ -152,52 +144,10 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         return puppetDepositAccount[_asset][_puppet];
     }
 
-    function getRoutes() external view returns (address[] memory) {
-        return routes;
-    }
+    // gmx
 
-    function getGMXRouter() external view returns (address) {
-        return gmxRouter;
-    }
-
-    function getGMXReader() external view returns (address) {
-        return gmxReader;
-    }
-
-    function getGMXVault() external view returns (address) {
-        return gmxVault;
-    }
-
-    function getGMXPositionRouter() external view returns (address) {
-        return gmxPositionRouter;
-    }
-
-    function getCallbackTarget() external view returns (address) {
-        return callbackTarget;
-    }
-
-    function getReferralCode() external view returns (bytes32) {
-        return referralCode;
-    }
-
-    function getInputValidator() external view returns (address) {
-        return inputValidator;
-    }
-
-    function getKeeper() external view returns (address) {
-        return keeper;
-    }
-
-    function getRevenueDistributor() external view returns (address) {
-        return revenueDistributor;
-    }
-
-    function getReferralRebatesSender() external view returns (address) {
-        return referralRebatesSender;
-    }
-
-    function getPerformanceFeePercentage() external view returns (uint256) {
-        return performanceFeePercentage;
+    function getGMXInfo() external view returns (GMXInfo memory) {
+        return gmxInfo;
     }
 
     // ============================================================================================
@@ -255,8 +205,6 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         address _puppet = msg.sender;
         puppetDepositAccount[_asset][_puppet] -= _amount;
 
-        if (!isPuppetSolvent(_asset, _puppet)) revert InsufficientPuppetFunds();
-
         if (_isETH) {
             if (_asset != WETH) revert InvalidAsset();
             IWETH(_asset).withdraw(_amount);
@@ -296,8 +244,6 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
                 }
             }
         }
-
-        if (!isPuppetSolvent(_collateralToken, _puppet)) revert InsufficientPuppetFunds();
 
         emit UpdateRoutesSubscription(_traders, _allowances, _puppet, _collateralToken, _indexToken, _isLong, _sign);
     }
@@ -340,12 +286,6 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         emit UpdateLastPositionOpenedTimestamp(_route, _puppet, block.timestamp);
     }
 
-    function updateRequestKeyToRoute(bytes32 _requestKey) external onlyRoute {
-        requestKeyToRoute[_requestKey] = msg.sender;
-
-        emit UpdateRequestKeyToRoute(_requestKey, msg.sender);
-    }
-
     function sendFunds(uint256 _amount, address _asset, address _receiver) external onlyRoute {
         IERC20(_asset).safeTransfer(_receiver, _amount);
 
@@ -356,25 +296,24 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // Owner Functions
     // ============================================================================================
 
-    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender) external onlyOwner {
-        gmxRouter = _gmxRouter;
-        gmxReader = _gmxReader;
-        gmxVault = _gmxVault;
-        gmxPositionRouter = _gmxPositionRouter;
-        referralRebatesSender = _referralRebatesSender;
+    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _gmxReferralRebatesSender) external onlyOwner {
+        GMXInfo storage _gmxInfo = gmxInfo;
 
-        emit SetGMXUtils(_gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, _referralRebatesSender);
+        _gmxInfo.gmxRouter = _gmxRouter;
+        _gmxInfo.gmxReader = _gmxReader;
+        _gmxInfo.gmxVault = _gmxVault;
+        _gmxInfo.gmxPositionRouter = _gmxPositionRouter;
+        _gmxInfo.gmxReferralRebatesSender = _gmxReferralRebatesSender;
+
+        emit SetGMXUtils(_gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, _gmxReferralRebatesSender);
     }
 
-    function setPuppetUtils(address _revenueDistributor, address _callbackTarget, address _inputValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external onlyOwner {
+    function setPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode) external onlyOwner {
         revenueDistributor = _revenueDistributor;
-        callbackTarget = _callbackTarget;
-        inputValidator = _inputValidator;
         keeper = _keeper;
-        solvencyMargin = _solvencyMargin;
         referralCode = _referralCode;
 
-        emit SetPuppetUtils(_revenueDistributor, _callbackTarget, _inputValidator, _keeper, _solvencyMargin, _referralCode);
+        emit SetPuppetUtils(_revenueDistributor, _keeper, _referralCode);
     }
 
     function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external onlyOwner {
@@ -389,6 +328,12 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         owner = _owner;
 
         emit SetOwner(_owner);
+    }
+
+    function pause(bool _pause) external onlyOwner {
+        paused = _pause;
+
+        emit Paused(_pause);
     }
 
     // ============================================================================================

@@ -3,47 +3,44 @@ pragma solidity 0.8.17;
 
 interface IOrchestrator {
 
+    struct GMXInfo {
+        address gmxRouter;
+        address gmxReader;
+        address gmxVault;
+        address gmxPositionRouter;
+        address gmxCallbackCaller;
+        address gmxReferralRebatesSender;
+    }
+
     // ============================================================================================
     // View Functions
     // ============================================================================================
+
+    // global
+
+    function getGlobalInfo() external view returns (bytes32, uint256, address, address);
+
+    function getRoutes() external view returns (address[] memory);
+
+    function getIsPaused() external view returns (bool);
+
+    // route
 
     function getRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
 
     function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory);
 
-    function isPuppetSolvent(address _asset, address _puppet) external view returns (bool);
+    // puppet
 
     function canOpenNewPosition(address _route, address _puppet) external view returns (bool);
-
-    function getRouteForRequestKey(bytes32 _requestKey) external view returns (address);
 
     function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256);
 
     function getPuppetAccountBalance(address _asset, address _puppet) external view returns (uint256);
 
-    function getRoutes() external view returns (address[] memory);
+    // gmx
 
-    function getGMXRouter() external view returns (address);
-
-    function getGMXReader() external view returns (address);
-
-    function getGMXVault() external view returns (address);
-
-    function getGMXPositionRouter() external view returns (address);
-
-    function getCallbackTarget() external view returns (address);
-
-    function getReferralCode() external view returns (bytes32);
-
-    function getInputValidator() external view returns (address);
-
-    function getKeeper() external view returns (address);
-
-    function getRevenueDistributor() external view returns (address);
-
-    function getReferralRebatesSender() external view returns (address);
-
-    function getPerformanceFeePercentage() external view returns (uint256);
+    function getGMXInfo() external view returns (GMXInfo memory);
 
     // ============================================================================================
     // Mutated Functions
@@ -57,7 +54,7 @@ interface IOrchestrator {
 
     function depositToAccount(uint256 _amount, address _asset, address _puppet) external payable;
 
-    function withdrawFromAccount(uint256 _amount, address _asset, address _receiver) external;
+    function withdrawFromAccount(uint256 _amount, address _asset, address _receiver, bool _isETH) external;
 
     function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external;
 
@@ -71,15 +68,13 @@ interface IOrchestrator {
 
     function updateLastPositionOpenedTimestamp(address _route, address _puppet) external;
 
-    function updateRequestKeyToRoute(bytes32 _requestKey) external;
-
     function sendFunds(uint256 _amount, address _asset, address _receiver) external;
 
     // Owner
 
     function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender) external;
 
-    function setPuppetUtils(address _revenueDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode) external;
+    function setPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode) external;
 
     function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external;
 
@@ -88,6 +83,8 @@ interface IOrchestrator {
     // ============================================================================================
     // Events
     // ============================================================================================
+
+    // TODO - clean events & errors
 
     event RegisterRoute(address indexed trader, address _route, address indexed collateralToken, address indexed indexToken, bool isLong);
     event DepositToAccount(uint256 amount, address indexed asset, address indexed caller, address indexed puppet);
@@ -101,9 +98,10 @@ interface IOrchestrator {
     event SendFunds(uint256 _amount, address indexed _asset, address indexed _receiver);
     event SetThrottleLimit(address indexed puppet, uint256 throttleLimit);
     event SetGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
-    event SetPuppetUtils(address _revenueDistributor, address _callbackTarget, address _positionValidator, address _keeper, uint256 _solvencyMargin, bytes32 _referralCode);
+    event SetPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode);
     event SetOwner(address _owner);
     event SetPerformanceFeePercentage(uint256 _performanceFeePercentage);
+    event Paused(bool indexed _paused);
 
     // ============================================================================================
     // Errors
@@ -123,4 +121,6 @@ interface IOrchestrator {
     error InvalidTokenAddress();
     error InvalidPercentage();
     error InvalidAssetAddress();
+    error InvalidAsset();
+    error ZeroAmountWETH();
 }
