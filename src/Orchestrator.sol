@@ -233,11 +233,12 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // ============================================================================================
 
     function depositToAccount(uint256 _amount, address _asset, address _puppet) external payable nonReentrant {
-        if (_amount == 0) revert ZeroAmount();
+        if (_amount == 0) revert ZeroAmountWETH();
 
         if (msg.value > 0) {
             if (_amount != msg.value) revert InvalidAmount();
-            if (_asset != ETH) revert InvalidAssetAddress();
+            if (_asset != WETH) revert InvalidAsset();
+            payable(_asset).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
         } else {
             if (msg.value != 0) revert InvalidAmount();
             IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
@@ -248,7 +249,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         emit DepositToAccount(_amount, _asset, msg.sender, _puppet);
     }
 
-    function withdrawFromAccount(uint256 _amount, address _asset, address _receiver) external nonReentrant {
+    function withdrawFromAccount(uint256 _amount, address _asset, address _receiver, bool _isETH) external nonReentrant {
         if (_amount == 0) revert ZeroAmount();
 
         address _puppet = msg.sender;
@@ -256,7 +257,9 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
 
         if (!isPuppetSolvent(_asset, _puppet)) revert InsufficientPuppetFunds();
 
-        if (_asset == ETH) {
+        if (_isETH) {
+            if (_asset != WETH) revert InvalidAsset();
+            IWETH(_asset).withdraw(_amount);
             payable(_receiver).sendValue(_amount);
         } else {
             IERC20(_asset).safeTransfer(_receiver, _amount);
@@ -278,7 +281,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
             if (_route.isPositionOpen()) revert PositionIsOpen();
 
             if (_sign) {
-                if (_allowances[i] > 100) revert InvalidAllowancePercentage();
+                if (_allowances[i] > 100 || _allowances[i] == 0) revert InvalidAllowancePercentage();
 
                 EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.route, _allowances[i]);
 
@@ -344,11 +347,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     }
 
     function sendFunds(uint256 _amount, address _asset, address _receiver) external onlyRoute {
-        if (_asset == ETH) {
-            payable(_receiver).sendValue(_amount);
-        } else {
-            IERC20(_asset).safeTransfer(_receiver, _amount);
-        }
+        IERC20(_asset).safeTransfer(_receiver, _amount);
 
         emit SendFunds(_amount, _asset, _receiver);
     }
