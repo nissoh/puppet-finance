@@ -1,19 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-import {IWETH} from "./interfaces/IWETH.sol";
-import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
-
 import {Route} from "./Route.sol";
 
-contract Orchestrator is ReentrancyGuard, IOrchestrator {
+import "./Base.sol";
+
+contract Orchestrator is Base, IOrchestrator {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
@@ -27,29 +20,19 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         EnumerableSet.AddressSet puppets;
     }
 
-    uint256 public performanceFeePercentage;
-
-    address public owner;
-    address private revenueDistributor;
-    address private keeper;
-
-    address private constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
-
+    // pause info
     bool public paused; // used to pause all routes on update of gmx/global utils
 
-    bytes32 private referralCode;
-
+    // routes info
     address[] private routes;
-
     mapping(bytes32 => RouteInfo) private routeInfo; // routeKey => RouteInfo
     mapping(address => bool) public isRoute; // Route => isRoute
-
-    mapping(address => uint256) public throttleLimits; // puppet => throttle limit (in seconds)
-    mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => Route => allowance percentage
     mapping(address => mapping(address => uint256)) public lastPositionOpenedTimestamp; // Route => puppet => timestamp
-    mapping(address => mapping(address => uint256)) public puppetDepositAccount; // puppet => asset => balance
 
-    GMXInfo private gmxInfo;
+    // puppets info
+    mapping(address => uint256) public throttleLimits; // puppet => throttle limit (in seconds)
+    mapping(address => mapping(address => uint256)) public puppetDepositAccount; // puppet => asset => balance
+    mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => Route => allowance percentage
 
     // ============================================================================================
     // Constructor
@@ -86,11 +69,6 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     // ============================================================================================
     // Modifiers
     // ============================================================================================
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert NotOwner();
-        _;
-    }
 
     modifier onlyRoute() {
         if (msg.sender != owner && !isRoute[msg.sender]) revert NotRoute();
@@ -151,7 +129,7 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
     }
 
     // ============================================================================================
-    // Trader Functions
+    // Trader Function
     // ============================================================================================
 
     // slither-disable-next-line reentrancy-no-eth
@@ -322,12 +300,6 @@ contract Orchestrator is ReentrancyGuard, IOrchestrator {
         performanceFeePercentage = _performanceFeePercentage;
 
         emit SetPerformanceFeePercentage(_performanceFeePercentage);
-    }
-
-    function setOwner(address _owner) external onlyOwner {
-        owner = _owner;
-
-        emit SetOwner(_owner);
     }
 
     function pause(bool _pause) external onlyOwner {

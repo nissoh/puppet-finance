@@ -1,7 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-interface IRoute {
+import {IPositionRouterCallbackReceiver} from "./IPositionRouterCallbackReceiver.sol";
+
+interface IRoute is IPositionRouterCallbackReceiver {
+
+    struct AddCollateralRequest{
+        uint256 puppetsAmountIn;
+        uint256 traderAmountIn;
+        uint256 traderShares;
+        uint256 totalSupply;
+        uint256 totalAssets;
+        uint256[] puppetsShares;
+        uint256[] puppetsAmounts;
+    }
 
     // ============================================================================================
     // Mutated Functions
@@ -25,8 +37,6 @@ interface IRoute {
 
     function updateGMXInfo() external;
 
-    function rescueStuckTokens(address _token, address _to) external;
-
     // ============================================================================================
     // Events
     // ============================================================================================
@@ -42,7 +52,6 @@ interface IRoute {
     event ResetPosition();
     event PluginApproved();
     event OrchestratorSet(address indexed _orchestrator);
-    event StuckTokensRescued(address token, address to);
     event PuppetsAssetsAndSharesAllocated(uint256 puppetsAmountIn, uint256 totalManagementFee);
     event TraderAssetsAndSharesAllocated(uint256 traderAmountIn, uint256 traderShares);
     event CallbackReceived(bytes32 indexed _requestKey, bool indexed _isExecuted, bool indexed _isIncrease);
@@ -55,7 +64,6 @@ interface IRoute {
 
     error WaitingForCallback();
     error NotCallbackCaller();
-    error NotOwner();
     error KeyError();
     error NotKeeper();
     error ZeroAmount();

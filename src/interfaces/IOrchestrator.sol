@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-interface IOrchestrator {
+import {IBase} from "./IBase.sol";
 
-    struct GMXInfo {
-        address gmxRouter;
-        address gmxReader;
-        address gmxVault;
-        address gmxPositionRouter;
-        address gmxCallbackCaller;
-        address gmxReferralRebatesSender;
-    }
+interface IOrchestrator is IBase {
 
     // ============================================================================================
     // View Functions
@@ -78,8 +71,6 @@ interface IOrchestrator {
 
     function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external;
 
-    function setOwner(address _owner) external;
-
     // ============================================================================================
     // Events
     // ============================================================================================
@@ -99,7 +90,6 @@ interface IOrchestrator {
     event SetThrottleLimit(address indexed puppet, uint256 throttleLimit);
     event SetGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
     event SetPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode);
-    event SetOwner(address _owner);
     event SetPerformanceFeePercentage(uint256 _performanceFeePercentage);
     event Paused(bool indexed _paused);
 
@@ -108,7 +98,6 @@ interface IOrchestrator {
     // ============================================================================================
 
     error RouteAlreadyRegistered();
-    error NotOwner();
     error NotRoute();
     error ZeroAmount();
     error InvalidAmount();

@@ -1,65 +1,30 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-
-import {IWETH} from "./interfaces/IWETH.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IGMXVault} from "./interfaces/IGMXVault.sol";
 import {IGMXReader} from "./interfaces/IGMXReader.sol";
-import {IPositionRouterCallbackReceiver} from "./interfaces/IPositionRouterCallbackReceiver.sol";
 
-import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
 import {IRoute} from "./interfaces/IRoute.sol";
 
-contract Route is ReentrancyGuard, Base, IPositionRouterCallbackReceiver, IRoute {
+import "./Base.sol";
+
+contract Route is Base, IRoute {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
 
-    struct AddCollateralRequest{
-        uint256 puppetsAmountIn;
-        uint256 traderAmountIn;
-        uint256 traderShares;
-        uint256 totalSupply;
-        uint256 totalAssets;
-        uint256[] puppetsShares;
-        uint256[] puppetsAmounts;
-    }
-
-    struct GMXInfo {
-        address gmxRouter;
-        address gmxReader;
-        address gmxVault;
-        address gmxPositionRouter;
-        address gmxCallbackCaller;
-        address gmxReferralRebatesSender;
-    }
-
-    GMXInfo private gmxInfo;
-
     uint256 public realisedPnl; // realised P&L at the start of a new position. used to calculate the performance fee
-    uint256 public performanceFeePercentage;
 
     uint256 private addCollateralRequestsIndex;
     uint256 private totalSupply;
     uint256 private totalAssets;
 
-    address public owner;
     address public trader;
     address public collateralToken;
     address public indexToken;
-    address public keeper;
-    address public revenueDistributor;
-
-    address private constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // the address representing ETH
-    address private constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
 
     bool public isLong;
     bool public isPositionOpen;
@@ -67,8 +32,6 @@ contract Route is ReentrancyGuard, Base, IPositionRouterCallbackReceiver, IRoute
     bool private isETHRequest;
 
     bytes private traderRepaymentData;
-
-    bytes32 private referralCode;
 
     mapping(bytes32 => uint256) public requestKeyToIndex; // requestKey => addCollateralRequestsIndex
     mapping(uint256 => AddCollateralRequest) public addCollateralRequests; // addCollateralIndex => AddCollateralRequest
@@ -99,11 +62,6 @@ contract Route is ReentrancyGuard, Base, IPositionRouterCallbackReceiver, IRoute
     // ============================================================================================
     // Modifiers
     // ============================================================================================
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert NotOwner();
-        _;
-    }
 
     modifier onlyCallbackCaller() {
         if (msg.sender != owner && msg.sender != gmxInfo.gmxCallbackCaller) revert NotCallbackCaller();
@@ -210,16 +168,9 @@ contract Route is ReentrancyGuard, Base, IPositionRouterCallbackReceiver, IRoute
 
         emit GMXInfoUpdated();
     }
-
-    function rescueStuckTokens(address _token, address _to) external onlyOwner {
-        if (address(this).balance > 0) payable(_to).sendValue(address(this).balance);
-        if (IERC20(_token).balanceOf(address(this)) > 0) IERC20(_token).safeTransfer(_to, IERC20(_token).balanceOf(address(this)));
-
-        emit StuckTokensRescued(_token, _to);
-    }
     
     // ============================================================================================
-    // Internal Functions
+    // Internal Mutated Functions
     // ============================================================================================
 
     function _getAssets(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn, uint256 _puppetsAmountIn) {
