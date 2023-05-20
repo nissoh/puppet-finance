@@ -57,6 +57,11 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event CallbackReceived(bytes32 indexed _requestKey, bool indexed _isExecuted, bool indexed _isIncrease);
     event GMXInfoUpdated();
     event GlobalInfoUpdated();
+    event ReferralRebatesSent(address indexed _revenueDistributor, uint256 _balance);
+    event RouteReseted();
+    event RepaidBalance(uint256 _totalAssets);
+    event CreatedDecreasePositionRequest(bytes32 indexed _requestKey, uint256 _minOut, uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee);
+    event CreatedIncreasePositionRequest(bytes32 indexed _requestKey, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee);
 
     // ============================================================================================
     // Errors

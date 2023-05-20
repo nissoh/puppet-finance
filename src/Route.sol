@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
+import {AggregatorV3Interface} from "@chainlink/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
 import {IVault} from "./interfaces/IVault.sol";
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
@@ -18,6 +20,7 @@ contract Route is Base, IRoute {
 
     uint256 public realisedPnl; // realised P&L at the start of a new position. used to calculate the performance fee
 
+    uint256 private priceFeedDecimals;
     uint256 private addCollateralRequestsIndex;
     uint256 private totalSupply;
     uint256 private totalAssets;
@@ -40,6 +43,8 @@ contract Route is Base, IRoute {
 
     IOrchestrator public orchestrator;
 
+    AggregatorV3Interface priceFeed;
+
     // ============================================================================================
     // Constructor
     // ============================================================================================
@@ -51,6 +56,10 @@ contract Route is Base, IRoute {
         collateralToken = _collateralToken;
         indexToken = _indexToken;
         isLong = _isLong;
+
+        (address _priceFeed, uint256 _decimals) = orchestrator.getPriceFeed(_collateralToken);
+        priceFeed = AggregatorV3Interface(_priceFeed);
+        priceFeedDecimals = _decimals;
 
         (referralCode, performanceFeePercentage, keeper, revenueDistributor) = orchestrator.getGlobalInfo();
 
@@ -68,6 +77,11 @@ contract Route is Base, IRoute {
         _;
     }
 
+    modifier onlyKeeper() {
+        if (msg.sender != owner && msg.sender != keeper) revert NotKeeper();
+        _;
+    }
+
     // ============================================================================================
     // Trader Functions
     // ============================================================================================
@@ -75,6 +89,8 @@ contract Route is Base, IRoute {
     function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, bool _isIncrease) public payable nonReentrant returns (bytes32 _requestKey) {
         if (msg.sender != trader) revert NotTrader();
         if (orchestrator.getIsPaused()) revert Paused();
+
+        if (!isETHRequest) _checkForReferralRebates();
 
         isPositionOpen = true;
 
@@ -101,6 +117,8 @@ contract Route is Base, IRoute {
         _path[1] = collateralToken;
         bytes memory _traderSwapData = abi.encodePacked(_path, _amount, _minOut);
 
+        _checkForReferralRebates();
+
         isETHRequest = true;
 
         payable(_weth).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
@@ -112,13 +130,16 @@ contract Route is Base, IRoute {
     // Keeper Function
     // ============================================================================================
 
-    function liquidate() external nonReentrant {
-        if (msg.sender != owner && msg.sender != keeper) revert NotKeeper();
+    function liquidate() external nonReentrant onlyKeeper {
         if (!_isLiquidated()) revert PositionStillAlive();
 
         _repayBalance(bytes32(0));
 
         emit Liquidated();
+    }
+
+    function checkForReferralRebates() external nonReentrant onlyKeeper {
+        _checkForReferralRebates();
     }
 
     // ============================================================================================
@@ -328,7 +349,7 @@ contract Route is Base, IRoute {
             _updateLastPositionOpenedTimestamp(); // used to limit the number of position that can be opened in a given time period
         }
 
-        emit CreateIncreasePosition(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
+        emit CreatedIncreasePositionRequest(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
     function _createDecreasePositionRequest(bytes memory _traderPositionData) internal returns (bytes32 _requestKey) {
@@ -354,7 +375,7 @@ contract Route is Base, IRoute {
             gmxInfo.gmxCallbackCaller
         );
 
-        emit CreateDecreasePosition(_requestKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
+        emit CreatedDecreasePositionRequest(_requestKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
     function _repayBalance(bytes32 _requestKey) internal {
@@ -407,7 +428,7 @@ contract Route is Base, IRoute {
             payable(trader).sendValue(_ethBalance);
         }
 
-        emit RepayBalance(_totalAssets);
+        emit RepaidBalance(_totalAssets);
     }
 
     function _repayTrader(uint256 _traderAssets, bool _isFailedRequest) internal {
@@ -445,14 +466,15 @@ contract Route is Base, IRoute {
             EnumerableMap.remove(participantShares, _key);
         }
 
-        emit ResetPosition();
+        emit RouteReseted();
     }
 
     function _chargePerformanceFee() internal {
-        uint256 _currentRealisedPnl = _getRealisedPnl();
-        uint256 _realisedPnlBefore = realisedPnl;
-        if (_currentRealisedPnl > _realisedPnlBefore && (_currentRealisedPnl - _realisedPnlBefore) > 0) {
-            uint256 _performanceFeeAmount = (_currentRealisedPnl - _realisedPnlBefore) * performanceFeePercentage / 10000;
+        (, int256 _price,,,) = priceFeed.latestRoundData();
+        uint256 _currentRealisedPnlInCollateral = _getRealisedPnl() * uint256(_price) / priceFeedDecimals;
+        uint256 _realisedPnlBeforeInCollateral = realisedPnl * uint256(_price) / priceFeedDecimals;
+        if (_currentRealisedPnlInCollateral > _realisedPnlBeforeInCollateral && (_currentRealisedPnlInCollateral - _realisedPnlBeforeInCollateral) > 0) {
+            uint256 _performanceFeeAmount = (_currentRealisedPnlInCollateral - _realisedPnlBeforeInCollateral) * performanceFeePercentage / 10000;
             uint256 _totalAssets = _performanceFeeAmount;
             uint256 _totalSupply = totalSupply;
             address _collateralToken = collateralToken;
@@ -479,6 +501,17 @@ contract Route is Base, IRoute {
         for (uint256 i = 0; i < _puppets.length; i++) {
             address _puppet = _puppets[i];
             orchestrator.updateLastPositionOpenedTimestamp(address(this), _puppet);
+        }
+    }
+
+    function _checkForReferralRebates() internal {
+        uint256 _balance = IERC20(WETH).balanceOf(address(this));
+        if (_balance > 0) {
+            address _revenueDistributor = revenueDistributor;
+            _approve(_revenueDistributor, WETH, _balance);
+            IERC20(WETH).safeTransfer(_revenueDistributor, _balance);
+
+            emit ReferralRebatesSent(_revenueDistributor, _balance);
         }
     }
 

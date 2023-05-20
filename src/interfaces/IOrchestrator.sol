@@ -13,6 +13,8 @@ interface IOrchestrator is IBase {
 
     function getGlobalInfo() external view returns (bytes32, uint256, address, address);
 
+    function getPriceFeed(address _asset) external view returns (address, uint256);
+
     function getRoutes() external view returns (address[] memory);
 
     function getIsPaused() external view returns (bool);
@@ -20,6 +22,8 @@ interface IOrchestrator is IBase {
     // route
 
     function getRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
+
+    function getRoute(bytes32 _routeKey) external view returns (address);
 
     function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory);
 
@@ -92,6 +96,7 @@ interface IOrchestrator is IBase {
     event SetPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode);
     event SetPerformanceFeePercentage(uint256 _performanceFeePercentage);
     event Paused(bool indexed _paused);
+    event SetPriceFeedsInfo(address[] _assets, address[] _priceFeeds, uint256[] _decimals);
 
     // ============================================================================================
     // Errors
@@ -112,4 +117,6 @@ interface IOrchestrator is IBase {
     error InvalidAssetAddress();
     error InvalidAsset();
     error ZeroAmountWETH();
+    error NoPriceFeedForAsset();
+    error ZeroAddress();
 }

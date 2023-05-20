@@ -20,8 +20,10 @@ contract Orchestrator is Base, IOrchestrator {
         EnumerableSet.AddressSet puppets;
     }
 
-    // pause info
-    bool public paused; // used to pause all routes on update of gmx/global utils
+    struct PriceFeedInfo {
+        address priceFeed;
+        uint256 decimals;
+    }
 
     // routes info
     address[] private routes;
@@ -33,6 +35,10 @@ contract Orchestrator is Base, IOrchestrator {
     mapping(address => uint256) public throttleLimits; // puppet => throttle limit (in seconds)
     mapping(address => mapping(address => uint256)) public puppetDepositAccount; // puppet => asset => balance
     mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => Route => allowance percentage
+
+    // settings
+    bool public paused; // used to pause all routes on update of gmx/global utils
+    mapping(address => PriceFeedInfo) public priceFeedsInfo; // asset => PriceFeedInfo
 
     // ============================================================================================
     // Constructor
@@ -85,6 +91,10 @@ contract Orchestrator is Base, IOrchestrator {
         return (referralCode, performanceFeePercentage, keeper, revenueDistributor);
     }
 
+    function getPriceFeed(address _asset) external view returns (address, uint256) {
+        return (priceFeedsInfo[_asset].priceFeed, priceFeedsInfo[_asset].decimals);
+    }
+
     function getRoutes() external view returns (address[] memory) {
         return routes;
     }
@@ -97,6 +107,10 @@ contract Orchestrator is Base, IOrchestrator {
 
     function getRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
+    }
+
+    function getRoute(bytes32 _routeKey) external view returns (address) {
+        return routeInfo[_routeKey].route;
     }
 
     function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory _puppets) {
@@ -134,7 +148,8 @@ contract Orchestrator is Base, IOrchestrator {
 
     // slither-disable-next-line reentrancy-no-eth
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant returns (bytes32 _routeKey) {
-        if (_collateralToken == address(0) || _indexToken == address(0)) revert InvalidTokenAddress();
+        if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
+        if (priceFeedsInfo[_collateralToken].priceFeed == address(0)) revert NoPriceFeedForAsset();
 
         address _trader = msg.sender;
         _routeKey = getRouteKey(_trader, _collateralToken, _indexToken, _isLong);
@@ -292,6 +307,16 @@ contract Orchestrator is Base, IOrchestrator {
         referralCode = _referralCode;
 
         emit SetPuppetUtils(_revenueDistributor, _keeper, _referralCode);
+    }
+
+    function setPriceFeedsInfo(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external onlyOwner {
+        if (_assets.length != _priceFeeds.length || _assets.length != _decimals.length) revert MismatchedInputArrays();
+
+        for (uint256 i = 0; i < _assets.length; i++) {
+            priceFeedsInfo[_assets[i]] = PriceFeedInfo(_priceFeeds[i], _decimals[i]);
+        }
+
+        emit SetPriceFeedsInfo(_assets, _priceFeeds, _decimals);
     }
 
     function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external onlyOwner {
