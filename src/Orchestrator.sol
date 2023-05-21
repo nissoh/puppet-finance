@@ -247,10 +247,9 @@ contract Orchestrator is Base, IOrchestrator {
     }
 
     function setThrottleLimit(uint256 _throttleLimit) external {
-        address puppet = msg.sender;
-        throttleLimits[puppet] = _throttleLimit;
+        throttleLimits[msg.sender] = _throttleLimit;
 
-        emit SetThrottleLimit(puppet, _throttleLimit);
+        emit SetThrottleLimit(msg.sender, _throttleLimit);
     }
 
     // ============================================================================================
