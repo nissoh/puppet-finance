@@ -177,7 +177,7 @@ contract Orchestrator is Base, IOrchestrator {
     // Puppet Functions
     // ============================================================================================
 
-    function depositToAccount(uint256 _amount, address _asset, address _puppet) external payable nonReentrant {
+    function deposit(uint256 _amount, address _asset, address _puppet) external payable nonReentrant {
         if (priceFeeds[_asset].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
         if (_amount == 0) revert ZeroAmount();
         if (_puppet == address(0)) revert ZeroAddress();
@@ -194,10 +194,10 @@ contract Orchestrator is Base, IOrchestrator {
             IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
         }
 
-        emit DepositToAccount(_amount, _asset, msg.sender, _puppet);
+        emit Deposited(_amount, _asset, msg.sender, _puppet);
     }
 
-    function withdrawFromAccount(uint256 _amount, address _asset, address _receiver, bool _isETH) external nonReentrant {
+    function withdraw(uint256 _amount, address _asset, address _receiver, bool _isETH) external nonReentrant {
         if (priceFeeds[_asset].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
         if (_amount == 0) revert ZeroAmount();
         if (_receiver == address(0)) revert ZeroAddress();
@@ -213,7 +213,7 @@ contract Orchestrator is Base, IOrchestrator {
             IERC20(_asset).safeTransfer(_receiver, _amount);
         }
 
-        emit WithdrawFromAccount(_amount, _asset, _receiver, _puppet);
+        emit Withdrawn(_amount, _asset, _receiver, _puppet);
     }
 
     function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _sign) external nonReentrant {

@@ -51,9 +51,9 @@ interface IOrchestrator is IBase {
 
     // Puppet
 
-    function depositToAccount(uint256 _amount, address _asset, address _puppet) external payable;
+    function deposit(uint256 _amount, address _asset, address _puppet) external payable;
 
-    function withdrawFromAccount(uint256 _amount, address _asset, address _receiver, bool _isETH) external;
+    function withdraw(uint256 _amount, address _asset, address _receiver, bool _isETH) external;
 
     function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _sign) external;
 
@@ -90,8 +90,8 @@ interface IOrchestrator is IBase {
     // TODO - clean events & errors
 
     event RegisterRoute(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
-    event DepositToAccount(uint256 amount, address indexed asset, address indexed caller, address indexed puppet);
-    event WithdrawFromAccount(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
+    event Deposited(uint256 amount, address indexed asset, address indexed caller, address indexed puppet);
+    event Withdrawn(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
     event UpdateLastPositionOpenedTimestamp(address indexed _route, address indexed _puppet, uint256 _timestamp);
     event UpdateRoutesSubscription(address[] traders, uint256[] allowances, address indexed puppet, bytes32 indexed routeTypeKey, bool indexed sign);
     event DebitPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
