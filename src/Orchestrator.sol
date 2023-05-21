@@ -20,7 +20,7 @@ contract Orchestrator is Base, IOrchestrator {
         EnumerableSet.AddressSet puppets;
     }
 
-    struct RouteTypes {
+    struct RouteType {
         address collateralToken;
         address indexToken;
         bool isLong;
@@ -37,7 +37,7 @@ contract Orchestrator is Base, IOrchestrator {
 
     mapping(address => bool) public isRoute; // Route => isRoute
     mapping(address => mapping(address => uint256)) public lastPositionOpenedTimestamp; // Route => puppet => timestamp
-    mapping(bytes32 => RouteTypes) public routeTypes; // routeTypeKey => RouteTypes
+    mapping(bytes32 => RouteType) public routeType; // routeTypeKey => RouteType
     mapping(bytes32 => RouteInfo) private routeInfo; // routeKey => RouteInfo
 
     // puppets info
@@ -120,9 +120,9 @@ contract Orchestrator is Base, IOrchestrator {
     }
 
     function getRouteKey(address _trader, bytes32 _routeTypeKey) public view returns (bytes32) {
-        address _collateralToken = routeTypes[_routeTypeKey].collateralToken;
-        address _indexToken = routeTypes[_routeTypeKey].indexToken;
-        bool _isLong = routeTypes[_routeTypeKey].isLong;
+        address _collateralToken = routeType[_routeTypeKey].collateralToken;
+        address _indexToken = routeType[_routeTypeKey].indexToken;
+        bool _isLong = routeType[_routeTypeKey].isLong;
         return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
     }
 
@@ -169,7 +169,7 @@ contract Orchestrator is Base, IOrchestrator {
         if (priceFeedsInfo[_collateralToken].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
 
         bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
-        if (!routeTypes[_routeTypeKey].isRegistered) revert RouteTypeNotRegistered();
+        if (!routeType[_routeTypeKey].isRegistered) revert RouteTypeNotRegistered();
 
         address _trader = msg.sender;
         _routeKey = getRouteKey(_trader, _routeTypeKey);
@@ -305,7 +305,7 @@ contract Orchestrator is Base, IOrchestrator {
 
     function setRouteType(address _collateral, address _index, bool _isLong) external onlyOwner {
         bytes32 _routeTypeKey = getRouteTypeKey(_collateral, _index, _isLong);
-        routeTypes[_routeTypeKey] = RouteTypes(_collateral, _index, _isLong, true);
+        routeType[_routeTypeKey] = RouteType(_collateral, _index, _isLong, true);
 
         emit RouteTypeSet(_routeTypeKey, _collateral, _index, _isLong);
     }
