@@ -189,7 +189,6 @@ contract Orchestrator is Base, IOrchestrator {
             if (_asset != WETH) revert InvalidAsset();
             payable(_asset).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
         } else {
-            if (msg.value != 0) revert InvalidAmount();
             IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
         }
 
