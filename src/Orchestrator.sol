@@ -20,6 +20,13 @@ contract Orchestrator is Base, IOrchestrator {
         EnumerableSet.AddressSet puppets;
     }
 
+    struct RouteTypes {
+        address collateralToken;
+        address indexToken;
+        bool isLong;
+        bool isRegistered;
+    }
+
     struct PriceFeedInfo {
         address priceFeed;
         uint256 decimals;
@@ -27,18 +34,21 @@ contract Orchestrator is Base, IOrchestrator {
 
     // routes info
     address[] private routes;
-    mapping(bytes32 => RouteInfo) private routeInfo; // routeKey => RouteInfo
+
+    mapping(bytes32 => RouteTypes) public routeTypes; // routeTypeKey => RouteTypes
     mapping(address => bool) public isRoute; // Route => isRoute
     mapping(address => mapping(address => uint256)) public lastPositionOpenedTimestamp; // Route => puppet => timestamp
+    mapping(bytes32 => RouteInfo) private routeInfo; // routeKey => RouteInfo
 
     // puppets info
     mapping(address => uint256) public throttleLimits; // puppet => throttle limit (in seconds)
-    mapping(address => mapping(address => uint256)) public puppetDepositAccount; // puppet => asset => balance
+    mapping(address => mapping(address => uint256)) public puppetDepositAccount; // puppet => collateralToken => balance
     mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => Route => allowance percentage
 
     // settings
     bool public paused; // used to pause all routes on update of gmx/global utils
-    mapping(address => PriceFeedInfo) public priceFeedsInfo; // asset => PriceFeedInfo
+    uint256 public constant MAX_PERFORMANCE_FEE = 1000; // up to 10% allowed
+    mapping(address => PriceFeedInfo) public priceFeedsInfo; // collateralToken => PriceFeedInfo
 
     // ============================================================================================
     // Constructor
@@ -105,7 +115,14 @@ contract Orchestrator is Base, IOrchestrator {
 
     // route
 
-    function getRouteKey(address _trader, address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
+    function getRouteTypeKey(address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_collateralToken, _indexToken, _isLong));
+    }
+
+    function getRouteKey(address _trader, bytes32 _routeTypeKey) public view returns (bytes32) {
+        address _collateralToken = routeTypes[_routeTypeKey].collateralToken;
+        address _indexToken = routeTypes[_routeTypeKey].indexToken;
+        bool _isLong = routeTypes[_routeTypeKey].isLong;
         return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
     }
 
@@ -124,7 +141,7 @@ contract Orchestrator is Base, IOrchestrator {
 
     // puppet
 
-    function canOpenNewPosition(address _route, address _puppet) public view returns (bool) {
+    function isBelowThrottleLimit(address _route, address _puppet) public view returns (bool) {
         return (block.timestamp - lastPositionOpenedTimestamp[_route][_puppet]) >= throttleLimits[_puppet];
     }
 
@@ -149,10 +166,13 @@ contract Orchestrator is Base, IOrchestrator {
     // slither-disable-next-line reentrancy-no-eth
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
-        if (priceFeedsInfo[_collateralToken].priceFeed == address(0)) revert NoPriceFeedForAsset();
+        if (priceFeedsInfo[_collateralToken].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
+
+        bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
+        if (!routeTypes[_routeTypeKey].isRegistered) revert RouteTypeNotRegistered();
 
         address _trader = msg.sender;
-        _routeKey = getRouteKey(_trader, _collateralToken, _indexToken, _isLong);
+        _routeKey = getRouteKey(_trader, _routeTypeKey);
         if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
         address _route = address(new Route(address(this), owner, _trader, _collateralToken, _indexToken, _isLong));
@@ -168,7 +188,7 @@ contract Orchestrator is Base, IOrchestrator {
         isRoute[_route] = true;
         routes.push(_route);
 
-        emit RegisterRoute(_trader, _route, _collateralToken, _indexToken, _isLong);
+        emit RegisterRoute(_trader, _route, _routeTypeKey);
     }
 
     // ============================================================================================
@@ -176,7 +196,11 @@ contract Orchestrator is Base, IOrchestrator {
     // ============================================================================================
 
     function depositToAccount(uint256 _amount, address _asset, address _puppet) external payable nonReentrant {
-        if (_amount == 0) revert ZeroAmountWETH();
+        if (priceFeedsInfo[_asset].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
+        if (_amount == 0) revert ZeroAmount();
+        if (_puppet == address(0)) revert ZeroAddress();
+
+        puppetDepositAccount[_asset][_puppet] += _amount;
 
         if (msg.value > 0) {
             if (_amount != msg.value) revert InvalidAmount();
@@ -187,13 +211,13 @@ contract Orchestrator is Base, IOrchestrator {
             IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
         }
 
-        puppetDepositAccount[_asset][_puppet] += _amount;
-
         emit DepositToAccount(_amount, _asset, msg.sender, _puppet);
     }
 
     function withdrawFromAccount(uint256 _amount, address _asset, address _receiver, bool _isETH) external nonReentrant {
+        if (priceFeedsInfo[_asset].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
         if (_amount == 0) revert ZeroAmount();
+        if (_receiver == address(0)) revert ZeroAddress();
 
         address _puppet = msg.sender;
         puppetDepositAccount[_asset][_puppet] -= _amount;
@@ -209,17 +233,16 @@ contract Orchestrator is Base, IOrchestrator {
         emit WithdrawFromAccount(_amount, _asset, _receiver, _puppet);
     }
 
-    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, address _collateralToken, address _indexToken, bool _isLong, bool _sign) external nonReentrant {
+    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _sign) external nonReentrant {
         if (_traders.length != _allowances.length) revert MismatchedInputArrays();
 
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _traders.length; i++) {
-            bytes32 _routeKey = getRouteKey(_traders[i], _collateralToken, _indexToken, _isLong);
+            bytes32 _routeKey = getRouteKey(_traders[i], _routeTypeKey);
             RouteInfo storage _routeInfo = routeInfo[_routeKey];
 
-            Route _route = Route(payable(_routeInfo.route));
             if (!_routeInfo.isRegistered) revert RouteNotRegistered();
-            if (_route.isPositionOpen()) revert PositionIsOpen();
+            if (Route(payable(_routeInfo.route)).isPositionOpen()) revert PositionIsOpen();
 
             if (_sign) {
                 if (_allowances[i] > 100 || _allowances[i] == 0) revert InvalidAllowancePercentage();
@@ -238,7 +261,7 @@ contract Orchestrator is Base, IOrchestrator {
             }
         }
 
-        emit UpdateRoutesSubscription(_traders, _allowances, _puppet, _collateralToken, _indexToken, _isLong, _sign);
+        emit UpdateRoutesSubscription(_traders, _allowances, _puppet, _routeTypeKey, _sign);
     }
 
     function setThrottleLimit(uint256 _throttleLimit) external {
@@ -264,15 +287,6 @@ contract Orchestrator is Base, IOrchestrator {
         emit CreditPuppetAccount(_amount, _puppet, msg.sender);
     }
 
-    function liquidatePuppet(address _puppet, bytes32 _routeKey) external onlyRoute {
-        RouteInfo storage _routeInfo = routeInfo[_routeKey];
-        
-        EnumerableSet.remove(_routeInfo.puppets, _puppet);
-        EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.route, 0);
-
-        emit LiquidatePuppet(_puppet, _routeKey, msg.sender);
-    }
-
     function updateLastPositionOpenedTimestamp(address _route, address _puppet) external onlyRoute {
         lastPositionOpenedTimestamp[_route][_puppet] = block.timestamp;
 
@@ -288,6 +302,13 @@ contract Orchestrator is Base, IOrchestrator {
     // ============================================================================================
     // Owner Functions
     // ============================================================================================
+
+    function setRouteType(address _collateral, address _index, bool _isLong) external onlyOwner {
+        bytes32 _routeTypeKey = getRouteTypeKey(_collateral, _index, _isLong);
+        routeTypes[_routeTypeKey] = RouteTypes(_collateral, _index, _isLong, true);
+
+        emit RouteTypeSet(_routeTypeKey, _collateral, _index, _isLong);
+    }
 
     function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _gmxReferralRebatesSender) external onlyOwner {
         GMXInfo storage _gmxInfo = gmxInfo;
@@ -320,7 +341,7 @@ contract Orchestrator is Base, IOrchestrator {
     }
 
     function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external onlyOwner {
-        if (_performanceFeePercentage > 500) revert InvalidPercentage(); // up to 5% allowed
+        if (_performanceFeePercentage > MAX_PERFORMANCE_FEE) revert InvalidPercentage();
 
         performanceFeePercentage = _performanceFeePercentage;
 

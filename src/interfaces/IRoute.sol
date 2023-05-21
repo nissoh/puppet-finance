@@ -29,11 +29,17 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     function liquidate() external;
 
+    function checkForReferralRebates() external;
+
     // owner
 
     function approvePlugin() external;
 
     function setOrchestrator(address _orchestrator) external;
+
+    function updatePriceFeed() external;
+
+    function updateGlobalInfo() external;
 
     function updateGMXInfo() external;
 
@@ -62,6 +68,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event RepaidBalance(uint256 _totalAssets);
     event CreatedDecreasePositionRequest(bytes32 indexed _requestKey, uint256 _minOut, uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee);
     event CreatedIncreasePositionRequest(bytes32 indexed _requestKey, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee);
+    event PriceFeedUpdated();
 
     // ============================================================================================
     // Errors
