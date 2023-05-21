@@ -55,7 +55,7 @@ interface IOrchestrator is IBase {
 
     function withdraw(uint256 _amount, address _asset, address _receiver, bool _isETH) external;
 
-    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _sign) external;
+    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _subscribe) external;
 
     function setThrottleLimit(uint256 _throttleLimit) external;
 

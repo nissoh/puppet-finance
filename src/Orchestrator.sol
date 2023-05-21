@@ -215,7 +215,7 @@ contract Orchestrator is Base, IOrchestrator {
         emit Withdrawn(_amount, _asset, _receiver, msg.sender);
     }
 
-    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _sign) external nonReentrant {
+    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _subscribe) external nonReentrant {
         if (_traders.length != _allowances.length) revert MismatchedInputArrays();
 
         address _puppet = msg.sender;
@@ -226,7 +226,7 @@ contract Orchestrator is Base, IOrchestrator {
             if (!_routeInfo.isRegistered) revert RouteNotRegistered();
             if (Route(payable(_routeInfo.route)).isPositionOpen()) revert PositionIsOpen();
 
-            if (_sign) {
+            if (_subscribe) {
                 if (_allowances[i] > 100 || _allowances[i] == 0) revert InvalidAllowancePercentage();
 
                 EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.route, _allowances[i]);
@@ -243,7 +243,7 @@ contract Orchestrator is Base, IOrchestrator {
             }
         }
 
-        emit UpdateRoutesSubscription(_traders, _allowances, _puppet, _routeTypeKey, _sign);
+        emit UpdateRoutesSubscription(_traders, _allowances, _puppet, _routeTypeKey, _subscribe);
     }
 
     function setThrottleLimit(uint256 _throttleLimit) external {
