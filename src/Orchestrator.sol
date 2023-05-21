@@ -54,13 +54,7 @@ contract Orchestrator is Base, IOrchestrator {
     // Constructor
     // ============================================================================================
 
-    constructor(
-        address _owner,
-        address _revenueDistributor,
-        address _keeper,
-        bytes32 _referralCode,
-        GMXInfo memory _gmxInfo
-    ) {
+    constructor(address _owner, address _revenueDistributor, address _keeper, bytes32 _referralCode, GMXInfo memory _gmxInfo) {
         owner = _owner;
         revenueDistributor = _revenueDistributor;
         keeper = _keeper;
