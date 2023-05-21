@@ -11,6 +11,13 @@ contract Orchestrator is Base, IOrchestrator {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
+    struct RouteType {
+        address collateralToken;
+        address indexToken;
+        bool isLong;
+        bool isRegistered;
+    }
+
     struct RouteInfo {
         address route;
         address collateralToken;
@@ -18,13 +25,6 @@ contract Orchestrator is Base, IOrchestrator {
         bool isLong;
         bool isRegistered;
         EnumerableSet.AddressSet puppets;
-    }
-
-    struct RouteType {
-        address collateralToken;
-        address indexToken;
-        bool isLong;
-        bool isRegistered;
     }
 
     struct PriceFeedInfo {
