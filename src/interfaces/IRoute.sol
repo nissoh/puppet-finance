@@ -47,38 +47,26 @@ interface IRoute is IPositionRouterCallbackReceiver {
     // Events
     // ============================================================================================
 
-    // TODO - clean events & errors
 
     event Liquidated();
-    event ApprovePositionRequest();
-    event RejectPositionRequest();
-    event RepayBalance(uint256 _totalAssets);
-    event CreateIncreasePosition(bytes32 indexed positionKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
-    event CreateDecreasePosition(bytes32 indexed positionKey, uint256 minOut, uint256 collateralDeltaUSD, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
-    event ResetPosition();
+    event CallbackReceived(bytes32 indexed requestKey, bool indexed isExecuted, bool indexed isIncrease);
     event PluginApproved();
-    event OrchestratorSet(address indexed _orchestrator);
-    event PuppetsAssetsAndSharesAllocated(uint256 puppetsAmountIn, uint256 totalManagementFee);
-    event TraderAssetsAndSharesAllocated(uint256 traderAmountIn, uint256 traderShares);
-    event CallbackReceived(bytes32 indexed _requestKey, bool indexed _isExecuted, bool indexed _isIncrease);
-    event GMXInfoUpdated();
-    event GlobalInfoUpdated();
-    event ReferralRebatesSent(address indexed _revenueDistributor, uint256 _balance);
-    event RouteReseted();
-    event RepaidBalance(uint256 _totalAssets);
-    event CreatedDecreasePositionRequest(bytes32 indexed _requestKey, uint256 _minOut, uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee);
-    event CreatedIncreasePositionRequest(bytes32 indexed _requestKey, uint256 _amountIn, uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _executionFee);
+    event OrchestratorSet(address orchestrator);
     event PriceFeedUpdated();
+    event GlobalInfoUpdated();
+    event GMXInfoUpdated();
+    event CreatedIncreasePositionRequest(bytes32 indexed requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
+    event CreatedDecreasePositionRequest(bytes32 indexed requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
+    event RepaidBalance(uint256 totalAssets);
+    event RouteReseted();
+    event ReferralRebatesSent(address indexed revenueDistributor, uint256 balance);
 
     // ============================================================================================
     // Errors
     // ============================================================================================
 
-    error WaitingForCallback();
     error NotCallbackCaller();
-    error KeyError();
     error NotKeeper();
-    error ZeroAmount();
     error InvalidExecutionFee();
     error PositionStillAlive();
     error NotTrader();

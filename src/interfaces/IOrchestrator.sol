@@ -87,45 +87,36 @@ interface IOrchestrator is IBase {
     // Events
     // ============================================================================================
 
-    // TODO - clean events & errors
-
-    event RegisterRoute(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
-    event Deposited(uint256 amount, address indexed asset, address indexed caller, address indexed puppet);
-    event Withdrawn(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
-    event UpdateLastPositionOpenedTimestamp(address indexed _route, address indexed _puppet, uint256 _timestamp);
-    event UpdateRoutesSubscription(address[] traders, uint256[] allowances, address indexed puppet, bytes32 indexed routeTypeKey, bool indexed sign);
-    event DebitPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
-    event CreditPuppetAccount(uint256 _amount, address indexed _puppet, address indexed _token);
-    event UpdateRequestKeyToRoute(bytes32 indexed _requestKey, address indexed _routeAddress);
-    event SendFunds(uint256 _amount, address indexed _asset, address indexed _receiver);
-    event SetThrottleLimit(address indexed puppet, uint256 throttleLimit);
-    event SetGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
-    event SetPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode);
-    event SetPerformanceFeePercentage(uint256 _performanceFeePercentage);
-    event Paused(bool indexed _paused);
-    event SetPriceFeeds(address[] _assets, address[] _priceFeeds, uint256[] _decimals);
-    event RouteTypeSet(bytes32 indexed _routeTypeKey, address indexed _collateral, address indexed _index, bool _isLong);
-
+    event RouteRegistered(address indexed _trader, address indexed _route, bytes32 indexed _routeTypeKey);
+    event Deposited(uint256 indexed _amount, address indexed _asset, address _caller, address indexed _puppet);
+    event Withdrawn(uint256 _amount, address indexed _asset, address indexed _receiver, address indexed _puppet);
+    event RoutesSubscriptionUpdated(address[] _traders, uint256[] _allowances, address indexed _puppet, bytes32 indexed _routeTypeKey, bool indexed _subscribe);
+    event ThrottleLimitSet(address indexed _puppet, uint256 _throttleLimit);
+    event PuppetAccountDebited(uint256 _amount, address indexed _asset, address indexed _puppet, address indexed _caller);
+    event PuppetAccountCredited(uint256 _amount, address indexed _asset, address indexed _puppet, address indexed _caller);
+    event LastPositionOpenedTimestampUpdated(address indexed _route, address indexed _puppet, uint256 _timestamp);
+    event FundsSent(uint256 _amount, address indexed _asset, address indexed _receiver, address indexed _caller);
+    event RouteTypeSet(bytes32 _routeTypeKey, address _collateral, address _index, bool _isLong);
+    event GMXUtilsSet(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
+    event PuppetUtilsSet(address _revenueDistributor, address _keeper, bytes32 _referralCode);
+    event PriceFeedsSet(address[] _asset, address[] _priceFeed, uint256[] _decimals);
+    event PerformanceFeePercentageSet(uint256 _performanceFeePercentage);
+    event Paused(bool _paused);
+    
     // ============================================================================================
     // Errors
     // ============================================================================================
 
-    error RouteAlreadyRegistered();
     error NotRoute();
-    error ZeroAmount();
-    error InvalidAmount();
-    error InsufficientPuppetFunds();
+    error RouteTypeNotRegistered();
+    error RouteAlreadyRegistered();
+    error NoPriceFeedForCollateralToken();
     error MismatchedInputArrays();
     error RouteNotRegistered();
-    error WaitingForCallback();
     error PositionIsOpen();
     error InvalidAllowancePercentage();
-    error InvalidTokenAddress();
     error InvalidPercentage();
-    error InvalidAssetAddress();
-    error InvalidAsset();
-    error ZeroAmountWETH();
-    error NoPriceFeedForCollateralToken();
     error ZeroAddress();
-    error RouteTypeNotRegistered();
+    error InvalidAmount();
+    error InvalidAsset();
 }

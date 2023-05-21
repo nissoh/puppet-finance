@@ -105,6 +105,7 @@ contract Orchestrator is Base, IOrchestrator {
         address _collateralToken = routeType[_routeTypeKey].collateralToken;
         address _indexToken = routeType[_routeTypeKey].indexToken;
         bool _isLong = routeType[_routeTypeKey].isLong;
+
         return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
     }
 
@@ -145,6 +146,7 @@ contract Orchestrator is Base, IOrchestrator {
     // Trader Function
     // ============================================================================================
 
+    /// @dev violates checks-effects-interactions pattern. we use reentrancy guard
     // slither-disable-next-line reentrancy-no-eth
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
@@ -170,7 +172,7 @@ contract Orchestrator is Base, IOrchestrator {
         isRoute[_route] = true;
         routes.push(_route);
 
-        emit RegisterRoute(_trader, _route, _routeTypeKey);
+        emit RouteRegistered(_trader, _route, _routeTypeKey);
     }
 
     // ============================================================================================
@@ -243,13 +245,13 @@ contract Orchestrator is Base, IOrchestrator {
             }
         }
 
-        emit UpdateRoutesSubscription(_traders, _allowances, _puppet, _routeTypeKey, _subscribe);
+        emit RoutesSubscriptionUpdated(_traders, _allowances, _puppet, _routeTypeKey, _subscribe);
     }
 
     function setThrottleLimit(uint256 _throttleLimit) external {
         throttleLimits[msg.sender] = _throttleLimit;
 
-        emit SetThrottleLimit(msg.sender, _throttleLimit);
+        emit ThrottleLimitSet(msg.sender, _throttleLimit);
     }
 
     // ============================================================================================
@@ -259,25 +261,25 @@ contract Orchestrator is Base, IOrchestrator {
     function debitPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
         puppetDepositAccount[_asset][_puppet] -= _amount;
 
-        emit DebitPuppetAccount(_amount, _puppet, msg.sender);
+        emit PuppetAccountDebited(_amount, _asset, _puppet, msg.sender);
     }
 
     function creditPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
         puppetDepositAccount[_asset][_puppet] += _amount;
 
-        emit CreditPuppetAccount(_amount, _puppet, msg.sender);
+        emit PuppetAccountCredited(_amount, _asset, _puppet, msg.sender);
     }
 
     function updateLastPositionOpenedTimestamp(address _route, address _puppet) external onlyRoute {
         lastPositionOpenedTimestamp[_route][_puppet] = block.timestamp;
 
-        emit UpdateLastPositionOpenedTimestamp(_route, _puppet, block.timestamp);
+        emit LastPositionOpenedTimestampUpdated(_route, _puppet, block.timestamp);
     }
 
     function sendFunds(uint256 _amount, address _asset, address _receiver) external onlyRoute {
         IERC20(_asset).safeTransfer(_receiver, _amount);
 
-        emit SendFunds(_amount, _asset, _receiver);
+        emit FundsSent(_amount, _asset, _receiver, msg.sender);
     }
 
     // ============================================================================================
@@ -300,7 +302,7 @@ contract Orchestrator is Base, IOrchestrator {
         _gmxInfo.gmxPositionRouter = _gmxPositionRouter;
         _gmxInfo.gmxReferralRebatesSender = _gmxReferralRebatesSender;
 
-        emit SetGMXUtils(_gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, _gmxReferralRebatesSender);
+        emit GMXUtilsSet(_gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, _gmxReferralRebatesSender);
     }
 
     function setPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode) external onlyOwner {
@@ -308,7 +310,7 @@ contract Orchestrator is Base, IOrchestrator {
         keeper = _keeper;
         referralCode = _referralCode;
 
-        emit SetPuppetUtils(_revenueDistributor, _keeper, _referralCode);
+        emit PuppetUtilsSet(_revenueDistributor, _keeper, _referralCode);
     }
 
     function setPriceFeeds(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external onlyOwner {
@@ -318,7 +320,7 @@ contract Orchestrator is Base, IOrchestrator {
             priceFeeds[_assets[i]] = PriceFeedInfo(_priceFeeds[i], _decimals[i]);
         }
 
-        emit SetPriceFeeds(_assets, _priceFeeds, _decimals);
+        emit PriceFeedsSet(_assets, _priceFeeds, _decimals);
     }
 
     function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external onlyOwner {
@@ -326,7 +328,7 @@ contract Orchestrator is Base, IOrchestrator {
 
         performanceFeePercentage = _performanceFeePercentage;
 
-        emit SetPerformanceFeePercentage(_performanceFeePercentage);
+        emit PerformanceFeePercentageSet(_performanceFeePercentage);
     }
 
     function pause(bool _pause) external onlyOwner {

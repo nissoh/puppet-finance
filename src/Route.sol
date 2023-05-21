@@ -90,13 +90,15 @@ contract Route is Base, IRoute {
     // Trader Functions
     // ============================================================================================
 
+    /// @dev violates checks-effects-interactions pattern. we use reentrancy guard
+    // slither-disable-next-line reentrancy-eth
     function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, bool _isIncrease) public payable nonReentrant returns (bytes32 _requestKey) {
         if (msg.sender != trader) revert NotTrader();
         if (orchestrator.getIsPaused()) revert Paused();
 
-        if (!isETHRequest) _checkForReferralRebates();
-
         isPositionOpen = true;
+
+        if (!isETHRequest) _checkForReferralRebates();
 
         uint256 _traderAmountIn;
         uint256 _puppetsAmountIn;
@@ -210,8 +212,8 @@ contract Route is Base, IRoute {
             // 1. get trader assets and allocate shares on request
             _traderAmountIn = _getTraderAssets(_traderSwapData);
 
-            uint256 _totalSupply;
-            uint256 _totalAssets;
+            uint256 _totalSupply = 0;
+            uint256 _totalAssets = 0;
 
             uint256 _traderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
         
@@ -222,8 +224,8 @@ contract Route is Base, IRoute {
             address _collateralToken = collateralToken;
             bytes32 _routeKey = orchestrator.getRouteKey(trader, routeTypeKey);
             address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
-            uint256[] memory _puppetsShares;
-            uint256[] memory _puppetsAmounts;
+            uint256[] memory _puppetsShares = new uint256[](_puppets.length);
+            uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
             for (uint256 i = 0; i < _puppets.length; i++) {
                 address _puppet = _puppets[i];
                 uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
@@ -270,9 +272,8 @@ contract Route is Base, IRoute {
     function _getTraderAssets(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn) {
         (address[] memory _path, uint256 _amount, uint256 _minOut) = abi.decode(_traderSwapData, (address[], uint256, uint256));
 
-        address _trader = trader;
         address _fromToken = _path[0];
-        if (!isETHRequest) IERC20(_fromToken).safeTransferFrom(_trader, address(this), _amount);
+        if (!isETHRequest) IERC20(_fromToken).safeTransferFrom(msg.sender, address(this), _amount);
 
         if (_fromToken == collateralToken) {
             _traderAmountIn = _amount;
@@ -337,6 +338,7 @@ contract Route is Base, IRoute {
         if (!isETHRequest && msg.value != _executionFee) revert InvalidValue();
         isETHRequest = false;
 
+        // slither-disable-next-line arbitrary-send-eth
         _requestKey = IGMXPositionRouter(gmxInfo.gmxPositionRouter).createIncreasePosition{ value: _executionFee } (
             _path,
             indexToken,
@@ -370,6 +372,7 @@ contract Route is Base, IRoute {
         address[] memory _path = new address[](1);
         _path[0] = collateralToken;
 
+        // slither-disable-next-line arbitrary-send-eth
         _requestKey = IGMXPositionRouter(gmxInfo.gmxPositionRouter).createDecreasePosition{ value: _executionFee } (
             _path,
             indexToken,
@@ -391,9 +394,9 @@ contract Route is Base, IRoute {
         address _collateralToken = collateralToken;
         uint256 _totalAssets = IERC20(_collateralToken).balanceOf(address(this));
         if (_totalAssets > 0) {
-            uint256 _totalSupply;
+            uint256 _puppetsAssets = 0;
+            uint256 _totalSupply = 0;
             uint256 _balance = _totalAssets;
-            uint256 _puppetsAssets;
             bool _isFailedRequest = _requestKey != bytes32(0);
             bytes32 _key = orchestrator.getRouteKey(trader, routeTypeKey);
             address[] memory _puppets = orchestrator.getPuppetsForRoute(_key);
@@ -464,6 +467,8 @@ contract Route is Base, IRoute {
         }
     }
 
+    /// @dev violates checks-effects-interactions pattern. external calls are made from functions with nonReentrant modifier
+    // slither-disable-next-line reentrancy-no-eth
     function _resetRoute() internal {
         _chargePerformanceFee();
 
