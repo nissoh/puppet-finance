@@ -199,12 +199,12 @@ contract Orchestrator is Base, IOrchestrator {
         if (priceFeeds[_asset].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
         if (_amount == 0) revert ZeroAmount();
         if (_receiver == address(0)) revert ZeroAddress();
-
+        if (_isETH && _asset != WETH) revert InvalidAsset();
+ 
         address _puppet = msg.sender;
         puppetDepositAccount[_asset][_puppet] -= _amount;
 
         if (_isETH) {
-            if (_asset != WETH) revert InvalidAsset();
             IWETH(_asset).withdraw(_amount);
             payable(_receiver).sendValue(_amount);
         } else {
