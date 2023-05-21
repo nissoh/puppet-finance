@@ -58,26 +58,14 @@ contract Orchestrator is Base, IOrchestrator {
         address _owner,
         address _revenueDistributor,
         address _keeper,
-        address _gmxRouter,
-        address _gmxReader,
-        address _gmxVault,
-        address _gmxPositionRouter,
-        address _gmxCallbackCaller,
-        address _gmxReferralRebatesSender,
-        bytes32 _referralCode
+        bytes32 _referralCode,
+        GMXInfo memory _gmxInfo
     ) {
         owner = _owner;
         revenueDistributor = _revenueDistributor;
         keeper = _keeper;
 
-        GMXInfo storage _gmxInfo = gmxInfo;
-
-        _gmxInfo.gmxRouter = _gmxRouter;
-        _gmxInfo.gmxReader = _gmxReader;
-        _gmxInfo.gmxVault = _gmxVault;
-        _gmxInfo.gmxPositionRouter = _gmxPositionRouter;
-        _gmxInfo.gmxCallbackCaller = _gmxCallbackCaller;
-        _gmxInfo.gmxReferralRebatesSender = _gmxReferralRebatesSender;
+        gmxInfo = _gmxInfo;
 
         referralCode = _referralCode;
     }
