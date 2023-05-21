@@ -77,7 +77,7 @@ interface IOrchestrator is IBase {
 
     function setPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode) external;
 
-    function setPriceFeedsInfo(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external;
+    function setPriceFeeds(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external;
 
     function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external;
 
@@ -103,7 +103,7 @@ interface IOrchestrator is IBase {
     event SetPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode);
     event SetPerformanceFeePercentage(uint256 _performanceFeePercentage);
     event Paused(bool indexed _paused);
-    event SetPriceFeedsInfo(address[] _assets, address[] _priceFeeds, uint256[] _decimals);
+    event SetPriceFeeds(address[] _assets, address[] _priceFeeds, uint256[] _decimals);
     event RouteTypeSet(bytes32 indexed _routeTypeKey, address indexed _collateral, address indexed _index, bool _isLong);
 
     // ============================================================================================
