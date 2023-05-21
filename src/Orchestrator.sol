@@ -181,12 +181,14 @@ contract Orchestrator is Base, IOrchestrator {
         if (priceFeeds[_asset].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
         if (_amount == 0) revert ZeroAmount();
         if (_puppet == address(0)) revert ZeroAddress();
+        if (msg.value > 0) {
+            if (_amount != msg.value) revert InvalidAmount();
+            if (_asset != WETH) revert InvalidAsset();
+        }
 
         puppetDepositAccount[_asset][_puppet] += _amount;
 
         if (msg.value > 0) {
-            if (_amount != msg.value) revert InvalidAmount();
-            if (_asset != WETH) revert InvalidAsset();
             payable(_asset).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
         } else {
             IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
