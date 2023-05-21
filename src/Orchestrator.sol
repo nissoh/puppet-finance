@@ -202,9 +202,8 @@ contract Orchestrator is Base, IOrchestrator {
         if (_amount == 0) revert ZeroAmount();
         if (_receiver == address(0)) revert ZeroAddress();
         if (_isETH && _asset != WETH) revert InvalidAsset();
- 
-        address _puppet = msg.sender;
-        puppetDepositAccount[_asset][_puppet] -= _amount;
+
+        puppetDepositAccount[_asset][msg.sender] -= _amount;
 
         if (_isETH) {
             IWETH(_asset).withdraw(_amount);
@@ -213,7 +212,7 @@ contract Orchestrator is Base, IOrchestrator {
             IERC20(_asset).safeTransfer(_receiver, _amount);
         }
 
-        emit Withdrawn(_amount, _asset, _receiver, _puppet);
+        emit Withdrawn(_amount, _asset, _receiver, msg.sender);
     }
 
     function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _sign) external nonReentrant {
