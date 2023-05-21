@@ -35,9 +35,9 @@ contract Orchestrator is Base, IOrchestrator {
     // routes info
     address[] private routes;
 
-    mapping(bytes32 => RouteTypes) public routeTypes; // routeTypeKey => RouteTypes
     mapping(address => bool) public isRoute; // Route => isRoute
     mapping(address => mapping(address => uint256)) public lastPositionOpenedTimestamp; // Route => puppet => timestamp
+    mapping(bytes32 => RouteTypes) public routeTypes; // routeTypeKey => RouteTypes
     mapping(bytes32 => RouteInfo) private routeInfo; // routeKey => RouteInfo
 
     // puppets info
