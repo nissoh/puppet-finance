@@ -201,7 +201,7 @@ contract Route is Base, IRoute {
 
         emit GMXInfoUpdated();
     }
-    
+
     // ============================================================================================
     // Internal Mutated Functions
     // ============================================================================================
@@ -221,33 +221,51 @@ contract Route is Base, IRoute {
             _totalAssets = _traderAmountIn;
 
             // 2. get puppets assets and allocate shares on request
+            bool _isOI = _isOpenInterest();
+            uint256 _collateralInPosition = _getCollateralInPosition();
+            if (_isOI) {
+                // todo
+                // calc trader new collateral amount ratio (new collateral amount / old trader collateral amount --> e.g. 100 / 200 = 0.5, trader increased his collateral amount by 50%)
+                // then check for puppet - (how much collateral to add = ratio * old puppet collateral amount --> e.g. 0.5 * 100 = 50, puppet needs to add 50 collateral)
+                uint256 _traderCurrentShares = EnumerableMap.get(participantShares, trader);
+                // get total collateral amount from GMX - check how much of it belogns to trader, then check how much he increases it
+            }
+
             address _collateralToken = collateralToken;
             bytes32 _routeKey = orchestrator.getRouteKey(trader, routeTypeKey);
             address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
             uint256[] memory _puppetsShares = new uint256[](_puppets.length);
             uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
             for (uint256 i = 0; i < _puppets.length; i++) {
+                uint256 _puppetShares;
+                uint256 _puppetAmountIn;
                 address _puppet = _puppets[i];
-                uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
-                uint256 _puppetAmountIn = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
-                if (_puppetAmountIn > 0 && orchestrator.isBelowThrottleLimit(address(this), _puppet)) {
-                    if (_puppetAmountIn > _traderAmountIn) _puppetAmountIn = _traderAmountIn;
-
-                    uint256 _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
-
-                    orchestrator.debitPuppetAccount(_puppetAmountIn, _collateralToken, _puppet);
-
-                    _puppetsShares[_puppetsShares.length] = _puppetShares;
-                    _puppetsAmounts[_puppetsAmounts.length] = _puppetAmountIn;
-
-                    _puppetsAmountIn += _puppetAmountIn;
-
-                    _totalSupply += _puppetShares;
-                    _totalAssets += _puppetAmountIn;
+                if (_isOI) {
+                    // todo
+                    // take assets from puppet according to the amount Trader added (e.g. trader increased his collateral by 1.5x, each puppet should increase by 1.5x)
+                    // if required assets are more than util amount (util amount = util % * balance) - do not take funds and flag puppet so keeper can Decrease his size
+                    // allocate shares accordingly
                 } else {
-                    _puppetsShares[_puppetsShares.length] = 0;
-                    _puppetsAmounts[_puppetsAmounts.length] = 0; 
+                    uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
+                    _puppetAmountIn = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
+                    if (_puppetAmountIn > 0 && orchestrator.isBelowThrottleLimit(address(this), _puppet)) {
+                        if (_puppetAmountIn > _traderAmountIn) _puppetAmountIn = _traderAmountIn;
+                        _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
+                    } else {
+                        _puppetShares = 0;
+                        _puppetAmountIn = 0;
+                    }
                 }
+
+                if (_puppetAmountIn > 0) orchestrator.debitPuppetAccount(_puppetAmountIn, _collateralToken, _puppet);
+
+                _puppetsShares[_puppetsShares.length] = _puppetShares;
+                _puppetsAmounts[_puppetsAmounts.length] = _puppetAmountIn;
+
+                _puppetsAmountIn += _puppetAmountIn;
+
+                _totalSupply += _puppetShares;
+                _totalAssets += _puppetAmountIn;
             }
 
             // 3. store request data
@@ -268,6 +286,69 @@ contract Route is Base, IRoute {
             orchestrator.sendFunds(_puppetsAmountIn, _collateralToken, address(this));
         }
     }
+
+    // function _getAssets(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn, uint256 _puppetsAmountIn) {
+    //     (,uint256 _amount,) = abi.decode(_traderSwapData, (address[], uint256, uint256));
+    //     if (_amount > 0) {
+    //         // 1. get trader assets and allocate shares on request
+    //         _traderAmountIn = _getTraderAssets(_traderSwapData);
+
+    //         uint256 _totalSupply = 0;
+    //         uint256 _totalAssets = 0;
+
+    //         uint256 _traderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
+        
+    //         _totalSupply = _traderShares;
+    //         _totalAssets = _traderAmountIn;
+
+    //         // 2. get puppets assets and allocate shares on request
+    //         address _collateralToken = collateralToken;
+    //         bytes32 _routeKey = orchestrator.getRouteKey(trader, routeTypeKey);
+    //         address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
+    //         uint256[] memory _puppetsShares = new uint256[](_puppets.length);
+    //         uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
+    //         for (uint256 i = 0; i < _puppets.length; i++) {
+    //             address _puppet = _puppets[i];
+    //             uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
+    //             uint256 _puppetAmountIn = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
+    //             if (_puppetAmountIn > 0 && orchestrator.isBelowThrottleLimit(address(this), _puppet)) {
+    //                 if (_puppetAmountIn > _traderAmountIn) _puppetAmountIn = _traderAmountIn;
+
+    //                 uint256 _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
+
+    //                 orchestrator.debitPuppetAccount(_puppetAmountIn, _collateralToken, _puppet);
+
+    //                 _puppetsShares[_puppetsShares.length] = _puppetShares;
+    //                 _puppetsAmounts[_puppetsAmounts.length] = _puppetAmountIn;
+
+    //                 _puppetsAmountIn += _puppetAmountIn;
+
+    //                 _totalSupply += _puppetShares;
+    //                 _totalAssets += _puppetAmountIn;
+    //             } else {
+    //                 _puppetsShares[_puppetsShares.length] = 0;
+    //                 _puppetsAmounts[_puppetsAmounts.length] = 0; 
+    //             }
+    //         }
+
+    //         // 3. store request data
+    //         AddCollateralRequest memory _request = AddCollateralRequest({
+    //             puppetsAmountIn: _puppetsAmountIn,
+    //             traderAmountIn: _traderAmountIn,
+    //             traderShares: _traderShares,
+    //             totalSupply: _totalSupply,
+    //             totalAssets: _totalAssets,
+    //             puppetsShares: _puppetsShares,
+    //             puppetsAmounts: _puppetsAmounts
+    //         });
+
+    //         addCollateralRequests[addCollateralRequestsIndex] = _request;
+    //         addCollateralRequestsIndex += 1;
+
+    //         // 4. pull funds from Orchestrator
+    //         orchestrator.sendFunds(_puppetsAmountIn, _collateralToken, address(this));
+    //     }
+    // }
 
     function _getTraderAssets(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn) {
         (address[] memory _path, uint256 _amount, uint256 _minOut) = abi.decode(_traderSwapData, (address[], uint256, uint256));
