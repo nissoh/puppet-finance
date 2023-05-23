@@ -222,13 +222,12 @@ contract Route is Base, IRoute {
 
             // 2. get puppets assets and allocate shares on request
             bool _isOI = _isOpenInterest();
-            uint256 _collateralInPosition = _getCollateralInPosition(); // todo - use GMXVault's getPosition
+            uint256 _collateralIncreaseRatio = 0;
+            uint256 _totalRouteSupply = totalSupply;
+            uint256 _totalRouteCollateral = _getCollateralInPosition();
             if (_isOI) {
-                // todo - find new collateral amount ratio
-                // calc trader new collateral amount ratio (new collateral amount / old trader collateral amount --> e.g. 100 / 200 = 0.5, trader increased his collateral amount by 50%)
-                // then check for puppet - (how much collateral to add = ratio * old puppet collateral amount --> e.g. 0.5 * 100 = 50, puppet needs to add 50 collateral)
-                uint256 _traderCurrentShares = EnumerableMap.get(participantShares, trader);
-                // get total collateral amount from GMX - check how much of it belogns to trader, then check how much he increases it
+                uint256 _traderOwnedCollateral = EnumerableMap.get(participantShares, trader) * _totalRouteCollateral / _totalRouteSupply;
+                _collateralIncreaseRatio = _traderAmountIn * 1e18 / _traderOwnedCollateral;
             }
 
             address _collateralToken = collateralToken;
@@ -238,16 +237,21 @@ contract Route is Base, IRoute {
             uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
             for (uint256 i = 0; i < _puppets.length; i++) {
                 uint256 _puppetShares;
-                uint256 _puppetAmountIn;
+                uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
+                uint256 _puppetAmountIn = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
                 address _puppet = _puppets[i];
                 if (_isOI) {
-                    // todo
-                    // take assets from puppet according to the amount Trader added (e.g. trader increased his collateral by 1.5x, each puppet should increase by 1.5x)
-                    // if required assets are more than util amount (util amount = util % * balance) - do not take funds and flag puppet so keeper can Decrease his size
-                    // allocate shares accordingly
+                    uint256 _puppetOwnedCollateral = EnumerableMap.get(participantShares, _puppet) * _totalRouteCollateral / _totalRouteSupply;
+                    uint256 _puppetAdditionalRequiredCollateral = _puppetOwnedCollateral * _collateralIncreaseRatio / 1e18;
+                    if (_puppetAdditionalRequiredCollateral > _puppetAmountIn || _puppetAdditionalRequiredCollateral == 0) {
+                        // todo - flag puppet for keeper
+                        _puppetShares = 0;
+                        _puppetAmountIn = 0;
+                    } else {
+                        _puppetAmountIn = _puppetAdditionalRequiredCollateral;
+                        _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
+                    }
                 } else {
-                    uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
-                    _puppetAmountIn = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
                     if (_puppetAmountIn > 0 && orchestrator.isBelowThrottleLimit(address(this), _puppet)) {
                         if (_puppetAmountIn > _traderAmountIn) _puppetAmountIn = _traderAmountIn;
                         _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
@@ -257,15 +261,17 @@ contract Route is Base, IRoute {
                     }
                 }
 
-                if (_puppetAmountIn > 0) orchestrator.debitPuppetAccount(_puppetAmountIn, _collateralToken, _puppet);
+                if (_puppetAmountIn > 0) {
+                    orchestrator.debitPuppetAccount(_puppetAmountIn, _collateralToken, _puppet);
+
+                    _puppetsAmountIn += _puppetAmountIn;
+
+                    _totalSupply += _puppetShares;
+                    _totalAssets += _puppetAmountIn;
+                }
 
                 _puppetsShares[_puppetsShares.length] = _puppetShares;
                 _puppetsAmounts[_puppetsAmounts.length] = _puppetAmountIn;
-
-                _puppetsAmountIn += _puppetAmountIn;
-
-                _totalSupply += _puppetShares;
-                _totalAssets += _puppetAmountIn;
             }
 
             // 3. store request data
@@ -625,6 +631,11 @@ contract Route is Base, IRoute {
         (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(gmxInfo.gmxVault).getPosition(address(this), collateralToken, indexToken, isLong);
 
         return _size > 0 && _collateral > 0;
+    }
+
+    function _getCollateralInPosition() internal view returns (uint256 _collateralInPosition) {
+        // todo, this is USD denominated, need to convert to collateral denominated
+        (,_collateralInPosition,,,,,,) = IGMXVault(gmxInfo.gmxVault).getPosition(address(this), collateralToken, indexToken, isLong);
     }
 
     function _getRealisedPnl() internal view returns (uint256 _realisedPnl) {
