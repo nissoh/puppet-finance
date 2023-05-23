@@ -168,6 +168,8 @@ contract Route is Base, IRoute {
             }
             if (_isIncrease) _allocateShares(_requestKey);
             _requestKey = bytes32(0);
+        } else if (!_isExecuted && waitForRatioAdjustment) {
+            waitForRatioAdjustment = false;
         }
 
         if (!waitForRatioAdjustment) _repayBalance(_requestKey);
