@@ -222,9 +222,9 @@ contract Route is Base, IRoute {
 
             // 2. get puppets assets and allocate shares on request
             bool _isOI = _isOpenInterest();
-            uint256 _collateralInPosition = _getCollateralInPosition();
+            uint256 _collateralInPosition = _getCollateralInPosition(); // todo - use GMXVault's getPosition
             if (_isOI) {
-                // todo
+                // todo - find new collateral amount ratio
                 // calc trader new collateral amount ratio (new collateral amount / old trader collateral amount --> e.g. 100 / 200 = 0.5, trader increased his collateral amount by 50%)
                 // then check for puppet - (how much collateral to add = ratio * old puppet collateral amount --> e.g. 0.5 * 100 = 50, puppet needs to add 50 collateral)
                 uint256 _traderCurrentShares = EnumerableMap.get(participantShares, trader);
