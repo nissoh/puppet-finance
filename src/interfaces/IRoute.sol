@@ -11,6 +11,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
         uint256 traderShares;
         uint256 totalSupply;
         uint256 totalAssets;
+        address[] insolventPuppets;
         uint256[] puppetsShares;
         uint256[] puppetsAmounts;
     }
@@ -26,6 +27,8 @@ interface IRoute is IPositionRouterCallbackReceiver {
     function createAddCollateralRequestETH(bytes memory _traderPositionData, uint256 _minOut) external payable returns (bytes32 _requestKey);
 
     // keeper
+
+    function decreaseSize() external;
 
     function liquidate() external;
 
@@ -60,6 +63,8 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event RepaidBalance(uint256 totalAssets);
     event RouteReseted();
     event ReferralRebatesSent(address indexed revenueDistributor, uint256 balance);
+    event InsolventPuppets(address[] _insolventPuppets);
+    event RatioAdjustmentWaitOver();
 
     // ============================================================================================
     // Errors
@@ -67,13 +72,14 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     error NotCallbackCaller();
     error NotKeeper();
-    error InvalidExecutionFee();
-    error PositionStillAlive();
     error NotTrader();
+    error InvalidExecutionFee();
     error InvalidPath();
     error InvalidValue();
     error InvalidMaxAmount();
     error InvalidPathLength();
     error InvalidTokenIn();
+    error PositionStillAlive();
+    error WaiingtForRatioAdjustment();
     error Paused();
 }

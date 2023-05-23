@@ -31,6 +31,7 @@ contract Route is Base, IRoute {
 
     bool public isLong;
     bool public isPositionOpen;
+    bool public waitForRatioAdjustment;
 
     bool private isETHRequest;
 
@@ -95,6 +96,7 @@ contract Route is Base, IRoute {
     function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, bool _isIncrease) public payable nonReentrant returns (bytes32 _requestKey) {
         if (msg.sender != trader) revert NotTrader();
         if (orchestrator.getIsPaused()) revert Paused();
+        if (waitForRatioAdjustment) revert WaiingtForRatioAdjustment();
 
         isPositionOpen = true;
 
@@ -134,6 +136,11 @@ contract Route is Base, IRoute {
     // Keeper Function
     // ============================================================================================
 
+    function decreaseSize() external nonReentrant onlyKeeper {
+        // TODO - function for keeper to DecreasePosition on a scenario where Trader adds collateral but puppets cannot pay
+        // we'll need to decrease the size of puppets that were not able to pay
+    }
+
     function liquidate() external nonReentrant onlyKeeper {
         if (!_isLiquidated()) revert PositionStillAlive();
 
@@ -152,11 +159,18 @@ contract Route is Base, IRoute {
 
     function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant onlyCallbackCaller {
         if (_isExecuted) {
+            if (waitForRatioAdjustment) {
+                waitForRatioAdjustment = false;
+
+                emit RatioAdjustmentWaitOver();
+
+                return;
+            }
             if (_isIncrease) _allocateShares(_requestKey);
             _requestKey = bytes32(0);
         }
 
-        _repayBalance(_requestKey);
+        if (!waitForRatioAdjustment) _repayBalance(_requestKey);
 
         emit CallbackReceived(_requestKey, _isExecuted, _isIncrease);
     }
@@ -232,46 +246,51 @@ contract Route is Base, IRoute {
 
             address _collateralToken = collateralToken;
             bytes32 _routeKey = orchestrator.getRouteKey(trader, routeTypeKey);
+            address[] memory _insolventPuppets;
             address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
             uint256[] memory _puppetsShares = new uint256[](_puppets.length);
             uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
             for (uint256 i = 0; i < _puppets.length; i++) {
-                uint256 _puppetShares;
-                uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
-                uint256 _puppetAmountIn = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
                 address _puppet = _puppets[i];
+                uint256 _puppetShares = 0;
+                uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
+                uint256 _puppetAllowanceAmount = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
                 if (_isOI) {
                     uint256 _puppetOwnedCollateral = EnumerableMap.get(participantShares, _puppet) * _totalRouteCollateral / _totalRouteSupply;
-                    uint256 _puppetAdditionalRequiredCollateral = _puppetOwnedCollateral * _collateralIncreaseRatio / 1e18;
-                    if (_puppetAdditionalRequiredCollateral > _puppetAmountIn || _puppetAdditionalRequiredCollateral == 0) {
-                        // todo - flag puppet for keeper
-                        _puppetShares = 0;
-                        _puppetAmountIn = 0;
+                    uint256 _puppetRequiredAdditionalCollateral = _puppetOwnedCollateral * _collateralIncreaseRatio / 1e18;
+                    if (_puppetRequiredAdditionalCollateral > _puppetAllowanceAmount || _puppetRequiredAdditionalCollateral == 0) {
+                        _insolventPuppets[_insolventPuppets.length] = _puppet;
+                        _puppetAllowanceAmount = 0;
                     } else {
-                        _puppetAmountIn = _puppetAdditionalRequiredCollateral;
-                        _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
+                        _puppetAllowanceAmount = _puppetRequiredAdditionalCollateral;
+                        _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAllowanceAmount);
                     }
                 } else {
-                    if (_puppetAmountIn > 0 && orchestrator.isBelowThrottleLimit(address(this), _puppet)) {
-                        if (_puppetAmountIn > _traderAmountIn) _puppetAmountIn = _traderAmountIn;
-                        _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
+                    if (_puppetAllowanceAmount > 0 && orchestrator.isBelowThrottleLimit(address(this), _puppet)) {
+                        if (_puppetAllowanceAmount > _traderAmountIn) _puppetAllowanceAmount = _traderAmountIn;
+                        _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAllowanceAmount);
                     } else {
-                        _puppetShares = 0;
-                        _puppetAmountIn = 0;
+                        _puppetAllowanceAmount = 0;
                     }
                 }
 
-                if (_puppetAmountIn > 0) {
-                    orchestrator.debitPuppetAccount(_puppetAmountIn, _collateralToken, _puppet);
+                if (_puppetAllowanceAmount > 0) {
+                    orchestrator.debitPuppetAccount(_puppetAllowanceAmount, _collateralToken, _puppet);
 
-                    _puppetsAmountIn += _puppetAmountIn;
+                    _puppetsAmountIn += _puppetAllowanceAmount;
 
                     _totalSupply += _puppetShares;
-                    _totalAssets += _puppetAmountIn;
+                    _totalAssets += _puppetAllowanceAmount;
                 }
 
                 _puppetsShares[_puppetsShares.length] = _puppetShares;
-                _puppetsAmounts[_puppetsAmounts.length] = _puppetAmountIn;
+                _puppetsAmounts[_puppetsAmounts.length] = _puppetAllowanceAmount;
+            }
+
+            if (_insolventPuppets.length > 0) {
+                waitForRatioAdjustment = true;
+
+                emit InsolventPuppets(_insolventPuppets);
             }
 
             // 3. store request data
@@ -281,6 +300,7 @@ contract Route is Base, IRoute {
                 traderShares: _traderShares,
                 totalSupply: _totalSupply,
                 totalAssets: _totalAssets,
+                insolventPuppets: _insolventPuppets,
                 puppetsShares: _puppetsShares,
                 puppetsAmounts: _puppetsAmounts
             });
@@ -292,69 +312,6 @@ contract Route is Base, IRoute {
             orchestrator.sendFunds(_puppetsAmountIn, _collateralToken, address(this));
         }
     }
-
-    // function _getAssets(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn, uint256 _puppetsAmountIn) {
-    //     (,uint256 _amount,) = abi.decode(_traderSwapData, (address[], uint256, uint256));
-    //     if (_amount > 0) {
-    //         // 1. get trader assets and allocate shares on request
-    //         _traderAmountIn = _getTraderAssets(_traderSwapData);
-
-    //         uint256 _totalSupply = 0;
-    //         uint256 _totalAssets = 0;
-
-    //         uint256 _traderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
-        
-    //         _totalSupply = _traderShares;
-    //         _totalAssets = _traderAmountIn;
-
-    //         // 2. get puppets assets and allocate shares on request
-    //         address _collateralToken = collateralToken;
-    //         bytes32 _routeKey = orchestrator.getRouteKey(trader, routeTypeKey);
-    //         address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
-    //         uint256[] memory _puppetsShares = new uint256[](_puppets.length);
-    //         uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
-    //         for (uint256 i = 0; i < _puppets.length; i++) {
-    //             address _puppet = _puppets[i];
-    //             uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
-    //             uint256 _puppetAmountIn = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
-    //             if (_puppetAmountIn > 0 && orchestrator.isBelowThrottleLimit(address(this), _puppet)) {
-    //                 if (_puppetAmountIn > _traderAmountIn) _puppetAmountIn = _traderAmountIn;
-
-    //                 uint256 _puppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
-
-    //                 orchestrator.debitPuppetAccount(_puppetAmountIn, _collateralToken, _puppet);
-
-    //                 _puppetsShares[_puppetsShares.length] = _puppetShares;
-    //                 _puppetsAmounts[_puppetsAmounts.length] = _puppetAmountIn;
-
-    //                 _puppetsAmountIn += _puppetAmountIn;
-
-    //                 _totalSupply += _puppetShares;
-    //                 _totalAssets += _puppetAmountIn;
-    //             } else {
-    //                 _puppetsShares[_puppetsShares.length] = 0;
-    //                 _puppetsAmounts[_puppetsAmounts.length] = 0; 
-    //             }
-    //         }
-
-    //         // 3. store request data
-    //         AddCollateralRequest memory _request = AddCollateralRequest({
-    //             puppetsAmountIn: _puppetsAmountIn,
-    //             traderAmountIn: _traderAmountIn,
-    //             traderShares: _traderShares,
-    //             totalSupply: _totalSupply,
-    //             totalAssets: _totalAssets,
-    //             puppetsShares: _puppetsShares,
-    //             puppetsAmounts: _puppetsAmounts
-    //         });
-
-    //         addCollateralRequests[addCollateralRequestsIndex] = _request;
-    //         addCollateralRequestsIndex += 1;
-
-    //         // 4. pull funds from Orchestrator
-    //         orchestrator.sendFunds(_puppetsAmountIn, _collateralToken, address(this));
-    //     }
-    // }
 
     function _getTraderAssets(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn) {
         (address[] memory _path, uint256 _amount, uint256 _minOut) = abi.decode(_traderSwapData, (address[], uint256, uint256));
