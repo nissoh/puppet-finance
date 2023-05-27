@@ -11,6 +11,7 @@ contract Orchestrator is Base, IOrchestrator {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
+    // TODO - route type shuold be inside route info
     struct RouteType {
         address collateralToken;
         address indexToken;

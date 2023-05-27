@@ -18,12 +18,10 @@ contract Route is Base, IRoute {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
-    uint256 public realisedPnl; // realised P&L at the start of a new position. used to calculate the performance fee
-
-    uint256 private priceFeedDecimals;
-    uint256 private addCollateralRequestsIndex;
     uint256 private totalSupply;
     uint256 private totalAssets;
+    uint256 private priceFeedDecimals;
+    uint256 private addCollateralRequestsIndex;
 
     address public trader;
     address public collateralToken;
@@ -42,6 +40,7 @@ contract Route is Base, IRoute {
     mapping(bytes32 => uint256) public requestKeyToIndex; // requestKey => addCollateralRequestsIndex
     mapping(uint256 => AddCollateralRequest) public addCollateralRequests; // addCollateralIndex => AddCollateralRequest
 
+    // TODO - instead of EnumerableMap, use [epoch(index)][info], like in PrizePoolDistrebutor
     EnumerableMap.AddressToUintMap private participantShares; // participant => shares
 
     IOrchestrator public orchestrator;
@@ -144,7 +143,7 @@ contract Route is Base, IRoute {
     function liquidate() external nonReentrant onlyKeeper {
         if (!_isLiquidated()) revert PositionStillAlive();
 
-        _repayBalance(bytes32(0));
+        _repayBalance(bytes32(0), false);
 
         emit Liquidated();
     }
@@ -158,23 +157,37 @@ contract Route is Base, IRoute {
     // ============================================================================================
 
     function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant onlyCallbackCaller {
+        emit CallbackReceived(_requestKey, _isExecuted, _isIncrease);
+
+        bool _repayKeeper;
         if (_isExecuted) {
             if (waitForRatioAdjustment) {
+                // call by keeper was executed
                 waitForRatioAdjustment = false;
+                _repayKeeper = true;
 
-                emit RatioAdjustmentWaitOver();
+                emit RatioAdjustmentExecuted();
+            } else {
+                // call by trader was executed
+                if (_isIncrease) _allocateShares(_requestKey);
 
-                return;
+                _repayKeeper = false;
             }
-            if (_isIncrease) _allocateShares(_requestKey);
+
             _requestKey = bytes32(0);
-        } else if (!_isExecuted && waitForRatioAdjustment) {
-            waitForRatioAdjustment = false;
+        } else if (waitForRatioAdjustment) {
+            // call by keeper was not executed
+            _repayKeeper = true;
+            _requestKey = bytes32(0);
+
+            emit RatioAdjustmentFailed();
+        } else {
+            // call by trader was not executed
+            _repayKeeper = false;
+            _requestKey = _requestKey;
         }
 
-        if (!waitForRatioAdjustment) _repayBalance(_requestKey);
-
-        emit CallbackReceived(_requestKey, _isExecuted, _isIncrease);
+        _repayBalance(_requestKey, _repayKeeper);
     }
 
     // ============================================================================================
@@ -242,13 +255,14 @@ contract Route is Base, IRoute {
             uint256 _totalRouteSupply = totalSupply;
             uint256 _totalRouteCollateral = _getCollateralInPosition();
             if (_isOI) {
+                // potentially increasing collateral (_traderAmountIn could be 0)
                 uint256 _traderOwnedCollateral = EnumerableMap.get(participantShares, trader) * _totalRouteCollateral / _totalRouteSupply;
                 _collateralIncreaseRatio = _traderAmountIn * 1e18 / _traderOwnedCollateral;
             }
 
             address _collateralToken = collateralToken;
             bytes32 _routeKey = orchestrator.getRouteKey(trader, routeTypeKey);
-            address[] memory _insolventPuppets;
+            address[] memory _puppetsToAdjust;
             address[] memory _puppets = orchestrator.getPuppetsForRoute(_routeKey);
             uint256[] memory _puppetsShares = new uint256[](_puppets.length);
             uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
@@ -258,10 +272,11 @@ contract Route is Base, IRoute {
                 uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
                 uint256 _puppetAllowanceAmount = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
                 if (_isOI) {
+                    // potentially increasing collateral (_collateralIncreaseRatio/puppetShares could be 0)
                     uint256 _puppetOwnedCollateral = EnumerableMap.get(participantShares, _puppet) * _totalRouteCollateral / _totalRouteSupply;
                     uint256 _puppetRequiredAdditionalCollateral = _puppetOwnedCollateral * _collateralIncreaseRatio / 1e18;
                     if (_puppetRequiredAdditionalCollateral > _puppetAllowanceAmount || _puppetRequiredAdditionalCollateral == 0) {
-                        _insolventPuppets[_insolventPuppets.length] = _puppet;
+                        _puppetsToAdjust[_puppetsToAdjust.length] = _puppet;
                         _puppetAllowanceAmount = 0;
                     } else {
                         _puppetAllowanceAmount = _puppetRequiredAdditionalCollateral;
@@ -289,10 +304,10 @@ contract Route is Base, IRoute {
                 _puppetsAmounts[_puppetsAmounts.length] = _puppetAllowanceAmount;
             }
 
-            if (_insolventPuppets.length > 0) {
+            if (_puppetsToAdjust.length > 0) {
                 waitForRatioAdjustment = true;
 
-                emit InsolventPuppets(_insolventPuppets);
+                emit PuppetsToAdjust(_puppetsToAdjust);
             }
 
             // 3. store request data
@@ -302,7 +317,7 @@ contract Route is Base, IRoute {
                 traderShares: _traderShares,
                 totalSupply: _totalSupply,
                 totalAssets: _totalAssets,
-                insolventPuppets: _insolventPuppets,
+                puppetsToAdjust: _puppetsToAdjust,
                 puppetsShares: _puppetsShares,
                 puppetsAmounts: _puppetsAmounts
             });
@@ -402,7 +417,6 @@ contract Route is Base, IRoute {
 
         if (!_isOpenInterest()) {
             // new position opened
-            realisedPnl = _getRealisedPnl(); // used for performance fee calculation
             _updateLastPositionOpenedTimestamp(); // used to limit the number of position that can be opened in a given time period
         }
 
@@ -436,7 +450,7 @@ contract Route is Base, IRoute {
         emit CreatedDecreasePositionRequest(_requestKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    function _repayBalance(bytes32 _requestKey) internal {
+    function _repayBalance(bytes32 _requestKey, bool _repayKeeper) internal {
         address _collateralToken = collateralToken;
         uint256 _totalAssets = IERC20(_collateralToken).balanceOf(address(this));
         if (_totalAssets > 0) {
@@ -483,7 +497,8 @@ contract Route is Base, IRoute {
 
         uint256 _ethBalance = address(this).balance;
         if (_ethBalance > 0) {
-            payable(trader).sendValue(_ethBalance);
+            address _executionFeeReceiver = _repayKeeper ? keeper : trader;
+            payable(_executionFeeReceiver).sendValue(_ethBalance);
         }
 
         emit RepaidBalance(_totalAssets);
@@ -513,11 +528,7 @@ contract Route is Base, IRoute {
         }
     }
 
-    /// @dev violates checks-effects-interactions pattern. external calls are made from functions with nonReentrant modifier
-    // slither-disable-next-line reentrancy-no-eth
     function _resetRoute() internal {
-        _chargePerformanceFee();
-
         isPositionOpen = false;
         totalAssets = 0;
         totalSupply = 0;
@@ -527,35 +538,7 @@ contract Route is Base, IRoute {
         }
 
         emit RouteReseted();
-    }
-
-    function _chargePerformanceFee() internal {
-        (, int256 _price,,,) = priceFeed.latestRoundData();
-        uint256 _currentRealisedPnl = _getRealisedPnl();
-        uint256 _realisedPnlBefore = realisedPnl;
-        if (_currentRealisedPnl > _realisedPnlBefore && (_currentRealisedPnl - _realisedPnlBefore) > 0) {
-            uint256 _currentRealisedPnlInCollateral = _currentRealisedPnl * uint256(_price) / priceFeedDecimals;
-            uint256 _realisedPnlBeforeInCollateral = _realisedPnlBefore * uint256(_price) / priceFeedDecimals;
-            uint256 _performanceFeeAmount = (_currentRealisedPnlInCollateral - _realisedPnlBeforeInCollateral) * performanceFeePercentage / 10000;
-            uint256 _totalAssets = _performanceFeeAmount;
-            uint256 _totalSupply = totalSupply;
-            address _collateralToken = collateralToken;
-            bytes32 _key = orchestrator.getRouteKey(trader, routeTypeKey);
-            address[] memory _puppets = orchestrator.getPuppetsForRoute(_key);
-            for (uint256 i = 0; i < _puppets.length; i++) {
-                address _puppet = _puppets[i];
-                uint256 _shares = EnumerableMap.get(participantShares, _puppet);
-                uint256 _assets = _convertToAssets(_totalAssets, _totalSupply, _shares);
-
-                orchestrator.debitPuppetAccount(_assets, _collateralToken, _puppet);
-
-                _totalSupply -= _shares;
-                _totalAssets -= _assets;
-            }
-
-            orchestrator.sendFunds(_performanceFeeAmount, _collateralToken, revenueDistributor);
-        }
-    }
+    }    
 
     function _updateLastPositionOpenedTimestamp() internal {
         bytes32 _routeKey = orchestrator.getRouteKey(trader, routeTypeKey);
@@ -594,11 +577,8 @@ contract Route is Base, IRoute {
 
     function _getCollateralInPosition() internal view returns (uint256 _collateralInPosition) {
         // todo, this is USD denominated, need to convert to collateral denominated
+        // (, int256 _price,,,) = priceFeed.latestRoundData();
         (,_collateralInPosition,,,,,,) = IGMXVault(gmxInfo.gmxVault).getPosition(address(this), collateralToken, indexToken, isLong);
-    }
-
-    function _getRealisedPnl() internal view returns (uint256 _realisedPnl) {
-        (,,,,,_realisedPnl,,) = IGMXVault(gmxInfo.gmxVault).getPosition(address(this), collateralToken, indexToken, isLong);
     }
 
     function _isLiquidated() internal view returns (bool) {

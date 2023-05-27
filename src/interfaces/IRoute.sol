@@ -11,7 +11,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
         uint256 traderShares;
         uint256 totalSupply;
         uint256 totalAssets;
-        address[] insolventPuppets;
+        address[] puppetsToAdjust;
         uint256[] puppetsShares;
         uint256[] puppetsAmounts;
     }
@@ -65,6 +65,9 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event ReferralRebatesSent(address indexed revenueDistributor, uint256 balance);
     event InsolventPuppets(address[] _insolventPuppets);
     event RatioAdjustmentWaitOver();
+    event PuppetsToAdjust(address[] _puppetsToAdjust);
+    event RatioAdjustmentFailed();
+    event RatioAdjustmentExecuted();
 
     // ============================================================================================
     // Errors
