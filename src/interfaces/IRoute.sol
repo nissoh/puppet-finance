@@ -28,7 +28,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     // keeper
 
-    function decreaseSize() external;
+    function decreaseSize(bytes memory _traderPositionData) external returns (bytes32 _requestKey);
 
     function liquidate() external;
 
