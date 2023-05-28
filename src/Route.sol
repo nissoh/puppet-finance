@@ -18,6 +18,8 @@ contract Route is Base, IRoute {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
+    uint256 public positionsIndex;
+
     uint256 private totalSupply;
     uint256 private totalAssets;
     uint256 private priceFeedDecimals;
@@ -37,11 +39,10 @@ contract Route is Base, IRoute {
 
     bytes private traderRepaymentData;
 
+    mapping(uint256 => mapping(address => uint256)) public participantShares; // positionsIndex => participant => shares
+
     mapping(bytes32 => uint256) public requestKeyToIndex; // requestKey => addCollateralRequestsIndex
     mapping(uint256 => AddCollateralRequest) public addCollateralRequests; // addCollateralIndex => AddCollateralRequest
-
-    // TODO - instead of EnumerableMap, use [epoch(index)][info], like in PrizePoolDistrebutor
-    EnumerableMap.AddressToUintMap private participantShares; // participant => shares
 
     IOrchestrator public orchestrator;
 
@@ -95,7 +96,7 @@ contract Route is Base, IRoute {
     function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, bool _isIncrease) public payable nonReentrant returns (bytes32 _requestKey) {
         if (msg.sender != trader) revert NotTrader();
         if (orchestrator.getIsPaused()) revert Paused();
-        if (waitForRatioAdjustment) revert WaiingtForRatioAdjustment();
+        if (waitForRatioAdjustment) revert WaitingtForRatioAdjustment();
 
         isPositionOpen = true;
 
@@ -276,8 +277,9 @@ contract Route is Base, IRoute {
                 puppetsAmounts: _puppetsAmounts
             });
 
-            addCollateralRequests[addCollateralRequestsIndex] = _request;
-            addCollateralRequestsIndex += 1;
+            uint256 _addCollateralRequestsIndex = addCollateralRequestsIndex;
+            addCollateralRequests[_addCollateralRequestsIndex] = _request;
+            addCollateralRequestsIndex = _addCollateralRequestsIndex + 1;
 
             // 4. pull funds from Orchestrator
             orchestrator.sendFunds(_puppetsAmountIn, collateralToken, address(this));
@@ -309,13 +311,13 @@ contract Route is Base, IRoute {
         bool _isOI = _isOpenInterest();
         uint256 _puppetsAmountIn = 0;
         uint256 _collateralIncreaseRatio = 0;
+        uint256 _positionsIndex = positionsIndex;
         uint256 _traderAmountIn = _totalAssets;
         uint256 _totalRouteSupply = totalSupply;
         uint256 _totalRouteCollateral = _getCollateralInPosition();
         if (_isOI) {
             // position already open, increasing collateral
-            // shares = participantShares[positionsIndex][trader];
-            uint256 _traderOwnedCollateral = EnumerableMap.get(participantShares, trader) * _totalRouteCollateral / _totalRouteSupply;
+            uint256 _traderOwnedCollateral = participantShares[_positionsIndex][trader] * _totalRouteCollateral / _totalRouteSupply;
             _collateralIncreaseRatio = _traderAmountIn * 1e18 / _traderOwnedCollateral;
         }
 
@@ -331,7 +333,7 @@ contract Route is Base, IRoute {
             uint256 _allowancePercentage = orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
             uint256 _allowanceAmount = (orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
             if (_isOI) {
-                uint256 _ownedCollateral = EnumerableMap.get(participantShares, _puppet) * _totalRouteCollateral / _totalRouteSupply;
+                uint256 _ownedCollateral = participantShares[_positionsIndex][_puppet] * _totalRouteCollateral / _totalRouteSupply;
                 uint256 _requiredAdditionalCollateral = _ownedCollateral * _collateralIncreaseRatio / 1e18;
                 if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
                     _puppetsToAdjust[_puppetsToAdjust.length] = _puppet;
@@ -352,10 +354,10 @@ contract Route is Base, IRoute {
             if (_allowanceAmount > 0) {
                 orchestrator.debitPuppetAccount(_allowanceAmount, _collateralToken, _puppet);
 
-                _puppetsAmountIn += _allowanceAmount;
+                _puppetsAmountIn = _puppetsAmountIn + _allowanceAmount;
 
-                _totalSupply += _puppetShares;
-                _totalAssets += _allowanceAmount;
+                _totalSupply = _totalSupply + _puppetShares;
+                _totalAssets = _totalAssets + _allowanceAmount;
             }
 
             _puppetsShares[_puppetsShares.length] = _puppetShares;
@@ -445,6 +447,7 @@ contract Route is Base, IRoute {
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToIndex[_requestKey]];
         uint256 _traderAmountIn = _request.traderAmountIn;
         if (_traderAmountIn > 0) {
+            uint256 _positionsIndex = positionsIndex;
             uint256 _totalSupply = totalSupply;
             uint256 _totalAssets = totalAssets;
             address _trader = trader;
@@ -454,23 +457,21 @@ contract Route is Base, IRoute {
                 address _puppet = _puppets[i];
                 uint256 _puppetAmountIn = _request.puppetsAmounts[i];
                 if (_puppetAmountIn > 0) {
-                    uint256 _puppetShares = EnumerableMap.get(participantShares, _puppet);
                     uint256 _newPuppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
 
-                    EnumerableMap.set(participantShares, _puppet, _puppetShares + _newPuppetShares);
+                    participantShares[_positionsIndex][_puppet] += _newPuppetShares;
 
-                    _totalSupply += _newPuppetShares;
-                    _totalAssets += _puppetAmountIn;
+                    _totalSupply = _totalSupply + _newPuppetShares;
+                    _totalAssets = _totalAssets + _puppetAmountIn;
                 }
             }
 
-            uint256 _traderShares = EnumerableMap.get(participantShares, _trader);
             uint256 _newTraderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
 
-            EnumerableMap.set(participantShares, _trader, _traderShares + _newTraderShares);
+            participantShares[_positionsIndex][_trader] += _newTraderShares;
 
-            _totalSupply += _newTraderShares;
-            _totalAssets += _traderAmountIn;
+            _totalSupply = _totalSupply + _newTraderShares;
+            _totalAssets = _totalAssets + _traderAmountIn;
 
             totalSupply = _totalSupply;
             totalAssets = _totalAssets;
@@ -483,6 +484,7 @@ contract Route is Base, IRoute {
         if (_totalAssets > 0) {
             uint256 _puppetsAssets = 0;
             uint256 _totalSupply = 0;
+            uint256 _positionsIndex = positionsIndex;
             uint256 _balance = _totalAssets;
             bool _isFailedRequest = _requestKey != bytes32(0);
             bytes32 _key = orchestrator.getRouteKey(trader, routeTypeKey);
@@ -496,7 +498,7 @@ contract Route is Base, IRoute {
                     _shares = _request.puppetsShares[i];
                 } else {
                     if (i == 0) _totalSupply = totalSupply;
-                    _shares = EnumerableMap.get(participantShares, _puppet);
+                    _shares = participantShares[_positionsIndex][_puppet];
                 }
 
                 if (_shares > 0) {
@@ -507,11 +509,11 @@ contract Route is Base, IRoute {
                     _totalSupply -= _shares;
                     _balance -= _assets;
 
-                    _puppetsAssets += _assets;
+                    _puppetsAssets = _puppetsAssets + _assets;
                 }
             }
 
-            uint256 _traderShares = _isFailedRequest ? _request.traderShares : EnumerableMap.get(participantShares, trader);
+            uint256 _traderShares = _isFailedRequest ? _request.traderShares : participantShares[_positionsIndex][trader];
             uint256 _traderAssets = _convertToAssets(_balance, _totalSupply, _traderShares);
 
             IERC20(_collateralToken).safeTransfer(address(orchestrator), _puppetsAssets);
@@ -556,15 +558,12 @@ contract Route is Base, IRoute {
     }
 
     function _resetRoute() internal {
+        positionsIndex = positionsIndex + 1;
         isPositionOpen = false;
         totalAssets = 0;
         totalSupply = 0;
-        for (uint256 i = 0; i < EnumerableMap.length(participantShares); i++) {
-            (address _key, ) = EnumerableMap.at(participantShares, i);
-            EnumerableMap.remove(participantShares, _key);
-        }
 
-        emit RouteReseted();
+        emit RouteReset();
     }    
 
     function _updateLastPositionOpenedTimestamp() internal {
