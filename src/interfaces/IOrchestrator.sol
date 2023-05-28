@@ -12,11 +12,6 @@ interface IOrchestrator is IBase {
         bool isRegistered;
     }
 
-    struct PriceFeedInfo {
-        address priceFeed;
-        uint256 decimals;
-    }
-
     // ============================================================================================
     // View Functions
     // ============================================================================================
@@ -91,8 +86,6 @@ interface IOrchestrator is IBase {
 
     function setPriceFeeds(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external;
 
-    function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external;
-
     function pause(bool _pause) external;
 
     // ============================================================================================
@@ -112,9 +105,8 @@ interface IOrchestrator is IBase {
     event GMXUtilsSet(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
     event PuppetUtilsSet(address _revenueDistributor, address _keeper, bytes32 _referralCode);
     event PriceFeedsSet(address[] _asset, address[] _priceFeed, uint256[] _decimals);
-    event PerformanceFeePercentageSet(uint256 _performanceFeePercentage);
     event Paused(bool _paused);
-    
+
     // ============================================================================================
     // Errors
     // ============================================================================================

@@ -2,7 +2,10 @@
 pragma solidity 0.8.17;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {Route} from "./Route.sol";
+import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+
+import {IRoute} from "./interfaces/IRoute.sol";
+import {IRouteFactory} from "./interfaces/IRouteFactory.sol";
 
 import "./Base.sol";
 
@@ -17,6 +20,8 @@ contract Orchestrator is Base, IOrchestrator {
         EnumerableSet.AddressSet puppets;
         RouteType routeType;
     }
+
+    address public routeFactory;
 
     // routes info
     address[] private routes;
@@ -33,16 +38,16 @@ contract Orchestrator is Base, IOrchestrator {
 
     // settings
     bool public paused; // used to pause all routes on update of gmx/global utils
-    uint256 public constant MAX_PERFORMANCE_FEE = 1000; // up to 10% allowed
     mapping(address => PriceFeedInfo) public priceFeeds; // collateralToken => PriceFeedInfo
 
     // ============================================================================================
     // Constructor
     // ============================================================================================
 
-    constructor(address _owner, address _revenueDistributor, address _keeper, bytes32 _referralCode, GMXInfo memory _gmxInfo) {
+    constructor(address _owner, address _revenueDistributor, address _routeFactory, address _keeper, bytes32 _referralCode, GMXInfo memory _gmxInfo) {
         owner = _owner;
         revenueDistributor = _revenueDistributor;
+        routeFactory = _routeFactory;
         keeper = _keeper;
 
         gmxInfo = _gmxInfo;
@@ -70,7 +75,7 @@ contract Orchestrator is Base, IOrchestrator {
     }
 
     function getPriceFeed(address _asset) external view returns (address, uint256) {
-        return (priceFeeds[_asset].priceFeed, priceFeeds[_asset].decimals);
+        return (address(priceFeeds[_asset].priceFeed), priceFeeds[_asset].decimals);
     }
 
     function getRoutes() external view returns (address[] memory) {
@@ -136,7 +141,6 @@ contract Orchestrator is Base, IOrchestrator {
     // slither-disable-next-line reentrancy-no-eth
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external nonReentrant returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
-        if (priceFeeds[_collateralToken].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
 
         bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
         if (!routeType[_routeTypeKey].isRegistered) revert RouteTypeNotRegistered();
@@ -145,7 +149,7 @@ contract Orchestrator is Base, IOrchestrator {
         _routeKey = getRouteKey(_trader, _routeTypeKey);
         if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
-        address _route = address(new Route(address(this), owner, _trader, _collateralToken, _indexToken, _isLong));
+        address _route = IRouteFactory(routeFactory).createRoute(address(this), owner, _trader, _collateralToken, _indexToken, _isLong);
 
         RouteType memory _routeType;
 
@@ -170,7 +174,7 @@ contract Orchestrator is Base, IOrchestrator {
     // ============================================================================================
 
     function deposit(uint256 _amount, address _asset, address _puppet) external payable nonReentrant {
-        if (priceFeeds[_asset].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
+        if (address(priceFeeds[_asset].priceFeed) == address(0)) revert NoPriceFeedForCollateralToken();
         if (_amount == 0) revert ZeroAmount();
         if (_puppet == address(0)) revert ZeroAddress();
         if (msg.value > 0) {
@@ -190,7 +194,7 @@ contract Orchestrator is Base, IOrchestrator {
     }
 
     function withdraw(uint256 _amount, address _asset, address _receiver, bool _isETH) external nonReentrant {
-        if (priceFeeds[_asset].priceFeed == address(0)) revert NoPriceFeedForCollateralToken();
+        if (address(priceFeeds[_asset].priceFeed) == address(0)) revert NoPriceFeedForCollateralToken();
         if (_amount == 0) revert ZeroAmount();
         if (_receiver == address(0)) revert ZeroAddress();
         if (_isETH && _asset != WETH) revert InvalidAsset();
@@ -216,7 +220,7 @@ contract Orchestrator is Base, IOrchestrator {
             RouteInfo storage _routeInfo = routeInfo[_routeKey];
 
             if (!_routeInfo.isRegistered) revert RouteNotRegistered();
-            if (Route(payable(_routeInfo.route)).isPositionOpen()) revert PositionIsOpen();
+            if (IRoute(_routeInfo.route).getIsPositionOpen()) revert PositionIsOpen();
 
             if (_subscribe) {
                 if (_allowances[i] > 100 || _allowances[i] == 0) revert InvalidAllowancePercentage();
@@ -307,18 +311,13 @@ contract Orchestrator is Base, IOrchestrator {
         if (_assets.length != _priceFeeds.length || _assets.length != _decimals.length) revert MismatchedInputArrays();
 
         for (uint256 i = 0; i < _assets.length; i++) {
-            priceFeeds[_assets[i]] = PriceFeedInfo(_priceFeeds[i], _decimals[i]);
+            priceFeeds[_assets[i]] = PriceFeedInfo({
+                decimals: _decimals[i],
+                priceFeed: AggregatorV3Interface(_priceFeeds[i])
+            });
         }
 
         emit PriceFeedsSet(_assets, _priceFeeds, _decimals);
-    }
-
-    function setPerformanceFeePercentage(uint256 _performanceFeePercentage) external onlyOwner {
-        if (_performanceFeePercentage > MAX_PERFORMANCE_FEE) revert InvalidPercentage();
-
-        performanceFeePercentage = _performanceFeePercentage;
-
-        emit PerformanceFeePercentageSet(_performanceFeePercentage);
     }
 
     function pause(bool _pause) external onlyOwner {

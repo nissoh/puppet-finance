@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
+import {AggregatorV3Interface} from "@chainlink/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
 import {IWETH} from "./interfaces/IWETH.sol";
 import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
@@ -15,6 +16,11 @@ contract Base is ReentrancyGuard, IBase {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
+
+    struct PriceFeedInfo {
+        uint256 decimals;
+        AggregatorV3Interface priceFeed;
+    }
 
     uint256 public performanceFeePercentage;
 

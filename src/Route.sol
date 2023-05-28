@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-import {AggregatorV3Interface} from "@chainlink/src/v0.8/interfaces/AggregatorV3Interface.sol";
-
 import {IVault} from "./interfaces/IVault.sol";
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
@@ -22,7 +20,6 @@ contract Route is Base, IRoute {
 
     uint256 private totalSupply;
     uint256 private totalAssets;
-    uint256 private priceFeedDecimals;
     uint256 private addCollateralRequestsIndex;
 
     address public trader;
@@ -30,9 +27,9 @@ contract Route is Base, IRoute {
     address public indexToken;
 
     bool public isLong;
-    bool public isPositionOpen;
     bool public waitForRatioAdjustment;
 
+    bool private isPositionOpen;
     bool private isETHRequest;
 
     bytes32 public routeTypeKey;
@@ -46,7 +43,7 @@ contract Route is Base, IRoute {
 
     IOrchestrator public orchestrator;
 
-    AggregatorV3Interface public priceFeed;
+    PriceFeedInfo public priceFeedInfo;
 
     // ============================================================================================
     // Constructor
@@ -61,8 +58,9 @@ contract Route is Base, IRoute {
         isLong = _isLong;
 
         (address _priceFeed, uint256 _decimals) = orchestrator.getPriceFeed(_collateralToken);
-        priceFeed = AggregatorV3Interface(_priceFeed);
-        priceFeedDecimals = _decimals;
+
+        priceFeedInfo.decimals = _decimals;
+        priceFeedInfo.priceFeed = AggregatorV3Interface(_priceFeed);
 
         (referralCode, performanceFeePercentage, keeper, revenueDistributor) = orchestrator.getGlobalInfo();
 
@@ -85,6 +83,14 @@ contract Route is Base, IRoute {
     modifier onlyKeeper() {
         if (msg.sender != owner && msg.sender != keeper) revert NotKeeper();
         _;
+    }
+
+    // ============================================================================================
+    // View Functions
+    // ============================================================================================
+
+    function getIsPositionOpen() external view returns (bool) {
+        return isPositionOpen;
     }
 
     // ============================================================================================
@@ -209,8 +215,9 @@ contract Route is Base, IRoute {
 
     function updatePriceFeed() external onlyOwner {
         (address _priceFeed, uint256 _decimals) = orchestrator.getPriceFeed(collateralToken);
-        priceFeed = AggregatorV3Interface(_priceFeed);
-        priceFeedDecimals = _decimals;
+
+        priceFeedInfo.decimals = _decimals;
+        priceFeedInfo.priceFeed = AggregatorV3Interface(_priceFeed);
 
         emit PriceFeedUpdated();
     }
@@ -604,11 +611,9 @@ contract Route is Base, IRoute {
     function _getCollateralInPosition() internal view returns (uint256 _collateralInPosition) {
         (,_collateralInPosition,,,,,,) = IGMXVault(gmxInfo.gmxVault).getPosition(address(this), collateralToken, indexToken, isLong);
 
-        (, int256 _price,,,) = priceFeed.latestRoundData();
-        _collateralInPosition = _collateralInPosition * uint256(_price) / priceFeedDecimals;
-        // TODO - _price is how much USD per ETH, need to fix calculation (_collateralInPosition / uint256(_price) * priceFeedDecimals)
-
-
+        PriceFeedInfo memory _priceFeedInfo = priceFeedInfo;
+        (, int256 _price,,,) = _priceFeedInfo.priceFeed.latestRoundData();
+        _collateralInPosition = _collateralInPosition / uint256(_price) * _priceFeedInfo.decimals;
     }
 
     function _isLiquidated() internal view returns (bool) {
