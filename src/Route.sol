@@ -16,8 +16,6 @@ contract Route is Base, IRoute {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
-    uint256 private addCollateralRequestsIndex;
-
     bool private isETHRequest;
 
     bytes32 public routeTypeKey;
@@ -90,7 +88,8 @@ contract Route is Base, IRoute {
 
     /// @dev violates checks-effects-interactions pattern. we use reentrancy guard
     // slither-disable-next-line reentrancy-eth
-    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, bool _isIncrease) public payable nonReentrant returns (bytes32 _requestKey) {
+    // TODO finish _executionFee
+    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, bool _isIncrease) public payable nonReentrant returns (bytes32 _requestKey) {
         if (msg.sender != routeInfo.trader) revert NotTrader();
         if (orchestrator.getIsPaused()) revert Paused();
         if (positionInfo.waitForRatioAdjustment) revert WaitingtForRatioAdjustment();
@@ -111,23 +110,23 @@ contract Route is Base, IRoute {
         }
     }
 
-    function createAddCollateralRequestETH(bytes memory _traderPositionData, uint256 _minOut) external payable returns (bytes32 _requestKey) {
-        (,,, uint256 _executionFee) = abi.decode(_traderPositionData, (uint256, uint256, uint256, uint256));
-        uint256 _amount = msg.value - _executionFee;
-        address _weth = WETH;
-        address[] memory _path = new address[](2);
-        _path[0] = _weth;
-        _path[1] = routeInfo.collateralToken;
-        bytes memory _traderSwapData = abi.encodePacked(_path, _amount, _minOut);
+    // function createAddCollateralRequestETH(bytes memory _traderPositionData, uint256 _minOut) external payable returns (bytes32 _requestKey) {
+    //     (,,, uint256 _executionFee) = abi.decode(_traderPositionData, (uint256, uint256, uint256, uint256));
+    //     uint256 _amount = msg.value - _executionFee;
+    //     address _weth = WETH;
+    //     address[] memory _path = new address[](2);
+    //     _path[0] = _weth;
+    //     _path[1] = routeInfo.collateralToken;
+    //     bytes memory _traderSwapData = abi.encodePacked(_path, _amount, _minOut);
 
-        _checkForReferralRebates();
+    //     _checkForReferralRebates();
 
-        isETHRequest = true;
+    //     isETHRequest = true;
 
-        payable(_weth).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
+    //     payable(_weth).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
 
-        return createPositionRequest(_traderPositionData, _traderSwapData, true);
-    }
+    //     return createPositionRequest(_traderPositionData, _traderSwapData, true);
+    // }
 
     // ============================================================================================
     // Keeper Function
@@ -266,16 +265,14 @@ contract Route is Base, IRoute {
                 puppetsAmounts: _puppetsAmounts
             });
 
-            uint256 _addCollateralRequestsIndex = addCollateralRequestsIndex;
-            addCollateralRequests[_addCollateralRequestsIndex] = _request;
-            addCollateralRequestsIndex = _addCollateralRequestsIndex + 1;
+            addCollateralRequests[positionInfo.addCollateralRequestsIndex] = _request;
+            positionInfo.addCollateralRequestsIndex += 1;
 
             // 4. pull funds from Orchestrator
             orchestrator.sendFunds(_puppetsAmountIn, routeInfo.collateralToken, address(this));
         }
     }
 
-    // TODO - move to RouteLogic
     function _getTraderAssets(bytes memory _traderSwapData) internal returns (uint256 _traderAmountIn) {
         (address[] memory _path, uint256 _amount, uint256 _minOut) = abi.decode(_traderSwapData, (address[], uint256, uint256));
 
@@ -402,7 +399,7 @@ contract Route is Base, IRoute {
             gmxInfo.gmxCallbackCaller
         );
 
-        if (_amountIn > 0) requestKeyToIndex[_requestKey] = addCollateralRequestsIndex - 1;
+        if (_amountIn > 0) requestKeyToIndex[_requestKey] = positionInfo.addCollateralRequestsIndex - 1;
 
         if (!_isOpenInterest()) {
             // new position opened

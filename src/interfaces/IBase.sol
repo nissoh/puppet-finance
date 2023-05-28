@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
+import {AggregatorV3Interface} from "@chainlink/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
 interface IBase {
+
+    struct PriceFeedInfo {
+        uint256 decimals;
+        AggregatorV3Interface priceFeed;
+    }
 
     struct GMXInfo {
         address gmxRouter;

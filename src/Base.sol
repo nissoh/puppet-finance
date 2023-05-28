@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-import {AggregatorV3Interface} from "@chainlink/src/v0.8/interfaces/AggregatorV3Interface.sol";
-
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -10,17 +8,12 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IWETH} from "./interfaces/IWETH.sol";
 import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
-import {IBase} from "./interfaces/IBase.sol";
+import {IBase, AggregatorV3Interface} from "./interfaces/IBase.sol";
 
 contract Base is ReentrancyGuard, IBase {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
-
-    struct PriceFeedInfo {
-        uint256 decimals;
-        AggregatorV3Interface priceFeed;
-    }
 
     address public owner;
     address public revenueDistributor;
@@ -50,12 +43,5 @@ contract Base is ReentrancyGuard, IBase {
         owner = _owner;
 
         emit SetOwner(_owner);
-    }
-
-    function rescueStuckTokens(address _token, address _to) external onlyOwner {
-        if (address(this).balance > 0) payable(_to).sendValue(address(this).balance);
-        if (IERC20(_token).balanceOf(address(this)) > 0) IERC20(_token).safeTransfer(_to, IERC20(_token).balanceOf(address(this)));
-
-        emit StuckTokensRescued(_token, _to);
     }
 }
