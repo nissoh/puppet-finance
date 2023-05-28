@@ -70,8 +70,8 @@ contract Orchestrator is Base, IOrchestrator {
 
     // global
 
-    function getGlobalInfo() external view returns (bytes32, uint256, address, address) {
-        return (referralCode, performanceFeePercentage, keeper, revenueDistributor);
+    function getGlobalInfo() external view returns (bytes32, address, address) {
+        return (referralCode, keeper, revenueDistributor);
     }
 
     function getPriceFeed(address _asset) external view returns (address, uint256) {

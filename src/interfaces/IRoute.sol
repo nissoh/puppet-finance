@@ -5,6 +5,21 @@ import {IPositionRouterCallbackReceiver} from "./IPositionRouterCallbackReceiver
 
 interface IRoute is IPositionRouterCallbackReceiver {
 
+    struct RouteInfo {
+        bool isLong;
+        address trader;
+        address collateralToken;
+        address indexToken;
+    }
+
+    struct PositionInfo {
+        bool isPositionOpen;
+        bool waitForRatioAdjustment;
+        uint256 positionsIndex;
+        uint256 totalSupply;
+        uint256 totalAssets;
+    }
+
     struct AddCollateralRequest{
         uint256 puppetsAmountIn;
         uint256 traderAmountIn;
@@ -42,15 +57,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     // owner
 
-    function approvePlugin() external;
-
-    function setOrchestrator(address _orchestrator) external;
-
-    function updatePriceFeed() external;
-
-    function updateGlobalInfo() external;
-
-    function updateGMXInfo() external;
+    function updateUtils(address _orchestrator) external;
 
     // ============================================================================================
     // Events

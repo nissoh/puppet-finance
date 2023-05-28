@@ -18,7 +18,7 @@ interface IOrchestrator is IBase {
 
     // global
 
-    function getGlobalInfo() external view returns (bytes32, uint256, address, address);
+    function getGlobalInfo() external view returns (bytes32, address, address);
 
     function getPriceFeed(address _asset) external view returns (address, uint256);
 

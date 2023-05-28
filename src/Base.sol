@@ -22,8 +22,6 @@ contract Base is ReentrancyGuard, IBase {
         AggregatorV3Interface priceFeed;
     }
 
-    uint256 public performanceFeePercentage;
-
     address public owner;
     address public revenueDistributor;
     address public keeper;
