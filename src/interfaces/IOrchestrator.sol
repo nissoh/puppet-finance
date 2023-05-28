@@ -5,6 +5,18 @@ import {IBase} from "./IBase.sol";
 
 interface IOrchestrator is IBase {
 
+    struct RouteType {
+        address collateralToken;
+        address indexToken;
+        bool isLong;
+        bool isRegistered;
+    }
+
+    struct PriceFeedInfo {
+        address priceFeed;
+        uint256 decimals;
+    }
+
     // ============================================================================================
     // View Functions
     // ============================================================================================

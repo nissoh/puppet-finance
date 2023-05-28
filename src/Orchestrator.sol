@@ -11,26 +11,11 @@ contract Orchestrator is Base, IOrchestrator {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
-    // TODO - route type shuold be inside route info
-    struct RouteType {
-        address collateralToken;
-        address indexToken;
-        bool isLong;
-        bool isRegistered;
-    }
-
     struct RouteInfo {
         address route;
-        address collateralToken;
-        address indexToken;
-        bool isLong;
         bool isRegistered;
         EnumerableSet.AddressSet puppets;
-    }
-
-    struct PriceFeedInfo {
-        address priceFeed;
-        uint256 decimals;
+        RouteType routeType;
     }
 
     // routes info
@@ -162,13 +147,17 @@ contract Orchestrator is Base, IOrchestrator {
 
         address _route = address(new Route(address(this), owner, _trader, _collateralToken, _indexToken, _isLong));
 
+        RouteType memory _routeType;
+
+        _routeType.collateralToken = _collateralToken;
+        _routeType.indexToken = _indexToken;
+        _routeType.isLong = _isLong;
+
         RouteInfo storage _routeInfo = routeInfo[_routeKey];
         
         _routeInfo.route = _route;
-        _routeInfo.collateralToken = _collateralToken;
-        _routeInfo.indexToken = _indexToken;
-        _routeInfo.isLong = _isLong;
         _routeInfo.isRegistered = true;
+        _routeInfo.routeType = _routeType;
 
         isRoute[_route] = true;
         routes.push(_route);
