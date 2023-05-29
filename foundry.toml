@@ -4,6 +4,7 @@ out = 'out'
 libs = ['lib']
 solc_version = "0.8.17"
 fs_permissions = [{ access = "write", path = "./"}]
+allow_paths = ["../node_modules"]
 
 [rpc_endpoints]
 mainnet = "${MAINNET_RPC_URL}"

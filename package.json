@@ -1,0 +1,35 @@
+{
+    "name": "contracts",
+    "private": true,
+    "scripts": {
+        "build": "forge clean && forge build",
+        "deploy": "pnpm run initialize && mud deploy",
+        "deploy:hackathon": "pnpm run initialize && mud deploy --profile=hackathon-testnet",
+        "deploy:testnet": "pnpm run initialize && mud deploy --profile=lattice-testnet",
+        "dev": "pnpm mud dev-contracts --tsgenOutput ../client/src/mud",
+        "initialize": "pnpm run tablegen && pnpm run worldgen && pnpm run build && pnpm run worldtypes && pnpm run tsgen",
+        "lint": "pnpm run prettier && pnpm run solhint",
+        "prettier": "prettier --write 'src/**/*.sol'",
+        "solhint": "solhint --config ./.solhint.json 'src/**/*.sol' --fix",
+        "tablegen": "mud tablegen",
+        "test": "tsc --noEmit && mud test",
+        "tsgen": "mud tsgen --configPath mud.config.ts --out ../client/src/mud",
+        "worldgen": "mud worldgen",
+        "worldtypes": "rimraf types && typechain --target=ethers-v5 out/IWorld.sol/IWorld.json"
+    },
+    "devDependencies": {
+        "@ethersproject/abi": "^5.7.0",
+        "@ethersproject/bytes": "^5.7.0",
+        "@ethersproject/providers": "^5.7.2",
+        "@latticexyz/cli": "2.0.0-alpha.1.197+5e6cc0f5",
+        "@latticexyz/schema-type": "2.0.0-alpha.1.197+5e6cc0f5",
+        "@latticexyz/std-contracts": "2.0.0-alpha.1.197+5e6cc0f5",
+        "@latticexyz/store": "2.0.0-alpha.1.197+5e6cc0f5",
+        "@latticexyz/world": "2.0.0-alpha.1.197+5e6cc0f5",
+        "typescript": "^5.0.4"
+    },
+    "engines": {
+        "node": "18.x",
+        "pnpm": "8.x"
+    }
+}
