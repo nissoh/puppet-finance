@@ -44,8 +44,7 @@ contract Orchestrator is Base, IOrchestrator {
     // Constructor
     // ============================================================================================
 
-    constructor(address _owner, address _revenueDistributor, address _routeFactory, address _keeper, bytes32 _referralCode, GMXInfo memory _gmxInfo) {
-        owner = _owner;
+    constructor(Authority _authority, address _revenueDistributor, address _routeFactory, address _keeper, bytes32 _referralCode, GMXInfo memory _gmxInfo) Auth(address(0), _authority) {
         revenueDistributor = _revenueDistributor;
         routeFactory = _routeFactory;
         keeper = _keeper;
@@ -149,7 +148,7 @@ contract Orchestrator is Base, IOrchestrator {
         _routeKey = getRouteKey(_trader, _routeTypeKey);
         if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
-        address _route = IRouteFactory(routeFactory).createRoute(address(this), owner, _trader, _collateralToken, _indexToken, _isLong);
+        address _route = IRouteFactory(routeFactory).createRoute(authority, address(this), _trader, _collateralToken, _indexToken, _isLong);
 
         RouteType memory _routeType;
 
@@ -220,7 +219,6 @@ contract Orchestrator is Base, IOrchestrator {
             RouteInfo storage _routeInfo = routeInfo[_routeKey];
 
             if (!_routeInfo.isRegistered) revert RouteNotRegistered();
-            if (IRoute(_routeInfo.route).getIsPositionOpen()) revert PositionIsOpen();
 
             if (_subscribe) {
                 if (_allowances[i] > 100 || _allowances[i] == 0) revert InvalidAllowancePercentage();
@@ -277,17 +275,17 @@ contract Orchestrator is Base, IOrchestrator {
     }
 
     // ============================================================================================
-    // Owner Functions
+    // Authority Functions
     // ============================================================================================
 
-    function setRouteType(address _collateral, address _index, bool _isLong) external onlyOwner {
+    function setRouteType(address _collateral, address _index, bool _isLong) external requiresAuth {
         bytes32 _routeTypeKey = getRouteTypeKey(_collateral, _index, _isLong);
         routeType[_routeTypeKey] = RouteType(_collateral, _index, _isLong, true);
 
         emit RouteTypeSet(_routeTypeKey, _collateral, _index, _isLong);
     }
 
-    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _gmxReferralRebatesSender) external onlyOwner {
+    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _gmxReferralRebatesSender) external requiresAuth {
         GMXInfo storage _gmxInfo = gmxInfo;
 
         _gmxInfo.gmxRouter = _gmxRouter;
@@ -299,7 +297,7 @@ contract Orchestrator is Base, IOrchestrator {
         emit GMXUtilsSet(_gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, _gmxReferralRebatesSender);
     }
 
-    function setPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode) external onlyOwner {
+    function setPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode) external requiresAuth {
         revenueDistributor = _revenueDistributor;
         keeper = _keeper;
         referralCode = _referralCode;
@@ -307,7 +305,7 @@ contract Orchestrator is Base, IOrchestrator {
         emit PuppetUtilsSet(_revenueDistributor, _keeper, _referralCode);
     }
 
-    function setPriceFeeds(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external onlyOwner {
+    function setPriceFeeds(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external requiresAuth {
         if (_assets.length != _priceFeeds.length || _assets.length != _decimals.length) revert MismatchedInputArrays();
 
         for (uint256 i = 0; i < _assets.length; i++) {
@@ -320,7 +318,7 @@ contract Orchestrator is Base, IOrchestrator {
         emit PriceFeedsSet(_assets, _priceFeeds, _decimals);
     }
 
-    function pause(bool _pause) external onlyOwner {
+    function pause(bool _pause) external requiresAuth {
         paused = _pause;
 
         emit Paused(_pause);

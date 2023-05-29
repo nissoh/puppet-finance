@@ -13,12 +13,12 @@ interface IRoute is IPositionRouterCallbackReceiver {
     }
 
     struct PositionInfo {
-        bool isPositionOpen;
         bool waitForRatioAdjustment;
         uint256 positionsIndex;
         uint256 addCollateralRequestsIndex;
         uint256 totalSupply;
         uint256 totalAssets;
+        address[] puppets;
     }
 
     struct AddCollateralRequest{
@@ -33,24 +33,16 @@ interface IRoute is IPositionRouterCallbackReceiver {
     }
 
     // ============================================================================================
-    // View Functions
-    // ============================================================================================
-
-    function getIsPositionOpen() external view returns (bool);
-
-    // ============================================================================================
     // Mutated Functions
     // ============================================================================================
 
     // trader
 
-    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, bool _isIncrease) external payable returns (bytes32 _requestKey);
-
-    // function createAddCollateralRequestETH(bytes memory _traderPositionData, uint256 _minOut) external payable returns (bytes32 _requestKey);
+    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, bool _isIncrease) external payable returns (bytes32 _requestKey);
 
     // keeper
 
-    function decreaseSize(bytes memory _traderPositionData) external returns (bytes32 _requestKey);
+    function decreaseSize(bytes memory _traderPositionData, uint256 _executionFee) external returns (bytes32 _requestKey);
 
     function liquidate() external;
 
@@ -96,6 +88,5 @@ interface IRoute is IPositionRouterCallbackReceiver {
     error InvalidPathLength();
     error InvalidTokenIn();
     error PositionStillAlive();
-    error WaitingtForRatioAdjustment();
     error Paused();
 }

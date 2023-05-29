@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
+import {Auth, Authority} from "@solmate/auth/Auth.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -10,12 +11,8 @@ import {IWETH} from "./interfaces/IWETH.sol";
 import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
 import {IBase, AggregatorV3Interface} from "./interfaces/IBase.sol";
 
-contract Base is ReentrancyGuard, IBase {
+abstract contract Base is ReentrancyGuard, Auth, IBase {
 
-    using SafeERC20 for IERC20;
-    using Address for address payable;
-
-    address public owner;
     address public revenueDistributor;
     address public keeper;
 
@@ -25,23 +22,4 @@ contract Base is ReentrancyGuard, IBase {
     bytes32 public referralCode;
 
     GMXInfo public gmxInfo;
-
-    // ============================================================================================
-    // Modifiers
-    // ============================================================================================
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert NotOwner();
-        _;
-    }
-
-    // ============================================================================================
-    // Owner Functions
-    // ============================================================================================
-
-    function setOwner(address _owner) external onlyOwner {
-        owner = _owner;
-
-        emit SetOwner(_owner);
-    }
 }
