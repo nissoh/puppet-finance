@@ -277,15 +277,16 @@ contract Orchestrator is Base, IOrchestrator {
     // ============================================================================================
     // Authority Functions
     // ============================================================================================
+    // TODO - add requiresAuth
 
-    function setRouteType(address _collateral, address _index, bool _isLong) external requiresAuth {
+    function setRouteType(address _collateral, address _index, bool _isLong) external {
         bytes32 _routeTypeKey = getRouteTypeKey(_collateral, _index, _isLong);
         routeType[_routeTypeKey] = RouteType(_collateral, _index, _isLong, true);
 
         emit RouteTypeSet(_routeTypeKey, _collateral, _index, _isLong);
     }
 
-    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _gmxReferralRebatesSender) external requiresAuth {
+    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _gmxReferralRebatesSender) external {
         GMXInfo storage _gmxInfo = gmxInfo;
 
         _gmxInfo.gmxRouter = _gmxRouter;
@@ -297,7 +298,7 @@ contract Orchestrator is Base, IOrchestrator {
         emit GMXUtilsSet(_gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, _gmxReferralRebatesSender);
     }
 
-    function setPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode) external requiresAuth {
+    function setPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode) external {
         revenueDistributor = _revenueDistributor;
         keeper = _keeper;
         referralCode = _referralCode;
@@ -305,7 +306,7 @@ contract Orchestrator is Base, IOrchestrator {
         emit PuppetUtilsSet(_revenueDistributor, _keeper, _referralCode);
     }
 
-    function setPriceFeeds(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external requiresAuth {
+    function setPriceFeeds(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external {
         if (_assets.length != _priceFeeds.length || _assets.length != _decimals.length) revert MismatchedInputArrays();
 
         for (uint256 i = 0; i < _assets.length; i++) {
@@ -318,7 +319,7 @@ contract Orchestrator is Base, IOrchestrator {
         emit PriceFeedsSet(_assets, _priceFeeds, _decimals);
     }
 
-    function pause(bool _pause) external requiresAuth {
+    function pause(bool _pause) external {
         paused = _pause;
 
         emit Paused(_pause);

@@ -16,7 +16,7 @@ contract RevenueDistributor is ReentrancyGuard, Auth {
     // Constructor
     // ============================================================================================
 
-    constructor(Authority _authority, address _orchestrator) Auth(address(0), _authority) {}
+    constructor(Authority _authority) Auth(address(0), _authority) {}
 
     // ============================================================================================
     // Authority Functions
