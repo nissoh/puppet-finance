@@ -11,6 +11,8 @@ import {IRoute} from "./interfaces/IRoute.sol";
 
 import "./Base.sol";
 
+import "forge-std/console.sol";
+
 contract Route is Base, IRoute {
 
     using SafeERC20 for IERC20;
@@ -24,7 +26,7 @@ contract Route is Base, IRoute {
 
     mapping(bytes32 => bool) public keeperRequests; // requestKey => isKeeperRequest
 
-    mapping(bytes32 => uint256) public requestKeyToIndex; // requestKey => addCollateralRequestsIndex
+    mapping(bytes32 => uint256) public requestKeyToAddCollateralRequestsIndex; // requestKey => addCollateralRequestsIndex
     mapping(uint256 => AddCollateralRequest) public addCollateralRequests; // addCollateralIndex => AddCollateralRequest
 
     IOrchestrator public orchestrator;
@@ -63,11 +65,6 @@ contract Route is Base, IRoute {
     // Modifiers
     // ============================================================================================
 
-    modifier onlyCallbackCaller() {
-        if (msg.sender != owner && msg.sender != gmxInfo.gmxCallbackCaller) revert NotCallbackCaller();
-        _;
-    }
-
     modifier onlyKeeper() {
         if (msg.sender != owner && msg.sender != keeper) revert NotKeeper();
         _;
@@ -82,7 +79,7 @@ contract Route is Base, IRoute {
     }
 
     function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (address[] memory _puppetsToAdjust, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) {
-        uint256 _index = requestKeyToIndex[_requestKey];
+        uint256 _index = requestKeyToAddCollateralRequestsIndex[_requestKey];
         _puppetsToAdjust = addCollateralRequests[_index].puppetsToAdjust;
         _puppetsShares = addCollateralRequests[_index].puppetsShares;
         _puppetsAmounts = addCollateralRequests[_index].puppetsAmounts;
@@ -136,13 +133,15 @@ contract Route is Base, IRoute {
     // Callback Function
     // ============================================================================================
 
-    function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant onlyCallbackCaller {
+    function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant {
+        if (msg.sender != owner && msg.sender != gmxInfo.gmxCallbackCaller) revert NotCallbackCaller();
+
         emit CallbackReceived(_requestKey, _isExecuted, _isIncrease);
 
         bool _repayKeeper = keeperRequests[_requestKey];
         if (_isExecuted) {
             if (_isIncrease) _allocateShares(_requestKey);
-            _requestKey = bytes32(0); // repay any collateral the exsisting sharesholders
+            _requestKey = bytes32(0); // repay any collateral to the exsisting sharesholders
         }
 
         _repayBalance(_requestKey, _repayKeeper);
@@ -362,10 +361,10 @@ contract Route is Base, IRoute {
             _acceptablePrice,
             _executionFee,
             referralCode,
-            gmxInfo.gmxCallbackCaller
+            address(this)
         );
 
-        if (_amountIn > 0) requestKeyToIndex[_requestKey] = positionInfo.addCollateralRequestsIndex - 1;
+        if (_amountIn > 0) requestKeyToAddCollateralRequestsIndex[_requestKey] = positionInfo.addCollateralRequestsIndex - 1;
 
         if (!_isOpenInterest()) {
             // new position opened
@@ -398,14 +397,14 @@ contract Route is Base, IRoute {
             _minOut,
             _executionFee,
             false, // _withdrawETH
-            gmxInfo.gmxCallbackCaller
+            address(this)
         );
 
         emit CreatedDecreasePositionRequest(_requestKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
     function _allocateShares(bytes32 _requestKey) internal {
-        AddCollateralRequest memory _request = addCollateralRequests[requestKeyToIndex[_requestKey]];
+        AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         uint256 _traderAmountIn = _request.traderAmountIn;
         if (_traderAmountIn > 0) {
             RouteInfo memory _routeInfo = routeInfo;
@@ -453,7 +452,7 @@ contract Route is Base, IRoute {
             bool _isFailedRequest = _requestKey != bytes32(0);
             IOrchestrator _orchestrator = orchestrator;
             address[] memory _puppets = _positionInfo.puppets;
-            AddCollateralRequest memory _request = addCollateralRequests[requestKeyToIndex[_requestKey]];
+            AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
             for (uint256 i = 0; i < _puppets.length; i++) {
                 uint256 _shares;
                 address _puppet = _puppets[i];

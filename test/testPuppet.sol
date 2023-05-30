@@ -34,6 +34,8 @@ contract testPuppet is IBase, Test {
     address collateralToken = address(0x82aF49447D8a07e3bd95BD0d56f35241523fBab1); // WETH
     address indexToken = address(0x82aF49447D8a07e3bd95BD0d56f35241523fBab1); // WETH
 
+    address gmxVault = 0x489ee077994B6658eAfA855C308275EAd8097C4A;
+    address gmxPositionRouter = 0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868;
     address GMXPositionRouterKeeper = address(0x11D62807dAE812a0F1571243460Bf94325F43BB7);
     address revenueDistributor;
 
@@ -73,8 +75,6 @@ contract testPuppet is IBase, Test {
         // deploy orchestrator
         address _gmxRouter = 0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064;
         address _gmxReader = 0x22199a49A999c351eF7927602CFB187ec3cae489;
-        address _gmxVault = 0x489ee077994B6658eAfA855C308275EAd8097C4A;
-        address _gmxPositionRouter = 0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868;
         address _gmxCallbackCaller = 0x11D62807dAE812a0F1571243460Bf94325F43BB7;
         address _gmxReferralRebatesSender = address(0);
         bytes32 _referralCode = bytes32(0);
@@ -82,9 +82,9 @@ contract testPuppet is IBase, Test {
         GMXInfo memory _gmxInfo = GMXInfo({
             gmxRouter: _gmxRouter,
             gmxReader: _gmxReader,
-            gmxVault: _gmxVault,
-            gmxPositionRouter: _gmxPositionRouter,
-            gmxCallbackCaller: _gmxCallbackCaller,
+            gmxVault: gmxVault,
+            gmxPositionRouter: gmxPositionRouter,
+            gmxCallbackCaller: gmxPositionRouter, // todo - remove this variable
             gmxReferralRebatesSender: _gmxReferralRebatesSender
         });
 
@@ -346,9 +346,10 @@ contract testPuppet is IBase, Test {
         uint256 _acceptablePrice = type(uint256).max; // the USD value of the max (for longs) or min (for shorts) index price acceptable when executing the request
         uint256 _executionFee = 180000000000000; // can be set to PositionRouter.minExecutionFee() https://arbiscan.io/address/0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868#readContract#F26
 
+        // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 82698453891127247668603775976796325121 - 72755589402161323824061129657679280046;
+        uint256 _size = 90414231411087324391798166152938732778 - 81489382345869434771396636318992272311;
         
         // the USD value of the change in position size
         uint256 _sizeDelta = _size;
@@ -379,8 +380,6 @@ contract testPuppet is IBase, Test {
         vm.expectRevert(); // reverts with InvalidPath()
         route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _faultyTraderSwapData, _executionFee, true);
 
-        (uint256 _addCollateralRequestsIndexBefore,,,) = route.positionInfo();
-
         _dealERC20(WETH, address(route), 10 ether);
         assertEq(IERC20(WETH).balanceOf(revenueDistributor), 0, "_testCreateInitialPosition: E1");
         assertEq(IERC20(WETH).balanceOf(address(route)), 10 ether, "_testCreateInitialPosition: E2");
@@ -389,111 +388,89 @@ contract testPuppet is IBase, Test {
         assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), bob), 0, "_testCreateInitialPosition: E4");
         assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), yossi), 0, "_testCreateInitialPosition: E5");
 
+        vm.stopPrank();
+
+        // 1. createPosition
+        _testCreatePosition(_traderPositionData, _traderSwapData, _amountInTrader, _executionFee);
+        skip(5 days);
+        bytes32 _requestKey = _testCreatePosition(_traderPositionData, _traderSwapData, _amountInTrader, _executionFee);
+        
+        vm.expectRevert(); // reverts with NotCallbackCaller()
+        route.gmxPositionCallback(_requestKey, true, true);
+
+        // 2. executePosition
+        vm.startPrank(GMXPositionRouterKeeper); // keeper
+        IGMXPositionRouter(gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
+        vm.stopPrank();
+
+        if (_isOpenInterest(address(route))) {
+            assertTrue(!route.keeperRequests(_requestKey), "_testCreateInitialPosition: E6");
+            assertEq(address(route).balance, 0, "_testCreateInitialPosition: E7");
+
+            // vm.startPrank(keeper);
+            // route.gmxPositionCallback(_requestKey, true, true);
+            // vm.stopPrank();
+
+            assertEq(address(route).balance, _executionFee, "_testCreateInitialPosition: E8");
+        } else {
+            console.log("OpenInterest is false");
+            // print route address
+            console.log("route address: ", address(route));
+            revert("test1");
+            // assertEq(address(traderRoute).balance, 0, "_testCreateInitialPosition: E5");
+            // assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), false, "_testCreateInitialPosition: E6");
+            // assertEq(address(trader).balance, _traderBalanceBefore, "_testCreateInitialPosition: E7");
+            // revert("!OpenInterest"); // current config should open a position. i want to know if it fails
+        }
+    }
+
+    function _testCreatePosition(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _amountInTrader, uint256 _executionFee) internal returns (bytes32 _requestKey) {
         uint256 _orchesratorBalanceBefore = IERC20(WETH).balanceOf(address(orchestrator));
         uint256 _aliceDepositAccountBalanceBefore = orchestrator.puppetDepositAccount(WETH, alice);
         uint256 _bobDepositAccountBalanceBefore = orchestrator.puppetDepositAccount(WETH, bob);
         uint256 _yossiDepositAccountBalanceBefore = orchestrator.puppetDepositAccount(WETH, yossi);
+        (,uint256 _addCollateralRequestsIndexBefore,,) = route.positionInfo();
 
-        // 1. createPosition
-        _createPosition();
-        bytes32 _requestKey = route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _traderSwapData, _executionFee, true);
+        vm.startPrank(trader);
+        _requestKey = route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _traderSwapData, _executionFee, true);
         vm.stopPrank();
 
-        (uint256 _puppetsAmountIn, uint256 _traderAmountInReq, uint256 _traderRequestShares, uint256 _requestTotalSupply, uint256 _requestTotalAssets) = route.addCollateralRequests(_addCollateralRequestsIndexBefore);
+        (uint256 _puppetsAmountIn, uint256 _traderAmountInReq, uint256 _traderRequestShares, uint256 _requestTotalSupply, uint256 _requestTotalAssets) = route.addCollateralRequests(route.requestKeyToAddCollateralRequestsIndex(_requestKey));
         (uint256 _positionIndex, uint256 _addCollateralRequestsIndexAfter, uint256 _totalSupply, uint256 _totalAssets) = route.positionInfo();
 
-        assertEq(_traderAmountInReq, _amountInTrader, "_testCreateInitialPosition: E6");
-        assertEq(_traderAmountInReq, _traderRequestShares, "_testCreateInitialPosition: E7");
-        assertTrue(_requestTotalSupply > 0, "_testCreateInitialPosition: E8");
-        assertTrue(_requestTotalAssets > _amountInTrader, "_testCreateInitialPosition: E9");
+        assertEq(_traderAmountInReq, _amountInTrader, "_testCreatePosition: E6");
+        assertEq(_traderAmountInReq, _traderRequestShares, "_testCreatePosition: E7");
+        assertTrue(_requestTotalSupply > 0, "_testCreatePosition: E8");
+        assertTrue(_requestTotalAssets > _amountInTrader, "_testCreatePosition: E9");
 
         address[] memory _puppets = route.getPuppets();
         (address[] memory _puppetsToAdjust, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) = route.getPuppetsRequestInfo(_requestKey);
 
-        assertEq(_positionIndex, 0, "_testCreateInitialPosition: E10");
-        assertEq(_totalSupply, 0, "_testCreateInitialPosition: E11");
-        assertEq(_totalAssets, 0, "_testCreateInitialPosition: E12");
-        assertEq(IERC20(WETH).balanceOf(revenueDistributor), 10 ether, "_testCreateInitialPosition: E13");
-        assertEq(IERC20(WETH).balanceOf(address(route)), 0, "_testCreateInitialPosition: E14");
-        assertEq(route.requestKeyToIndex(_requestKey), _addCollateralRequestsIndexBefore, "_testCreateInitialPosition: E15");
-        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), alice), block.timestamp, "_testCreateInitialPosition: E16");
-        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), bob), block.timestamp, "_testCreateInitialPosition: E17");
-        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), yossi), block.timestamp, "_testCreateInitialPosition: E18");
-        assertEq(_addCollateralRequestsIndexAfter, _addCollateralRequestsIndexBefore + 1, "_testCreateInitialPosition: E19");
-        assertEq(IERC20(WETH).balanceOf(address(orchestrator)) + _puppetsAmountIn, _orchesratorBalanceBefore, "_testCreateInitialPosition: E20");
-        assertEq(_puppetsToAdjust.length, 0, "_testCreateInitialPosition: E21");
-        assertEq(_puppetsShares.length, 3, "_testCreateInitialPosition: E22");
-        assertEq(_puppetsAmounts.length, 3, "_testCreateInitialPosition: E23");
-        assertEq(_puppets.length, 3, "_testCreateInitialPosition: E24");
-        assertEq(_aliceDepositAccountBalanceBefore - _puppetsAmounts[0], orchestrator.puppetDepositAccount(WETH, alice), "_testCreateInitialPosition: E25");
-        assertEq(_bobDepositAccountBalanceBefore - _puppetsAmounts[1], orchestrator.puppetDepositAccount(WETH, bob), "_testCreateInitialPosition: E26");
-        assertEq(_yossiDepositAccountBalanceBefore - _puppetsAmounts[2], orchestrator.puppetDepositAccount(WETH, yossi), "_testCreateInitialPosition: E27");
-        assertEq(_puppetsShares[0], _puppetsShares[1], "_testCreateInitialPosition: E28");
-        assertEq(_puppetsShares[0], _puppetsShares[2], "_testCreateInitialPosition: E29");
-        assertEq(_puppetsAmounts[0], _puppetsAmounts[1], "_testCreateInitialPosition: E30");
-        assertEq(_puppetsAmounts[0], _puppetsAmounts[2], "_testCreateInitialPosition: E31");
-        assertTrue(_puppetsShares[0] > 0, "_testCreateInitialPosition: E32");
-        assertTrue(_puppetsShares[1] > 0, "_testCreateInitialPosition: E33");
-        assertTrue(_puppetsShares[2] > 0, "_testCreateInitialPosition: E34");
-        
-        // vm.expectRevert(); // reverts with `NotKeeper()`
-        // ITraderRoute(traderRoute).createPuppetPosition();
-
-        // vm.startPrank(orchestrator.getKeeper());
-        // vm.expectRevert(); // reverts with `PositionNotApproved()` 
-        // ITraderRoute(traderRoute).createPuppetPosition();
-        // vm.stopPrank();
-        
-        // // 2. executePosition
-        // vm.startPrank(GMXPositionRouterKeeper); // keeper
-        // IGMXPositionRouter(orchestrator.getGMXPositionRouter()).executeIncreasePositions(type(uint256).max, payable(traderRoute));
-        // vm.stopPrank();
-
-        // if (_isOpenInterest(traderRoute)) {
-        //     assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), true, "_testCreateInitialPosition: E3");
-        //     assertTrue(address(trader).balance < _traderBalanceBefore, "_testCreateInitialPosition: E4");
-        //     assertTrue(TraderRoute(payable(traderRoute)).isRequestApproved(), "_testCreateInitialPosition: E5");
-
-        //     uint256 _aliceDepositBalanceBefore = orchestrator.puppetDepositAccount(alice);
-        //     uint256 _bobDepositBalanceBefore = orchestrator.puppetDepositAccount(bob);
-        //     uint256 _yossiDepositBalanceBefore = orchestrator.puppetDepositAccount(yossi);
-        //     uint256 _orchestratorBalanceBefore = address(orchestrator).balance;
-
-        //     // 3. createPuppetPosition
-        //     vm.startPrank(orchestrator.getKeeper());
-        //     _requestKey = ITraderRoute(traderRoute).createPuppetPosition();
-        //     vm.stopPrank();
-
-        //     if (TraderRoute(payable(traderRoute)).isPuppetIncrease()) {
-        //         _testPuppetRouteOnIncreaseBeforeCallback(_aliceDepositBalanceBefore, _bobDepositBalanceBefore, _yossiDepositBalanceBefore, _orchestratorBalanceBefore, _requestKey);
-        //     } else {
-        //         revert("not tested: 1");
-        //     }
-
-        //     uint256 _puppetRouteBalanceBefore = address(puppetRoute).balance;
-
-        //     _aliceDepositBalanceBefore = orchestrator.puppetDepositAccount(alice);
-        //     _bobDepositBalanceBefore = orchestrator.puppetDepositAccount(bob);
-        //     _yossiDepositBalanceBefore = orchestrator.puppetDepositAccount(yossi);
-        //     _orchestratorBalanceBefore = address(orchestrator).balance;
-
-        //     // 4. executePuppetPosition
-        //     vm.startPrank(GMXPositionRouterKeeper); // keeper
-        //     IGMXPositionRouter(orchestrator.getGMXPositionRouter()).executeIncreasePositions(type(uint256).max, payable(puppetRoute));
-        //     vm.stopPrank();
-
-        //     if (_isOpenInterest(traderRoute)) {
-        //         _testPuppetRouteOnIncreaseAfterPositionApproved(_executionFee, _orchestratorBalanceBefore, _aliceDepositBalanceBefore, _bobDepositBalanceBefore, _yossiDepositBalanceBefore, _puppetRouteBalanceBefore);
-        //     } else {
-        //         revert("not tested: 2");
-        //     }
-
-        // } else {
-        //     assertEq(address(traderRoute).balance, 0, "_testCreateInitialPosition: E5");
-        //     assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), false, "_testCreateInitialPosition: E6");
-        //     assertEq(address(trader).balance, _traderBalanceBefore, "_testCreateInitialPosition: E7");
-        //     revert("!OpenInterest"); // current config should open a position. i want to know if it fails
-        // }
+        assertEq(_positionIndex, 0, "_testCreatePosition: E10");
+        assertEq(_totalSupply, 0, "_testCreatePosition: E11");
+        assertEq(_totalAssets, 0, "_testCreatePosition: E12");
+        assertEq(IERC20(WETH).balanceOf(revenueDistributor), 10 ether, "_testCreatePosition: E13");
+        assertEq(IERC20(WETH).balanceOf(address(route)), 0, "_testCreatePosition: E14");
+        assertEq(route.requestKeyToAddCollateralRequestsIndex(_requestKey), _addCollateralRequestsIndexBefore, "_testCreatePosition: E15");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), alice), block.timestamp, "_testCreatePosition: E16");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), bob), block.timestamp, "_testCreatePosition: E17");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), yossi), block.timestamp, "_testCreatePosition: E18");
+        assertEq(_addCollateralRequestsIndexAfter, _addCollateralRequestsIndexBefore + 1, "_testCreatePosition: E19");
+        assertEq(IERC20(WETH).balanceOf(address(orchestrator)) + _puppetsAmountIn, _orchesratorBalanceBefore, "_testCreatePosition: E20");
+        assertEq(_puppetsToAdjust.length, 0, "_testCreatePosition: E21");
+        assertEq(_puppetsShares.length, 3, "_testCreatePosition: E22");
+        assertEq(_puppetsAmounts.length, 3, "_testCreatePosition: E23");
+        assertEq(_puppets.length, 3, "_testCreatePosition: E24");
+        assertEq(_aliceDepositAccountBalanceBefore - _puppetsAmounts[0], orchestrator.puppetDepositAccount(WETH, alice), "_testCreatePosition: E25");
+        assertEq(_bobDepositAccountBalanceBefore - _puppetsAmounts[1], orchestrator.puppetDepositAccount(WETH, bob), "_testCreatePosition: E26");
+        assertEq(_yossiDepositAccountBalanceBefore - _puppetsAmounts[2], orchestrator.puppetDepositAccount(WETH, yossi), "_testCreatePosition: E27");
+        assertEq(_puppetsShares[0], _puppetsShares[1], "_testCreatePosition: E28");
+        assertEq(_puppetsShares[0], _puppetsShares[2], "_testCreatePosition: E29");
+        assertEq(_puppetsAmounts[0], _puppetsAmounts[1], "_testCreatePosition: E30");
+        assertEq(_puppetsAmounts[0], _puppetsAmounts[2], "_testCreatePosition: E31");
+        assertTrue(_puppetsShares[0] > 0, "_testCreatePosition: E32");
+        assertTrue(_puppetsShares[1] > 0, "_testCreatePosition: E33");
+        assertTrue(_puppetsShares[2] > 0, "_testCreatePosition: E34");
     }
 
     // function _testPuppetRouteOnIncreaseBeforeCallback(uint256 _aliceDepositBalanceBefore, uint256 _bobDepositBalanceBefore, uint256 _yossiDepositBalanceBefore, uint256 _orchestratorBalanceBefore, bytes32 _requestKey) internal {
@@ -557,11 +534,11 @@ contract testPuppet is IBase, Test {
         IERC20(_token).safeApprove(_spender, _amount);
     }
 
-    // function _isOpenInterest(address _account) internal view returns (bool) {
-    //     (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(orchestrator.getGMXVault()).getPosition(_account, collateralToken, indexToken, isLong);
+    function _isOpenInterest(address _account) internal view returns (bool) {
+        (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(gmxVault).getPosition(_account, collateralToken, indexToken, isLong);
 
-    //     return _size > 0 && _collateral > 0;
-    // }
+        return _size > 0 && _collateral > 0;
+    }
 
     // function _getAllowanceForRoute(uint256 _traderAmountIn) internal returns (uint256 _totalAllowance) {
     //     bytes32 _routeKey = orchestrator.getTraderRouteKey(trader, collateralToken, indexToken, isLong);
