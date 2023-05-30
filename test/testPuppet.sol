@@ -31,17 +31,17 @@ contract testPuppet is IBase, Test {
     address bob = makeAddr("bob");
     address yossi = makeAddr("yossi");
 
-    address route;
-
     address collateralToken = address(0x82aF49447D8a07e3bd95BD0d56f35241523fBab1); // WETH
     address indexToken = address(0x82aF49447D8a07e3bd95BD0d56f35241523fBab1); // WETH
 
     address GMXPositionRouterKeeper = address(0x11D62807dAE812a0F1571243460Bf94325F43BB7);
+    address revenueDistributor;
 
     bool isLong = true;
     
     uint256 arbitrumFork;
 
+    Route route;
     Orchestrator orchestrator;
 
     AggregatorV3Interface priceFeed;
@@ -65,7 +65,7 @@ contract testPuppet is IBase, Test {
 
         // deploy RevenueDistributor
         Authority _authority = Authority(0x575F40E8422EfA696108dAFD12cD8d6366982416);
-        address _revenueDistributor = address(new RevenueDistributor(_authority));
+        revenueDistributor = address(new RevenueDistributor(_authority));
 
         // deploy RouteFactory
         address _routeFactory = address(new RouteFactory());
@@ -88,7 +88,7 @@ contract testPuppet is IBase, Test {
             gmxReferralRebatesSender: _gmxReferralRebatesSender
         });
 
-        orchestrator = new Orchestrator(_authority, _revenueDistributor, _routeFactory, keeper, _referralCode, _gmxInfo);
+        orchestrator = new Orchestrator(_authority, revenueDistributor, _routeFactory, keeper, _referralCode, _gmxInfo);
 
 
         // set route type
@@ -116,6 +116,8 @@ contract testPuppet is IBase, Test {
         // trader
         bytes32 _routeKey = _testRegisterRouteWETH();
 
+        route = Route(payable(orchestrator.getRoute(_routeKey)));
+
         // puppet
         _testPuppetDeposit(_assets, WETH);
         _testUpdateRoutesSubscription(_routeKey);
@@ -123,7 +125,7 @@ contract testPuppet is IBase, Test {
         _testPuppetWithdraw(_assets, WETH);
 
         // route
-        // _testCreateInitialPosition();
+        _testCreateInitialPosition();
     }
 
     // ============================================================================================
@@ -334,108 +336,165 @@ contract testPuppet is IBase, Test {
     // Route
     //
 
-    // // open position
-    // // add collateral + increase size
-    // function _testCreateInitialPosition() internal {
-    //     // (, int256 _price,,,) = priceFeed.latestRoundData();
+    // open position
+    // add collateral + increase size
+    // trader adds ETH collateral
+    function _testCreateInitialPosition() internal {
+        // (, int256 _price,,,) = priceFeed.latestRoundData();
 
-    //     uint256 _minOut = 0; // _minOut can be zero if no swap is required
-    //     uint256 _acceptablePrice = type(uint256).max; // the USD value of the max (for longs) or min (for shorts) index price acceptable when executing the request
-    //     uint256 _executionFee = 180000000000000; // can be set to PositionRouter.minExecutionFee() https://arbiscan.io/address/0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868#readContract#F26
+        uint256 _minOut = 0; // _minOut can be zero if no swap is required
+        uint256 _acceptablePrice = type(uint256).max; // the USD value of the max (for longs) or min (for shorts) index price acceptable when executing the request
+        uint256 _executionFee = 180000000000000; // can be set to PositionRouter.minExecutionFee() https://arbiscan.io/address/0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868#readContract#F26
 
-    //     // TODO - // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-    //     // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-    //     uint256 _size = 82698453891127247668603775976796325121 - 72755589402161323824061129657679280046;
-    //     // the USD value of the change in position size
-    //     uint256 _sizeDeltaTrader = _size / 50;
-    //     uint256 _sizeDeltaPuppet = _size / 50;
-
-    //     // the amount of tokenIn to deposit as collateral
-    //     uint256 _amountInTrader = 10 ether;
-    //     uint256 _amountInPuppet = _getAllowanceForRoute(_amountInTrader - _executionFee) - _executionFee;
-
-    //     bytes memory _traderData = abi.encode(_minOut, _sizeDeltaTrader, _acceptablePrice, _executionFee);
-    //     bytes memory _puppetsData = abi.encode(_amountInPuppet, _minOut, _sizeDeltaPuppet, _acceptablePrice, _executionFee);
-
-    //     assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), false, "_testCreateInitialPosition: E0");
-
-    //     vm.expectRevert(); // reverts with NotTrader()
-    //     ITraderRoute(traderRoute).createPosition(_traderData, _puppetsData, true, true);
-
-    //     uint256 _traderBalanceBefore = address(trader).balance;
-
-    //     vm.startPrank(trader);
-
-    //     vm.expectRevert(); // reverts with `Arithmetic over/underflow` (on subtracting _executionFee from _amountInTrader) 
-    //     ITraderRoute(traderRoute).createPosition(_traderData, _puppetsData, true, true);
-
-    //     // 1. createPosition
-    //     bytes32 _requestKey = ITraderRoute(traderRoute).createPosition{ value: _amountInTrader }(_traderData, _puppetsData, true, true);
-    //     vm.stopPrank();
-
-    //     assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), true, "_testCreateInitialPosition: E1");
-    //     assertEq(ITraderRoute(traderRoute).getTraderAmountIn(), _amountInTrader - _executionFee, "_testCreateInitialPosition: E02");
-    //     assertEq(orchestrator.getRouteForRequestKey(_requestKey), address(traderRoute), "_testCreateInitialPosition: E2");
-
-    //     vm.expectRevert(); // reverts with `NotKeeper()` 
-    //     ITraderRoute(traderRoute).createPuppetPosition();
-
-    //     vm.startPrank(orchestrator.getKeeper());
-    //     vm.expectRevert(); // reverts with `PositionNotApproved()` 
-    //     ITraderRoute(traderRoute).createPuppetPosition();
-    //     vm.stopPrank();
+        // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
+        // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
+        uint256 _size = 82698453891127247668603775976796325121 - 72755589402161323824061129657679280046;
         
-    //     // 2. executePosition
-    //     vm.startPrank(GMXPositionRouterKeeper); // keeper
-    //     IGMXPositionRouter(orchestrator.getGMXPositionRouter()).executeIncreasePositions(type(uint256).max, payable(traderRoute));
-    //     vm.stopPrank();
+        // the USD value of the change in position size
+        uint256 _sizeDelta = _size;
 
-    //     if (_isOpenInterest(traderRoute)) {
-    //         assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), true, "_testCreateInitialPosition: E3");
-    //         assertTrue(address(trader).balance < _traderBalanceBefore, "_testCreateInitialPosition: E4");
-    //         assertTrue(TraderRoute(payable(traderRoute)).isRequestApproved(), "_testCreateInitialPosition: E5");
+        // the amount of tokenIn to deposit as collateral
+        uint256 _amountInTrader = 10 ether;
 
-    //         uint256 _aliceDepositBalanceBefore = orchestrator.puppetDepositAccount(alice);
-    //         uint256 _bobDepositBalanceBefore = orchestrator.puppetDepositAccount(bob);
-    //         uint256 _yossiDepositBalanceBefore = orchestrator.puppetDepositAccount(yossi);
-    //         uint256 _orchestratorBalanceBefore = address(orchestrator).balance;
+        bytes memory _traderPositionData = abi.encode(_minOut, _sizeDelta, _acceptablePrice);
 
-    //         // 3. createPuppetPosition
-    //         vm.startPrank(orchestrator.getKeeper());
-    //         _requestKey = ITraderRoute(traderRoute).createPuppetPosition();
-    //         vm.stopPrank();
+        address[] memory _path = new address[](1);
+        _path[0] = FRAX;
+        bytes memory _faultyTraderSwapData = abi.encode(_path, _amountInTrader, _minOut);
+        _path[0] = WETH;
+        bytes memory _traderSwapData = abi.encode(_path, _amountInTrader, _minOut);
 
-    //         if (TraderRoute(payable(traderRoute)).isPuppetIncrease()) {
-    //             _testPuppetRouteOnIncreaseBeforeCallback(_aliceDepositBalanceBefore, _bobDepositBalanceBefore, _yossiDepositBalanceBefore, _orchestratorBalanceBefore, _requestKey);
-    //         } else {
-    //             revert("not tested: 1");
-    //         }
+        assertEq(orchestrator.getIsPaused(), false, "_testCreateInitialPosition: E0");
 
-    //         uint256 _puppetRouteBalanceBefore = address(puppetRoute).balance;
+        vm.expectRevert(); // reverts with NotTrader()
+        route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _traderSwapData, _executionFee, true);
 
-    //         _aliceDepositBalanceBefore = orchestrator.puppetDepositAccount(alice);
-    //         _bobDepositBalanceBefore = orchestrator.puppetDepositAccount(bob);
-    //         _yossiDepositBalanceBefore = orchestrator.puppetDepositAccount(yossi);
-    //         _orchestratorBalanceBefore = address(orchestrator).balance;
+        uint256 _traderBalanceBefore = address(trader).balance;
 
-    //         // 4. executePuppetPosition
-    //         vm.startPrank(GMXPositionRouterKeeper); // keeper
-    //         IGMXPositionRouter(orchestrator.getGMXPositionRouter()).executeIncreasePositions(type(uint256).max, payable(puppetRoute));
-    //         vm.stopPrank();
+        vm.startPrank(trader);
 
-    //         if (_isOpenInterest(traderRoute)) {
-    //             _testPuppetRouteOnIncreaseAfterPositionApproved(_executionFee, _orchestratorBalanceBefore, _aliceDepositBalanceBefore, _bobDepositBalanceBefore, _yossiDepositBalanceBefore, _puppetRouteBalanceBefore);
-    //         } else {
-    //             revert("not tested: 2");
-    //         }
+        vm.expectRevert(); // reverts with InvalidExecutionFee()
+        route.createPositionRequest{ value: _amountInTrader + _executionFee + 10 }(_traderPositionData, _traderSwapData, _executionFee, true);
 
-    //     } else {
-    //         assertEq(address(traderRoute).balance, 0, "_testCreateInitialPosition: E5");
-    //         assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), false, "_testCreateInitialPosition: E6");
-    //         assertEq(address(trader).balance, _traderBalanceBefore, "_testCreateInitialPosition: E7");
-    //         revert("!OpenInterest"); // current config should open a position. i want to know if it fails
-    //     }
-    // }
+        vm.expectRevert(); // reverts with InvalidPath()
+        route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _faultyTraderSwapData, _executionFee, true);
+
+        (uint256 _addCollateralRequestsIndexBefore,,,) = route.positionInfo();
+
+        _dealERC20(WETH, address(route), 10 ether);
+        assertEq(IERC20(WETH).balanceOf(revenueDistributor), 0, "_testCreateInitialPosition: E1");
+        assertEq(IERC20(WETH).balanceOf(address(route)), 10 ether, "_testCreateInitialPosition: E2");
+
+        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), alice), 0, "_testCreateInitialPosition: E3");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), bob), 0, "_testCreateInitialPosition: E4");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), yossi), 0, "_testCreateInitialPosition: E5");
+
+        uint256 _orchesratorBalanceBefore = IERC20(WETH).balanceOf(address(orchestrator));
+        uint256 _aliceDepositAccountBalanceBefore = orchestrator.puppetDepositAccount(WETH, alice);
+        uint256 _bobDepositAccountBalanceBefore = orchestrator.puppetDepositAccount(WETH, bob);
+        uint256 _yossiDepositAccountBalanceBefore = orchestrator.puppetDepositAccount(WETH, yossi);
+
+        // 1. createPosition
+        _createPosition();
+        bytes32 _requestKey = route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _traderSwapData, _executionFee, true);
+        vm.stopPrank();
+
+        (uint256 _puppetsAmountIn, uint256 _traderAmountInReq, uint256 _traderRequestShares, uint256 _requestTotalSupply, uint256 _requestTotalAssets) = route.addCollateralRequests(_addCollateralRequestsIndexBefore);
+        (uint256 _positionIndex, uint256 _addCollateralRequestsIndexAfter, uint256 _totalSupply, uint256 _totalAssets) = route.positionInfo();
+
+        assertEq(_traderAmountInReq, _amountInTrader, "_testCreateInitialPosition: E6");
+        assertEq(_traderAmountInReq, _traderRequestShares, "_testCreateInitialPosition: E7");
+        assertTrue(_requestTotalSupply > 0, "_testCreateInitialPosition: E8");
+        assertTrue(_requestTotalAssets > _amountInTrader, "_testCreateInitialPosition: E9");
+
+        address[] memory _puppets = route.getPuppets();
+        (address[] memory _puppetsToAdjust, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) = route.getPuppetsRequestInfo(_requestKey);
+
+        assertEq(_positionIndex, 0, "_testCreateInitialPosition: E10");
+        assertEq(_totalSupply, 0, "_testCreateInitialPosition: E11");
+        assertEq(_totalAssets, 0, "_testCreateInitialPosition: E12");
+        assertEq(IERC20(WETH).balanceOf(revenueDistributor), 10 ether, "_testCreateInitialPosition: E13");
+        assertEq(IERC20(WETH).balanceOf(address(route)), 0, "_testCreateInitialPosition: E14");
+        assertEq(route.requestKeyToIndex(_requestKey), _addCollateralRequestsIndexBefore, "_testCreateInitialPosition: E15");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), alice), block.timestamp, "_testCreateInitialPosition: E16");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), bob), block.timestamp, "_testCreateInitialPosition: E17");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(address(route), yossi), block.timestamp, "_testCreateInitialPosition: E18");
+        assertEq(_addCollateralRequestsIndexAfter, _addCollateralRequestsIndexBefore + 1, "_testCreateInitialPosition: E19");
+        assertEq(IERC20(WETH).balanceOf(address(orchestrator)) + _puppetsAmountIn, _orchesratorBalanceBefore, "_testCreateInitialPosition: E20");
+        assertEq(_puppetsToAdjust.length, 0, "_testCreateInitialPosition: E21");
+        assertEq(_puppetsShares.length, 3, "_testCreateInitialPosition: E22");
+        assertEq(_puppetsAmounts.length, 3, "_testCreateInitialPosition: E23");
+        assertEq(_puppets.length, 3, "_testCreateInitialPosition: E24");
+        assertEq(_aliceDepositAccountBalanceBefore - _puppetsAmounts[0], orchestrator.puppetDepositAccount(WETH, alice), "_testCreateInitialPosition: E25");
+        assertEq(_bobDepositAccountBalanceBefore - _puppetsAmounts[1], orchestrator.puppetDepositAccount(WETH, bob), "_testCreateInitialPosition: E26");
+        assertEq(_yossiDepositAccountBalanceBefore - _puppetsAmounts[2], orchestrator.puppetDepositAccount(WETH, yossi), "_testCreateInitialPosition: E27");
+        assertEq(_puppetsShares[0], _puppetsShares[1], "_testCreateInitialPosition: E28");
+        assertEq(_puppetsShares[0], _puppetsShares[2], "_testCreateInitialPosition: E29");
+        assertEq(_puppetsAmounts[0], _puppetsAmounts[1], "_testCreateInitialPosition: E30");
+        assertEq(_puppetsAmounts[0], _puppetsAmounts[2], "_testCreateInitialPosition: E31");
+        assertTrue(_puppetsShares[0] > 0, "_testCreateInitialPosition: E32");
+        assertTrue(_puppetsShares[1] > 0, "_testCreateInitialPosition: E33");
+        assertTrue(_puppetsShares[2] > 0, "_testCreateInitialPosition: E34");
+        
+        // vm.expectRevert(); // reverts with `NotKeeper()`
+        // ITraderRoute(traderRoute).createPuppetPosition();
+
+        // vm.startPrank(orchestrator.getKeeper());
+        // vm.expectRevert(); // reverts with `PositionNotApproved()` 
+        // ITraderRoute(traderRoute).createPuppetPosition();
+        // vm.stopPrank();
+        
+        // // 2. executePosition
+        // vm.startPrank(GMXPositionRouterKeeper); // keeper
+        // IGMXPositionRouter(orchestrator.getGMXPositionRouter()).executeIncreasePositions(type(uint256).max, payable(traderRoute));
+        // vm.stopPrank();
+
+        // if (_isOpenInterest(traderRoute)) {
+        //     assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), true, "_testCreateInitialPosition: E3");
+        //     assertTrue(address(trader).balance < _traderBalanceBefore, "_testCreateInitialPosition: E4");
+        //     assertTrue(TraderRoute(payable(traderRoute)).isRequestApproved(), "_testCreateInitialPosition: E5");
+
+        //     uint256 _aliceDepositBalanceBefore = orchestrator.puppetDepositAccount(alice);
+        //     uint256 _bobDepositBalanceBefore = orchestrator.puppetDepositAccount(bob);
+        //     uint256 _yossiDepositBalanceBefore = orchestrator.puppetDepositAccount(yossi);
+        //     uint256 _orchestratorBalanceBefore = address(orchestrator).balance;
+
+        //     // 3. createPuppetPosition
+        //     vm.startPrank(orchestrator.getKeeper());
+        //     _requestKey = ITraderRoute(traderRoute).createPuppetPosition();
+        //     vm.stopPrank();
+
+        //     if (TraderRoute(payable(traderRoute)).isPuppetIncrease()) {
+        //         _testPuppetRouteOnIncreaseBeforeCallback(_aliceDepositBalanceBefore, _bobDepositBalanceBefore, _yossiDepositBalanceBefore, _orchestratorBalanceBefore, _requestKey);
+        //     } else {
+        //         revert("not tested: 1");
+        //     }
+
+        //     uint256 _puppetRouteBalanceBefore = address(puppetRoute).balance;
+
+        //     _aliceDepositBalanceBefore = orchestrator.puppetDepositAccount(alice);
+        //     _bobDepositBalanceBefore = orchestrator.puppetDepositAccount(bob);
+        //     _yossiDepositBalanceBefore = orchestrator.puppetDepositAccount(yossi);
+        //     _orchestratorBalanceBefore = address(orchestrator).balance;
+
+        //     // 4. executePuppetPosition
+        //     vm.startPrank(GMXPositionRouterKeeper); // keeper
+        //     IGMXPositionRouter(orchestrator.getGMXPositionRouter()).executeIncreasePositions(type(uint256).max, payable(puppetRoute));
+        //     vm.stopPrank();
+
+        //     if (_isOpenInterest(traderRoute)) {
+        //         _testPuppetRouteOnIncreaseAfterPositionApproved(_executionFee, _orchestratorBalanceBefore, _aliceDepositBalanceBefore, _bobDepositBalanceBefore, _yossiDepositBalanceBefore, _puppetRouteBalanceBefore);
+        //     } else {
+        //         revert("not tested: 2");
+        //     }
+
+        // } else {
+        //     assertEq(address(traderRoute).balance, 0, "_testCreateInitialPosition: E5");
+        //     assertEq(ITraderRoute(traderRoute).getIsWaitingForCallback(), false, "_testCreateInitialPosition: E6");
+        //     assertEq(address(trader).balance, _traderBalanceBefore, "_testCreateInitialPosition: E7");
+        //     revert("!OpenInterest"); // current config should open a position. i want to know if it fails
+        // }
+    }
 
     // function _testPuppetRouteOnIncreaseBeforeCallback(uint256 _aliceDepositBalanceBefore, uint256 _bobDepositBalanceBefore, uint256 _yossiDepositBalanceBefore, uint256 _orchestratorBalanceBefore, bytes32 _requestKey) internal {
     //     assertEq(PuppetRoute(payable(puppetRoute)).getIsPositionOpen(), false, "_testPuppetRouteOnIncreaseBeforeCallback: E0");

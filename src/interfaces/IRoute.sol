@@ -13,7 +13,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
     }
 
     struct PositionInfo {
-        bool waitForRatioAdjustment;
         uint256 positionsIndex;
         uint256 addCollateralRequestsIndex;
         uint256 totalSupply;
@@ -31,6 +30,14 @@ interface IRoute is IPositionRouterCallbackReceiver {
         uint256[] puppetsShares;
         uint256[] puppetsAmounts;
     }
+
+    // ============================================================================================
+    // View Functions
+    // ============================================================================================
+
+    function getPuppets() external view returns (address[] memory _puppets);
+
+    function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (address[] memory _puppetsToAdjust, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts);
 
     // ============================================================================================
     // Mutated Functions

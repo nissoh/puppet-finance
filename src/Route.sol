@@ -74,6 +74,21 @@ contract Route is Base, IRoute {
     }
 
     // ============================================================================================
+    // View Functions
+    // ============================================================================================
+
+    function getPuppets() external view returns (address[] memory _puppets) {
+        _puppets = positionInfo.puppets;
+    }
+
+    function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (address[] memory _puppetsToAdjust, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) {
+        uint256 _index = requestKeyToIndex[_requestKey];
+        _puppetsToAdjust = addCollateralRequests[_index].puppetsToAdjust;
+        _puppetsShares = addCollateralRequests[_index].puppetsShares;
+        _puppetsAmounts = addCollateralRequests[_index].puppetsAmounts;
+    }
+
+    // ============================================================================================
     // Trader Functions
     // ============================================================================================
 
@@ -310,8 +325,8 @@ contract Route is Base, IRoute {
                 _totalAssets = _totalAssets + _allowanceAmount;
             }
 
-            _puppetsShares[_puppetsShares.length] = _puppetShares;
-            _puppetsAmounts[_puppetsAmounts.length] = _allowanceAmount;
+            _puppetsShares[i] = _puppetShares;
+            _puppetsAmounts[i] = _allowanceAmount;
         }
 
         if (_puppetsToAdjust.length > 0) emit PuppetsToAdjust(_puppetsToAdjust);
@@ -333,6 +348,8 @@ contract Route is Base, IRoute {
 
         address[] memory _path = new address[](1);
         _path[0] = _routeInfo.collateralToken;
+
+        _approve(gmxInfo.gmxRouter, _path[0], _amountIn);
 
         // slither-disable-next-line arbitrary-send-eth
         _requestKey = IGMXPositionRouter(gmxInfo.gmxPositionRouter).createIncreasePosition{ value: _executionFee } (
@@ -526,7 +543,7 @@ contract Route is Base, IRoute {
         uint256 _balance = IERC20(WETH).balanceOf(address(this));
         if (_balance > 0) {
             address _revenueDistributor = revenueDistributor;
-            _approve(_revenueDistributor, WETH, _balance);
+            // _approve(_revenueDistributor, WETH, _balance); // todo: check if needed
             IERC20(WETH).safeTransfer(_revenueDistributor, _balance);
 
             emit ReferralRebatesSent(_revenueDistributor, _balance);
