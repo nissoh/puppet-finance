@@ -91,11 +91,9 @@ contract Route is Base, IRoute {
 
     /// @dev violates checks-effects-interactions pattern. we use reentrancy guard
     // slither-disable-next-line reentrancy-eth
-    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, bool _isIncrease) public payable nonReentrant returns (bytes32 _requestKey) {
+    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, bool _isIncrease) external payable nonReentrant returns (bytes32 _requestKey) {
         if (msg.sender != routeInfo.trader) revert NotTrader();
         if (orchestrator.getIsPaused()) revert Paused();
-
-        _checkForReferralRebates();
 
         if (_isIncrease) {
             uint256 _amountIn = _getAssets(_traderSwapData, _executionFee);
@@ -125,16 +123,12 @@ contract Route is Base, IRoute {
         emit Liquidated();
     }
 
-    function checkForReferralRebates() external nonReentrant onlyKeeper {
-        _checkForReferralRebates();
-    }
-
     // ============================================================================================
     // Callback Function
     // ============================================================================================
 
     function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant {
-        if (msg.sender != owner && msg.sender != gmxInfo.gmxCallbackCaller) revert NotCallbackCaller();
+        if (msg.sender != owner && msg.sender != gmxInfo.gmxPositionRouter) revert NotCallbackCaller();
 
         emit CallbackReceived(_requestKey, _isExecuted, _isIncrease);
 
@@ -175,7 +169,7 @@ contract Route is Base, IRoute {
 
         emit GMXInfoUpdated();
 
-        IGMXRouter(gmxInfo.gmxRouter).approvePlugin(gmxInfo.gmxPositionRouter); // TODO - check that can approve plugin twice
+        IGMXRouter(gmxInfo.gmxRouter).approvePlugin(gmxInfo.gmxPositionRouter);
 
         emit PluginApproved();
     }
@@ -295,7 +289,7 @@ contract Route is Base, IRoute {
             address _puppet = _puppets[i];
             uint256 _puppetShares = 0;
             uint256 _allowancePercentage = _orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
-            uint256 _allowanceAmount = (_orchestrator.getPuppetAccountBalance(_collateralToken, _puppet) * _allowancePercentage) / 100;
+            uint256 _allowanceAmount = (_orchestrator.getPuppetAccountBalance(_puppet, _collateralToken) * _allowancePercentage) / 100;
             if (_isOI) {
                 uint256 _ownedCollateral = participantShares[_positionsIndex][_puppet] * _totalRouteCollateral / _totalRouteSupply;
                 uint256 _requiredAdditionalCollateral = _ownedCollateral * _collateralIncreaseRatio / 1e18;
@@ -307,7 +301,7 @@ contract Route is Base, IRoute {
                     _puppetShares = _convertToShares(_totalAssets, _totalSupply, _allowanceAmount);
                 }
             } else {
-                if (_allowanceAmount > 0 && _orchestrator.isBelowThrottleLimit(address(this), _puppet)) {
+                if (_allowanceAmount > 0 && _orchestrator.isBelowThrottleLimit(_puppet, address(this))) {
                     if (_allowanceAmount > _traderAmountIn) _allowanceAmount = _traderAmountIn;
                     _puppetShares = _convertToShares(_totalAssets, _totalSupply, _allowanceAmount);
                 } else {
@@ -472,7 +466,7 @@ contract Route is Base, IRoute {
                     _totalSupply -= _shares;
                     _balance -= _assets;
 
-                    _puppetsAssets = _puppetsAssets + _assets;
+                    _puppetsAssets += _assets;
                 }
             }
 
@@ -521,7 +515,7 @@ contract Route is Base, IRoute {
     }
 
     function _resetRoute() internal {
-        positionInfo.positionsIndex = positionInfo.positionsIndex + 1;
+        positionInfo.positionsIndex += 1;
         positionInfo.totalAssets = 0;
         positionInfo.totalSupply = 0;
 
@@ -534,18 +528,7 @@ contract Route is Base, IRoute {
         address[] memory _puppets = positionInfo.puppets;
         for (uint256 i = 0; i < _puppets.length; i++) {
             address _puppet = _puppets[i];
-            _orchestrator.updateLastPositionOpenedTimestamp(address(this), _puppet);
-        }
-    }
-
-    function _checkForReferralRebates() internal {
-        uint256 _balance = IERC20(WETH).balanceOf(address(this));
-        if (_balance > 0) {
-            address _revenueDistributor = revenueDistributor;
-            // _approve(_revenueDistributor, WETH, _balance); // todo: check if needed
-            IERC20(WETH).safeTransfer(_revenueDistributor, _balance);
-
-            emit ReferralRebatesSent(_revenueDistributor, _balance);
+            _orchestrator.updateLastPositionOpenedTimestamp(_puppet, address(this));
         }
     }
 
@@ -628,7 +611,5 @@ contract Route is Base, IRoute {
     // Receive Function
     // ============================================================================================
 
-    receive() external payable {
-        if (gmxInfo.gmxReferralRebatesSender == msg.sender) payable(revenueDistributor).sendValue(msg.value);
-    }
+    receive() external payable {}
 }

@@ -53,8 +53,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     function liquidate() external;
 
-    function checkForReferralRebates() external;
-
     // owner
 
     function updateUtils(address _orchestrator) external;
@@ -74,7 +72,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event CreatedDecreasePositionRequest(bytes32 indexed requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event RepaidBalance(uint256 totalAssets);
     event RouteReset();
-    event ReferralRebatesSent(address indexed revenueDistributor, uint256 balance);
     event InsolventPuppets(address[] _insolventPuppets);
     event RatioAdjustmentWaitOver();
     event PuppetsToAdjust(address[] _puppetsToAdjust);

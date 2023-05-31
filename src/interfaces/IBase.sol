@@ -15,7 +15,6 @@ interface IBase {
         address gmxReader;
         address gmxVault;
         address gmxPositionRouter;
-        address gmxCallbackCaller;
         address gmxReferralRebatesSender;
     }
 
