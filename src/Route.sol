@@ -11,16 +11,15 @@ import {IRoute} from "./interfaces/IRoute.sol";
 
 import "./Base.sol";
 
+import "forge-std/Test.sol";
 import "forge-std/console.sol";
 
-contract Route is Base, IRoute {
+contract Route is Base, IRoute, Test {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
 
     bytes32 public routeTypeKey;
-
-    bytes private traderRepaymentData;
 
     mapping(uint256 => mapping(address => uint256)) public participantShares; // positionsIndex => participant => shares
 
@@ -28,6 +27,8 @@ contract Route is Base, IRoute {
 
     mapping(bytes32 => uint256) public requestKeyToAddCollateralRequestsIndex; // requestKey => addCollateralRequestsIndex
     mapping(uint256 => AddCollateralRequest) public addCollateralRequests; // addCollateralIndex => AddCollateralRequest
+
+    bytes private _traderRepaymentData;
 
     IOrchestrator public orchestrator;
 
@@ -96,11 +97,11 @@ contract Route is Base, IRoute {
         if (orchestrator.getIsPaused()) revert Paused();
 
         if (_isIncrease) {
-            uint256 _amountIn = _getAssets(_traderSwapData, _executionFee);
-            _requestKey = _createIncreasePositionRequest(_traderPositionData, _amountIn, _executionFee);
+            (uint256 _amountIn, bool _isPuppetsToAdjust) = _getAssets(_traderSwapData, _executionFee);
+            _requestKey = _createIncreasePositionRequest(_traderPositionData, _amountIn, _executionFee, _isPuppetsToAdjust);
         } else {
             _validateRepaymentData(_traderSwapData);
-            traderRepaymentData = _traderSwapData;
+            _traderRepaymentData = _traderSwapData;
             _requestKey = _createDecreasePositionRequest(_traderPositionData, _executionFee);
         }
     }
@@ -178,8 +179,9 @@ contract Route is Base, IRoute {
     // Internal Mutated Functions
     // ============================================================================================
 
-    function _getAssets(bytes memory _traderSwapData, uint256 _executionFee) internal returns (uint256 _amountIn) {
+    function _getAssets(bytes memory _traderSwapData, uint256 _executionFee) internal returns (uint256 _amountIn, bool _isPuppetsToAdjust) {
         (,uint256 _amount,) = abi.decode(_traderSwapData, (address[], uint256, uint256));
+
         if (_amount > 0) {
             // 1. get trader assets and allocate request shares
             uint256 _traderAmountIn = _getTraderAssets(_traderSwapData, _executionFee);
@@ -226,7 +228,7 @@ contract Route is Base, IRoute {
             // 4. pull funds from Orchestrator
             orchestrator.sendFunds(_puppetsAmountIn, routeInfo.collateralToken, address(this));
 
-            return _puppetsAmountIn + _traderAmountIn;
+            return (_puppetsAmountIn + _traderAmountIn, _puppetsToAdjust[0] != address(0));
         }
     }
 
@@ -264,15 +266,21 @@ contract Route is Base, IRoute {
         bool _isOI = _isOpenInterest();
         uint256 _puppetsAmountIn = 0;
         uint256 _collateralIncreaseRatio = 0;
+        uint256 _totalRouteCollateral = 0;
         uint256 _positionsIndex = _positionInfo.positionsIndex;
         uint256 _traderAmountIn = _totalAssets;
         uint256 _totalRouteSupply = _positionInfo.totalSupply;
-        uint256 _totalRouteCollateral = _getCollateralInPosition();
         address[] memory _puppets;
         if (_isOI) {
-            // position already open, increasing collateral
-            uint256 _traderOwnedCollateral = participantShares[_positionsIndex][_routeInfo.trader] * _totalRouteCollateral / _totalRouteSupply;
+            _totalRouteCollateral = _getCollateralInPosition();
+            console.log("OI");
+            console.log("totalRouteSupply", _totalRouteSupply);
+            console.log("totalRouteCollateral", _totalRouteCollateral);
+            console.log("participantShares", participantShares[_positionsIndex][_routeInfo.trader]);
+            uint256 _traderOwnedCollateral = participantShares[_positionsIndex][_routeInfo.trader] * _totalRouteCollateral / _totalRouteSupply; // todo - use convertToAssets
+            console.log("traderOwnedCollateral", _traderOwnedCollateral);
             _collateralIncreaseRatio = _traderAmountIn * 1e18 / _traderOwnedCollateral;
+            console.log("collateralIncreaseRatio", _collateralIncreaseRatio);
 
             _puppets = _positionInfo.puppets;
         } else {
@@ -281,8 +289,9 @@ contract Route is Base, IRoute {
             positionInfo.puppets = _puppets;
         }
 
+        uint256 _puppetsToAdjustIndex = 0;
         address _collateralToken = _routeInfo.collateralToken;
-        address[] memory _puppetsToAdjust;
+        address[] memory _puppetsToAdjust = new address[](_puppets.length);
         uint256[] memory _puppetsShares = new uint256[](_puppets.length);
         uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
         for (uint256 i = 0; i < _puppets.length; i++) {
@@ -294,7 +303,8 @@ contract Route is Base, IRoute {
                 uint256 _ownedCollateral = participantShares[_positionsIndex][_puppet] * _totalRouteCollateral / _totalRouteSupply;
                 uint256 _requiredAdditionalCollateral = _ownedCollateral * _collateralIncreaseRatio / 1e18;
                 if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
-                    _puppetsToAdjust[_puppetsToAdjust.length] = _puppet;
+                    _puppetsToAdjust[_puppetsToAdjustIndex] = _puppet;
+                    _puppetsToAdjustIndex += 1;
                     _allowanceAmount = 0;
                 } else {
                     _allowanceAmount = _requiredAdditionalCollateral;
@@ -322,8 +332,6 @@ contract Route is Base, IRoute {
             _puppetsAmounts[i] = _allowanceAmount;
         }
 
-        if (_puppetsToAdjust.length > 0) emit PuppetsToAdjust(_puppetsToAdjust);
-
         _puppetsRequestData = abi.encode(
             _puppetsAmountIn,
             _totalSupply,
@@ -334,7 +342,7 @@ contract Route is Base, IRoute {
         );
     }
 
-    function _createIncreasePositionRequest(bytes memory _traderPositionData, uint256 _amountIn, uint256 _executionFee) internal returns (bytes32 _requestKey) {
+    function _createIncreasePositionRequest(bytes memory _traderPositionData, uint256 _amountIn, uint256 _executionFee, bool _isPuppetsToAdjust) internal returns (bytes32 _requestKey) {
         (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice) = abi.decode(_traderPositionData, (uint256, uint256, uint256));
 
         RouteInfo memory _routeInfo = routeInfo;
@@ -358,12 +366,15 @@ contract Route is Base, IRoute {
             address(this)
         );
 
+        console.log("======_amountIn", _amountIn);
+
         if (_amountIn > 0) requestKeyToAddCollateralRequestsIndex[_requestKey] = positionInfo.addCollateralRequestsIndex - 1;
 
         if (!_isOpenInterest()) {
-            // new position opened
             _updateLastPositionOpenedTimestamp(); // used to limit the number of position that can be opened in a given time period
         }
+
+        if (_isPuppetsToAdjust) emit PuppetsToAdjust(_requestKey);
 
         emit CreatedIncreasePositionRequest(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
@@ -494,7 +505,7 @@ contract Route is Base, IRoute {
         if (_isFailedRequest) {
             IERC20(routeInfo.collateralToken).safeTransfer(routeInfo.trader, _traderAssets);
         } else {
-            (address[] memory _path, uint256 _minOut, address _receiver) = abi.decode(traderRepaymentData, (address[], uint256, address));
+            (address[] memory _path, uint256 _minOut, address _receiver) = abi.decode(_traderRepaymentData, (address[], uint256, address));
             address _fromToken = routeInfo.collateralToken;
             address _toToken = _path[_path.length - 1];
             IGMXRouter _router = IGMXRouter(gmxInfo.gmxRouter);
@@ -523,7 +534,6 @@ contract Route is Base, IRoute {
     }
 
     function _updateLastPositionOpenedTimestamp() internal {
-        RouteInfo memory _routeInfo = routeInfo;
         IOrchestrator _orchestrator = orchestrator;
         address[] memory _puppets = positionInfo.puppets;
         for (uint256 i = 0; i < _puppets.length; i++) {
@@ -550,13 +560,32 @@ contract Route is Base, IRoute {
     }
 
     function _getCollateralInPosition() internal view returns (uint256 _collateralInPosition) {
+        // todo !!!!! - instead of doing all that crap - just save the traderAmountIn if executed and compare the new traderAmountIn with the saved one to get the ratio 
         RouteInfo memory _routeInfo = routeInfo;
 
         (,_collateralInPosition,,,,,,) = IGMXVault(gmxInfo.gmxVault).getPosition(address(this), _routeInfo.collateralToken, _routeInfo.indexToken, _routeInfo.isLong);
 
         PriceFeedInfo memory _priceFeedInfo = priceFeedInfo;
         (, int256 _price,,,) = _priceFeedInfo.priceFeed.latestRoundData();
-        _collateralInPosition = _collateralInPosition / uint256(_price) * _priceFeedInfo.decimals;
+        // check if _price is negative
+        if (_price < 0) {
+            revert InvalidPrice();
+        } else {
+            console.log("price", uint256(_price));
+            console.log("adjusted price", uint256(_price) * 1e10);
+            console.log("decimals", _priceFeedInfo.decimals);
+            console.log("collateralInPosition0", _collateralInPosition);
+            // _collateralInPosition = _collateralInPosition / uint256(_price) * _priceFeedInfo.decimals;
+            // _collateralInPosition = _collateralInPosition * _priceFeedInfo.decimals / uint256(_price);
+            // _collateralInPosition = _collateralInPosition / (uint256(_price) / _priceFeedInfo.decimals);
+            // uint adjust_price = uint256(_price) * 1e10;
+            // // uint usd = _amount * 1e18;
+            // uint rate = (usd * 1e18) / adjust_price;
+            _collateralInPosition = _collateralInPosition / (uint256(_price) * 1e10);
+            uint256 _collateralInPosition3 = _collateralInPosition / (uint256(_price) * 1e10) * 1e18;
+            console.log("collateralInPosition1", _collateralInPosition);
+            console.log("collateralInPosition2", _collateralInPosition3);
+        }
     }
 
     function _isLiquidated() internal view returns (bool) {

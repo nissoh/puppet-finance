@@ -24,17 +24,19 @@ contract Orchestrator is Base, IOrchestrator {
     address public routeFactory;
 
     // routes info
-    address[] private routes;
-
     mapping(address => bool) public isRoute; // Route => isRoute
     mapping(bytes32 => RouteType) public routeType; // routeTypeKey => RouteType
-    mapping(bytes32 => RouteInfo) private routeInfo; // routeKey => RouteInfo
+
+    mapping(bytes32 => RouteInfo) private _routeInfo; // routeKey => RouteInfo
+
+    address[] private _routes;
 
     // puppets info
     mapping(address => mapping(address => uint256)) public throttleLimits; // puppet => Route => throttle limit (in seconds)
     mapping(address => mapping(address => uint256)) public lastPositionOpenedTimestamp; // puppet => Route => timestamp
     mapping(address => mapping(address => uint256)) public puppetDepositAccount; // puppet => collateralToken => balance
-    mapping(address => EnumerableMap.AddressToUintMap) private puppetAllowances; // puppet => Route => allowance percentage
+
+    mapping(address => EnumerableMap.AddressToUintMap) private _puppetAllowances; // puppet => Route => allowance percentage
 
     // settings
     bool public paused; // used to pause all routes on update of gmx/global utils
@@ -78,7 +80,7 @@ contract Orchestrator is Base, IOrchestrator {
     }
 
     function getRoutes() external view returns (address[] memory) {
-        return routes;
+        return _routes;
     }
 
     function getIsPaused() external view returns (bool) {
@@ -91,7 +93,7 @@ contract Orchestrator is Base, IOrchestrator {
         bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
         bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
 
-        return routeInfo[_routeKey].route;
+        return _routeInfo[_routeKey].route;
     }
 
     function getRouteTypeKey(address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
@@ -107,11 +109,11 @@ contract Orchestrator is Base, IOrchestrator {
     }
 
     function getRoute(bytes32 _routeKey) external view returns (address) {
-        return routeInfo[_routeKey].route;
+        return _routeInfo[_routeKey].route;
     }
 
     function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory _puppets) {
-        EnumerableSet.AddressSet storage _puppetsSet = routeInfo[_routeKey].puppets;
+        EnumerableSet.AddressSet storage _puppetsSet = _routeInfo[_routeKey].puppets;
         _puppets = new address[](EnumerableSet.length(_puppetsSet));
 
         for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
@@ -126,7 +128,7 @@ contract Orchestrator is Base, IOrchestrator {
     }
 
     function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance) {
-        return EnumerableMap.get(puppetAllowances[_puppet], _route);
+        return EnumerableMap.get(_puppetAllowances[_puppet], _route);
     }
 
     function getPuppetAccountBalance(address _puppet, address _asset) external view returns (uint256) {
@@ -152,9 +154,9 @@ contract Orchestrator is Base, IOrchestrator {
         if (!routeType[_routeTypeKey].isRegistered) revert RouteTypeNotRegistered();
 
         _routeKey = getRouteKey(msg.sender, _routeTypeKey);
-        if (routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
+        if (_routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
-        address _route = IRouteFactory(routeFactory).createRoute(authority, address(this), msg.sender, _collateralToken, _indexToken, _isLong);
+        address _routeAddr = IRouteFactory(routeFactory).createRoute(authority, address(this), msg.sender, _collateralToken, _indexToken, _isLong);
 
         RouteType memory _routeType;
 
@@ -162,16 +164,16 @@ contract Orchestrator is Base, IOrchestrator {
         _routeType.indexToken = _indexToken;
         _routeType.isLong = _isLong;
 
-        RouteInfo storage _routeInfo = routeInfo[_routeKey];
-        
-        _routeInfo.route = _route;
-        _routeInfo.isRegistered = true;
-        _routeInfo.routeType = _routeType;
+        RouteInfo storage _route = _routeInfo[_routeKey];
 
-        isRoute[_route] = true;
-        routes.push(_route);
+        _route.route = _routeAddr;
+        _route.isRegistered = true;
+        _route.routeType = _routeType;
 
-        emit RouteRegistered(msg.sender, _route, _routeTypeKey);
+        isRoute[_routeAddr] = true;
+        _routes.push(_routeAddr);
+
+        emit RouteRegistered(msg.sender, _routeAddr, _routeTypeKey);
     }
 
     function registerRouteAndCreateIncreasePositionRequest(
@@ -183,7 +185,7 @@ contract Orchestrator is Base, IOrchestrator {
         bool _isLong
     ) external payable returns (bytes32 _routeKey, bytes32 _requestKey) {
         _routeKey = registerRoute(_collateralToken, _indexToken, _isLong);
-        _requestKey = IRoute(routeInfo[_routeKey].route).createPositionRequest{value: msg.value}(_traderPositionData, _traderSwapData, _executionFee, true);
+        _requestKey = IRoute(_routeInfo[_routeKey].route).createPositionRequest{value: msg.value}(_traderPositionData, _traderSwapData, _executionFee, true);
     }
 
     // ============================================================================================
@@ -234,23 +236,23 @@ contract Orchestrator is Base, IOrchestrator {
         address _puppet = msg.sender;
         for (uint256 i = 0; i < _traders.length; i++) {
             bytes32 _routeKey = getRouteKey(_traders[i], _routeTypeKey);
-            RouteInfo storage _routeInfo = routeInfo[_routeKey];
+            RouteInfo storage _route = _routeInfo[_routeKey];
 
-            if (!_routeInfo.isRegistered) revert RouteNotRegistered();
+            if (!_route.isRegistered) revert RouteNotRegistered();
 
             if (_subscribe) {
                 if (_allowances[i] > 100 || _allowances[i] == 0) revert InvalidAllowancePercentage();
 
-                EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.route, _allowances[i]);
+                EnumerableMap.set(_puppetAllowances[_puppet], _route.route, _allowances[i]);
 
-                if (!EnumerableSet.contains(_routeInfo.puppets, _puppet)) {
-                    EnumerableSet.add(_routeInfo.puppets, _puppet);
+                if (!EnumerableSet.contains(_route.puppets, _puppet)) {
+                    EnumerableSet.add(_route.puppets, _puppet);
                 }
             } else {
-                EnumerableMap.set(puppetAllowances[_puppet], _routeInfo.route, 0);
+                EnumerableMap.set(_puppetAllowances[_puppet], _route.route, 0);
 
-                if (EnumerableSet.contains(_routeInfo.puppets, _puppet)) {
-                    EnumerableSet.remove(_routeInfo.puppets, _puppet);
+                if (EnumerableSet.contains(_route.puppets, _puppet)) {
+                    EnumerableSet.remove(_route.puppets, _puppet);
                 }
             }
         }

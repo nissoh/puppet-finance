@@ -74,7 +74,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event RouteReset();
     event InsolventPuppets(address[] _insolventPuppets);
     event RatioAdjustmentWaitOver();
-    event PuppetsToAdjust(address[] _puppetsToAdjust);
+    event PuppetsToAdjust(bytes32 indexed requestKey);
     event RatioAdjustmentFailed();
     event RatioAdjustmentExecuted();
 
@@ -93,4 +93,5 @@ interface IRoute is IPositionRouterCallbackReceiver {
     error InvalidTokenIn();
     error PositionStillAlive();
     error Paused();
+    error InvalidPrice();
 }
