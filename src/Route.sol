@@ -23,8 +23,6 @@ contract Route is Base, IRoute, Test {
 
     bytes32 public routeTypeKey;
 
-    mapping(uint256 => mapping(address => uint256)) public participantShares; // positionIndex => participant => shares // todo - put inside PositionInfo
-
     mapping(bytes32 => bool) public keeperRequests; // requestKey => isKeeperRequest
 
     mapping(bytes32 => uint256) public requestKeyToAddCollateralRequestsIndex; // requestKey => addCollateralRequestsIndex
@@ -284,8 +282,8 @@ contract Route is Base, IRoute, Test {
             console.log("OI");
             console.log("totalRouteSupply", _totalRouteSupply);
             console.log("totalRouteCollateral", _totalRouteCollateral);
-            console.log("participantShares", participantShares[positionIndex][_routeInfo.trader]);
-            uint256 _traderOwnedCollateral = participantShares[positionIndex][_routeInfo.trader] * _totalRouteCollateral / _totalRouteSupply; // todo - use convertToAssets
+            // console.log("participantShares", participantShares[positionIndex][_routeInfo.trader]);
+            uint256 _traderOwnedCollateral = _positionInfo.participantShares[_routeInfo.trader] * _totalRouteCollateral / _totalRouteSupply; // todo - use convertToAssets
             console.log("traderOwnedCollateral", _traderOwnedCollateral);
             _collateralIncreaseRatio = _traderAmountIn * 1e18 / _traderOwnedCollateral;
             console.log("collateralIncreaseRatio", _collateralIncreaseRatio);
@@ -294,7 +292,7 @@ contract Route is Base, IRoute, Test {
         } else {
             bytes32 _routeKey = _orchestrator.getRouteKey(_routeInfo.trader, routeTypeKey);
             _puppets = _orchestrator.getPuppetsForRoute(_routeKey);
-            positions[positionIndex].puppets = _puppets;
+            _positionInfo.puppets = _puppets;
         }
 
         uint256 _puppetsToAdjustIndex = 0;
@@ -311,7 +309,7 @@ contract Route is Base, IRoute, Test {
                 if (_positionInfo.adjustedPuppets[_puppet]) {
                     _allowanceAmount = 0;
                 } else {
-                    uint256 _ownedCollateral = participantShares[positionIndex][_puppet] * _totalRouteCollateral / _totalRouteSupply;
+                    uint256 _ownedCollateral = _positionInfo.participantShares[_puppet] * _totalRouteCollateral / _totalRouteSupply;
                     uint256 _requiredAdditionalCollateral = _ownedCollateral * _collateralIncreaseRatio / 1e18;
                     if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
                         _puppetsToAdjust[_puppetsToAdjustIndex] = _puppet;
@@ -426,8 +424,6 @@ contract Route is Base, IRoute, Test {
         if (_traderAmountIn > 0) {
             RouteInfo memory _routeInfo = routeInfo;
             PositionInfo storage _positionInfo = positions[positionIndex];
-
-            uint256 _positionIndex = positionIndex;
             uint256 _totalSupply = _positionInfo.totalSupply;
             uint256 _totalAssets = _positionInfo.totalAssets;
             address[] memory _puppets = _positionInfo.puppets;
@@ -437,7 +433,7 @@ contract Route is Base, IRoute, Test {
                 if (_puppetAmountIn > 0) {
                     uint256 _newPuppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
 
-                    participantShares[_positionIndex][_puppet] += _newPuppetShares;
+                    _positionInfo.participantShares[_puppet] += _newPuppetShares;
 
                     _totalSupply = _totalSupply + _newPuppetShares;
                     _totalAssets = _totalAssets + _puppetAmountIn;
@@ -446,7 +442,7 @@ contract Route is Base, IRoute, Test {
 
             uint256 _newTraderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
 
-            participantShares[_positionIndex][_routeInfo.trader] += _newTraderShares;
+            _positionInfo.participantShares[_routeInfo.trader] += _newTraderShares;
 
             _totalSupply = _totalSupply + _newTraderShares;
             _totalAssets = _totalAssets + _traderAmountIn;
@@ -477,7 +473,7 @@ contract Route is Base, IRoute, Test {
                     _shares = _request.puppetsShares[i];
                 } else {
                     if (i == 0) _totalSupply = _positionInfo.totalSupply;
-                    _shares = participantShares[positionIndex][_puppet];
+                    _shares = _positionInfo.participantShares[_puppet];
                 }
 
                 if (_shares > 0) {
@@ -492,7 +488,7 @@ contract Route is Base, IRoute, Test {
                 }
             }
 
-            uint256 _traderShares = _isFailedRequest ? _request.traderShares : participantShares[positionIndex][_routeInfo.trader];
+            uint256 _traderShares = _isFailedRequest ? _request.traderShares : _positionInfo.participantShares[_routeInfo.trader];
             uint256 _traderAssets = _convertToAssets(_balance, _totalSupply, _traderShares);
 
             IERC20(_collateralToken).safeTransfer(address(_orchestrator), _puppetsAssets);

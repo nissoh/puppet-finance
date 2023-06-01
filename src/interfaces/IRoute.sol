@@ -17,6 +17,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
         uint256 totalSupply;
         uint256 totalAssets;
         address[] puppets;
+        mapping(address => uint256) participantShares; // participant => shares
         mapping(address => bool) adjustedPuppets; // puppet => isAdjusted
     }
 
