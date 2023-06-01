@@ -13,11 +13,11 @@ interface IRoute is IPositionRouterCallbackReceiver {
     }
 
     struct PositionInfo {
-        uint256 positionsIndex;
         uint256 addCollateralRequestsIndex;
         uint256 totalSupply;
         uint256 totalAssets;
         address[] puppets;
+        mapping(address => bool) adjustedPuppets; // puppet => isAdjusted
     }
 
     struct AddCollateralRequest{
@@ -49,7 +49,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     // keeper
 
-    function decreaseSize(bytes memory _traderPositionData, uint256 _executionFee) external returns (bytes32 _requestKey);
+    function decreaseSize(address[] memory _puppets, bytes memory _traderPositionData, uint256 _executionFee) external returns (bytes32 _requestKey);
 
     function liquidate() external;
 

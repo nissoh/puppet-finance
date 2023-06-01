@@ -19,14 +19,17 @@ contract Route is Base, IRoute, Test {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
+    uint256 public positionIndex;
+
     bytes32 public routeTypeKey;
 
-    mapping(uint256 => mapping(address => uint256)) public participantShares; // positionsIndex => participant => shares
+    mapping(uint256 => mapping(address => uint256)) public participantShares; // positionIndex => participant => shares // todo - put inside PositionInfo
 
     mapping(bytes32 => bool) public keeperRequests; // requestKey => isKeeperRequest
 
     mapping(bytes32 => uint256) public requestKeyToAddCollateralRequestsIndex; // requestKey => addCollateralRequestsIndex
     mapping(uint256 => AddCollateralRequest) public addCollateralRequests; // addCollateralIndex => AddCollateralRequest
+    mapping(uint256 => PositionInfo) public positions; // positionIndex => PositionInfo
 
     bytes private _traderRepaymentData;
 
@@ -34,7 +37,6 @@ contract Route is Base, IRoute, Test {
 
     PriceFeedInfo public priceFeedInfo;
     RouteInfo public routeInfo;
-    PositionInfo public positionInfo;
 
     // ============================================================================================
     // Constructor
@@ -76,7 +78,7 @@ contract Route is Base, IRoute, Test {
     // ============================================================================================
 
     function getPuppets() external view returns (address[] memory _puppets) {
-        _puppets = positionInfo.puppets;
+        _puppets = positions[positionIndex].puppets;
     }
 
     function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (address[] memory _puppetsToAdjust, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) {
@@ -111,9 +113,15 @@ contract Route is Base, IRoute, Test {
     // ============================================================================================
 
     /// @notice used to decrease the size of puppets that were not able to add collateral
-    function decreaseSize(bytes memory _traderPositionData, uint256 _executionFee) external nonReentrant onlyKeeper returns (bytes32 _requestKey) {
-        _requestKey = _createDecreasePositionRequest(_traderPositionData, _executionFee);
+    function decreaseSize(address[] memory _puppets, bytes memory _traderPositionData, uint256 _executionFee) external nonReentrant onlyKeeper returns (bytes32 _requestKey) {
+        uint256 _positionIndex = positionIndex;
+        for (uint256 i = 0; i < _puppets.length; i++) {
+            positions[_positionIndex].adjustedPuppets[_puppets[i]] = true;
+        }
+
         keeperRequests[_requestKey] = true;
+
+        _requestKey = _createDecreasePositionRequest(_traderPositionData, _executionFee);
     }
 
     function liquidate() external nonReentrant onlyKeeper {
@@ -222,8 +230,9 @@ contract Route is Base, IRoute, Test {
                 puppetsAmounts: _puppetsAmounts
             });
 
-            addCollateralRequests[positionInfo.addCollateralRequestsIndex] = _request;
-            positionInfo.addCollateralRequestsIndex += 1;
+            uint256 _positionIndex = positionIndex;
+            addCollateralRequests[positions[_positionIndex].addCollateralRequestsIndex] = _request;
+            positions[_positionIndex].addCollateralRequestsIndex += 1;
 
             // 4. pull funds from Orchestrator
             orchestrator.sendFunds(_puppetsAmountIn, routeInfo.collateralToken, address(this));
@@ -261,13 +270,12 @@ contract Route is Base, IRoute, Test {
 
     function _getPuppetsAssetsAndAllocateRequestShares(uint256 _totalSupply, uint256 _totalAssets) internal returns (bytes memory _puppetsRequestData) {
         RouteInfo memory _routeInfo = routeInfo;
-        PositionInfo memory _positionInfo = positionInfo;
+        PositionInfo storage _positionInfo = positions[positionIndex];
         IOrchestrator _orchestrator = orchestrator;
         bool _isOI = _isOpenInterest();
         uint256 _puppetsAmountIn = 0;
         uint256 _collateralIncreaseRatio = 0;
         uint256 _totalRouteCollateral = 0;
-        uint256 _positionsIndex = _positionInfo.positionsIndex;
         uint256 _traderAmountIn = _totalAssets;
         uint256 _totalRouteSupply = _positionInfo.totalSupply;
         address[] memory _puppets;
@@ -276,8 +284,8 @@ contract Route is Base, IRoute, Test {
             console.log("OI");
             console.log("totalRouteSupply", _totalRouteSupply);
             console.log("totalRouteCollateral", _totalRouteCollateral);
-            console.log("participantShares", participantShares[_positionsIndex][_routeInfo.trader]);
-            uint256 _traderOwnedCollateral = participantShares[_positionsIndex][_routeInfo.trader] * _totalRouteCollateral / _totalRouteSupply; // todo - use convertToAssets
+            console.log("participantShares", participantShares[positionIndex][_routeInfo.trader]);
+            uint256 _traderOwnedCollateral = participantShares[positionIndex][_routeInfo.trader] * _totalRouteCollateral / _totalRouteSupply; // todo - use convertToAssets
             console.log("traderOwnedCollateral", _traderOwnedCollateral);
             _collateralIncreaseRatio = _traderAmountIn * 1e18 / _traderOwnedCollateral;
             console.log("collateralIncreaseRatio", _collateralIncreaseRatio);
@@ -286,7 +294,7 @@ contract Route is Base, IRoute, Test {
         } else {
             bytes32 _routeKey = _orchestrator.getRouteKey(_routeInfo.trader, routeTypeKey);
             _puppets = _orchestrator.getPuppetsForRoute(_routeKey);
-            positionInfo.puppets = _puppets;
+            positions[positionIndex].puppets = _puppets;
         }
 
         uint256 _puppetsToAdjustIndex = 0;
@@ -300,15 +308,19 @@ contract Route is Base, IRoute, Test {
             uint256 _allowancePercentage = _orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
             uint256 _allowanceAmount = (_orchestrator.getPuppetAccountBalance(_puppet, _collateralToken) * _allowancePercentage) / 100;
             if (_isOI) {
-                uint256 _ownedCollateral = participantShares[_positionsIndex][_puppet] * _totalRouteCollateral / _totalRouteSupply;
-                uint256 _requiredAdditionalCollateral = _ownedCollateral * _collateralIncreaseRatio / 1e18;
-                if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
-                    _puppetsToAdjust[_puppetsToAdjustIndex] = _puppet;
-                    _puppetsToAdjustIndex += 1;
+                if (_positionInfo.adjustedPuppets[_puppet]) {
                     _allowanceAmount = 0;
                 } else {
-                    _allowanceAmount = _requiredAdditionalCollateral;
-                    _puppetShares = _convertToShares(_totalAssets, _totalSupply, _allowanceAmount);
+                    uint256 _ownedCollateral = participantShares[positionIndex][_puppet] * _totalRouteCollateral / _totalRouteSupply;
+                    uint256 _requiredAdditionalCollateral = _ownedCollateral * _collateralIncreaseRatio / 1e18;
+                    if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
+                        _puppetsToAdjust[_puppetsToAdjustIndex] = _puppet;
+                        _puppetsToAdjustIndex += 1;
+                        _allowanceAmount = 0;
+                    } else {
+                        _allowanceAmount = _requiredAdditionalCollateral;
+                        _puppetShares = _convertToShares(_totalAssets, _totalSupply, _allowanceAmount);
+                    }
                 }
             } else {
                 if (_allowanceAmount > 0 && _orchestrator.isBelowThrottleLimit(_puppet, address(this))) {
@@ -368,7 +380,7 @@ contract Route is Base, IRoute, Test {
 
         console.log("======_amountIn", _amountIn);
 
-        if (_amountIn > 0) requestKeyToAddCollateralRequestsIndex[_requestKey] = positionInfo.addCollateralRequestsIndex - 1;
+        if (_amountIn > 0) requestKeyToAddCollateralRequestsIndex[_requestKey] = positions[positionIndex].addCollateralRequestsIndex - 1;
 
         if (!_isOpenInterest()) {
             _updateLastPositionOpenedTimestamp(); // used to limit the number of position that can be opened in a given time period
@@ -413,9 +425,9 @@ contract Route is Base, IRoute, Test {
         uint256 _traderAmountIn = _request.traderAmountIn;
         if (_traderAmountIn > 0) {
             RouteInfo memory _routeInfo = routeInfo;
-            PositionInfo memory _positionInfo = positionInfo;
+            PositionInfo storage _positionInfo = positions[positionIndex];
 
-            uint256 _positionsIndex = _positionInfo.positionsIndex;
+            uint256 _positionIndex = positionIndex;
             uint256 _totalSupply = _positionInfo.totalSupply;
             uint256 _totalAssets = _positionInfo.totalAssets;
             address[] memory _puppets = _positionInfo.puppets;
@@ -425,7 +437,7 @@ contract Route is Base, IRoute, Test {
                 if (_puppetAmountIn > 0) {
                     uint256 _newPuppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
 
-                    participantShares[_positionsIndex][_puppet] += _newPuppetShares;
+                    participantShares[_positionIndex][_puppet] += _newPuppetShares;
 
                     _totalSupply = _totalSupply + _newPuppetShares;
                     _totalAssets = _totalAssets + _puppetAmountIn;
@@ -434,25 +446,24 @@ contract Route is Base, IRoute, Test {
 
             uint256 _newTraderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
 
-            participantShares[_positionsIndex][_routeInfo.trader] += _newTraderShares;
+            participantShares[_positionIndex][_routeInfo.trader] += _newTraderShares;
 
             _totalSupply = _totalSupply + _newTraderShares;
             _totalAssets = _totalAssets + _traderAmountIn;
 
-            positionInfo.totalSupply = _totalSupply;
-            positionInfo.totalAssets = _totalAssets;
+            positions[positionIndex].totalSupply = _totalSupply;
+            positions[positionIndex].totalAssets = _totalAssets;
         }
     }
 
     function _repayBalance(bytes32 _requestKey, bool _repayKeeper) internal {
         RouteInfo memory _routeInfo = routeInfo;
-        PositionInfo memory _positionInfo = positionInfo;
+        PositionInfo storage _positionInfo = positions[positionIndex];
         address _collateralToken = _routeInfo.collateralToken;
         uint256 _totalAssets = IERC20(_collateralToken).balanceOf(address(this));
         if (_totalAssets > 0) {
             uint256 _puppetsAssets = 0;
             uint256 _totalSupply = 0;
-            uint256 _positionsIndex = _positionInfo.positionsIndex;
             uint256 _balance = _totalAssets;
             bool _isFailedRequest = _requestKey != bytes32(0);
             IOrchestrator _orchestrator = orchestrator;
@@ -466,7 +477,7 @@ contract Route is Base, IRoute, Test {
                     _shares = _request.puppetsShares[i];
                 } else {
                     if (i == 0) _totalSupply = _positionInfo.totalSupply;
-                    _shares = participantShares[_positionsIndex][_puppet];
+                    _shares = participantShares[positionIndex][_puppet];
                 }
 
                 if (_shares > 0) {
@@ -481,7 +492,7 @@ contract Route is Base, IRoute, Test {
                 }
             }
 
-            uint256 _traderShares = _isFailedRequest ? _request.traderShares : participantShares[_positionsIndex][_routeInfo.trader];
+            uint256 _traderShares = _isFailedRequest ? _request.traderShares : participantShares[positionIndex][_routeInfo.trader];
             uint256 _traderAssets = _convertToAssets(_balance, _totalSupply, _traderShares);
 
             IERC20(_collateralToken).safeTransfer(address(_orchestrator), _puppetsAssets);
@@ -526,16 +537,14 @@ contract Route is Base, IRoute, Test {
     }
 
     function _resetRoute() internal {
-        positionInfo.positionsIndex += 1;
-        positionInfo.totalAssets = 0;
-        positionInfo.totalSupply = 0;
+        positionIndex += 1;
 
         emit RouteReset();
     }
 
     function _updateLastPositionOpenedTimestamp() internal {
         IOrchestrator _orchestrator = orchestrator;
-        address[] memory _puppets = positionInfo.puppets;
+        address[] storage _puppets = positions[positionIndex].puppets;
         for (uint256 i = 0; i < _puppets.length; i++) {
             address _puppet = _puppets[i];
             _orchestrator.updateLastPositionOpenedTimestamp(_puppet, address(this));
