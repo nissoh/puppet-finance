@@ -75,9 +75,25 @@ contract Route is Base, IRoute, Test {
     // View Functions
     // ============================================================================================
 
+    // Position Info
+
     function getPuppets() external view returns (address[] memory _puppets) {
         _puppets = positions[positionIndex].puppets;
     }
+
+    function getParticipantShares(address _participant) external view returns (uint256 _shares) {
+        _shares = positions[positionIndex].participantShares[_participant];
+    }
+
+    function getLatestAmountIn(address _puppet) external view returns (uint256 _amountIn) {
+        _amountIn = positions[positionIndex].latestAmountIn[_puppet];
+    }
+
+    function isPuppetAdjusted(address _puppet) external view returns (bool _isAdjusted) {
+        _isAdjusted = positions[positionIndex].adjustedPuppets[_puppet];
+    }
+
+    // Request Info
 
     function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (address[] memory _puppetsToAdjust, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) {
         uint256 _index = requestKeyToAddCollateralRequestsIndex[_requestKey];
@@ -272,22 +288,11 @@ contract Route is Base, IRoute, Test {
         IOrchestrator _orchestrator = orchestrator;
         bool _isOI = _isOpenInterest();
         uint256 _puppetsAmountIn = 0;
-        uint256 _collateralIncreaseRatio = 0;
-        uint256 _totalRouteCollateral = 0;
+        uint256 _increaseRatio = 0;
         uint256 _traderAmountIn = _totalAssets;
-        uint256 _totalRouteSupply = _positionInfo.totalSupply;
         address[] memory _puppets;
         if (_isOI) {
-            _totalRouteCollateral = _getCollateralInPosition();
-            console.log("OI");
-            console.log("totalRouteSupply", _totalRouteSupply);
-            console.log("totalRouteCollateral", _totalRouteCollateral);
-            // console.log("participantShares", participantShares[positionIndex][_routeInfo.trader]);
-            uint256 _traderOwnedCollateral = _positionInfo.participantShares[_routeInfo.trader] * _totalRouteCollateral / _totalRouteSupply; // todo - use convertToAssets
-            console.log("traderOwnedCollateral", _traderOwnedCollateral);
-            _collateralIncreaseRatio = _traderAmountIn * 1e18 / _traderOwnedCollateral; // todo - instead of `_traderOwnedCollateral`, do `_traderLastAmountIn`
-            console.log("collateralIncreaseRatio", _collateralIncreaseRatio);
-
+            _increaseRatio = _traderAmountIn * 1e18 / _positionInfo.latestAmountIn[_routeInfo.trader];
             _puppets = _positionInfo.puppets;
         } else {
             bytes32 _routeKey = _orchestrator.getRouteKey(_routeInfo.trader, routeTypeKey);
@@ -309,8 +314,7 @@ contract Route is Base, IRoute, Test {
                 if (_positionInfo.adjustedPuppets[_puppet]) {
                     _allowanceAmount = 0;
                 } else {
-                    uint256 _ownedCollateral = _positionInfo.participantShares[_puppet] * _totalRouteCollateral / _totalRouteSupply; // use last collateral added
-                    uint256 _requiredAdditionalCollateral = _ownedCollateral * _collateralIncreaseRatio / 1e18; // todo - lastCollateralAdded * ratio
+                    uint256 _requiredAdditionalCollateral = _positionInfo.latestAmountIn[_puppet] * _increaseRatio / 1e18; // todo - not sure if 1e18 needed
                     if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
                         _puppetsToAdjust[_puppetsToAdjustIndex] = _puppet;
                         _puppetsToAdjustIndex += 1;
@@ -340,7 +344,6 @@ contract Route is Base, IRoute, Test {
 
             _puppetsShares[i] = _puppetShares;
             _puppetsAmounts[i] = _allowanceAmount;
-            // _latestAmountIn[_puppet] = _allowanceAmount; // todo
         }
 
         _puppetsRequestData = abi.encode(
@@ -376,8 +379,6 @@ contract Route is Base, IRoute, Test {
             referralCode,
             address(this)
         );
-
-        console.log("======_amountIn", _amountIn);
 
         if (_amountIn > 0) requestKeyToAddCollateralRequestsIndex[_requestKey] = positions[positionIndex].addCollateralRequestsIndex - 1;
 
@@ -419,7 +420,6 @@ contract Route is Base, IRoute, Test {
         emit CreatedDecreasePositionRequest(_requestKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
-    // todo !! - record here the latestAmountIn for each participant 
     function _allocateShares(bytes32 _requestKey) internal {
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         uint256 _traderAmountIn = _request.traderAmountIn;
@@ -437,6 +437,8 @@ contract Route is Base, IRoute, Test {
 
                     _positionInfo.participantShares[_puppet] += _newPuppetShares;
 
+                    _positionInfo.latestAmountIn[_puppet] = _puppetAmountIn;
+
                     _totalSupply = _totalSupply + _newPuppetShares;
                     _totalAssets = _totalAssets + _puppetAmountIn;
                 }
@@ -446,11 +448,13 @@ contract Route is Base, IRoute, Test {
 
             _positionInfo.participantShares[_routeInfo.trader] += _newTraderShares;
 
+            _positionInfo.latestAmountIn[_routeInfo.trader] = _traderAmountIn;
+
             _totalSupply = _totalSupply + _newTraderShares;
             _totalAssets = _totalAssets + _traderAmountIn;
 
-            positions[positionIndex].totalSupply = _totalSupply;
-            positions[positionIndex].totalAssets = _totalAssets;
+            _positionInfo.totalSupply = _totalSupply;
+            _positionInfo.totalAssets = _totalAssets;
         }
     }
 
@@ -564,35 +568,6 @@ contract Route is Base, IRoute, Test {
         (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(gmxInfo.gmxVault).getPosition(address(this), _routeInfo.collateralToken, _routeInfo.indexToken, _routeInfo.isLong);
 
         return _size > 0 && _collateral > 0;
-    }
-
-    function _getCollateralInPosition() internal view returns (uint256 _collateralInPosition) {
-        // todo !!!!! - instead of doing all that crap - just save the traderAmountIn if executed and compare the new traderAmountIn with the saved one to get the ratio 
-        RouteInfo memory _routeInfo = routeInfo;
-
-        (,_collateralInPosition,,,,,,) = IGMXVault(gmxInfo.gmxVault).getPosition(address(this), _routeInfo.collateralToken, _routeInfo.indexToken, _routeInfo.isLong);
-
-        PriceFeedInfo memory _priceFeedInfo = priceFeedInfo;
-        (, int256 _price,,,) = _priceFeedInfo.priceFeed.latestRoundData();
-        // check if _price is negative
-        if (_price < 0) {
-            revert InvalidPrice();
-        } else {
-            console.log("price", uint256(_price));
-            console.log("adjusted price", uint256(_price) * 1e10);
-            console.log("decimals", _priceFeedInfo.decimals);
-            console.log("collateralInPosition0", _collateralInPosition);
-            // _collateralInPosition = _collateralInPosition / uint256(_price) * _priceFeedInfo.decimals;
-            // _collateralInPosition = _collateralInPosition * _priceFeedInfo.decimals / uint256(_price);
-            // _collateralInPosition = _collateralInPosition / (uint256(_price) / _priceFeedInfo.decimals);
-            // uint adjust_price = uint256(_price) * 1e10;
-            // // uint usd = _amount * 1e18;
-            // uint rate = (usd * 1e18) / adjust_price;
-            _collateralInPosition = _collateralInPosition / (uint256(_price) * 1e10);
-            uint256 _collateralInPosition3 = _collateralInPosition / (uint256(_price) * 1e10) * 1e18;
-            console.log("collateralInPosition1", _collateralInPosition);
-            console.log("collateralInPosition2", _collateralInPosition3);
-        }
     }
 
     function _isLiquidated() internal view returns (bool) {

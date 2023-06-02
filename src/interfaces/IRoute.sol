@@ -19,6 +19,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
         address[] puppets;
         mapping(address => uint256) participantShares; // participant => shares
         mapping(address => bool) adjustedPuppets; // puppet => isAdjusted
+        mapping(address => uint256) latestAmountIn; // puppet => latestAmountIn
     }
 
     struct AddCollateralRequest{
@@ -36,7 +37,17 @@ interface IRoute is IPositionRouterCallbackReceiver {
     // View Functions
     // ============================================================================================
 
+    // Position Info
+
     function getPuppets() external view returns (address[] memory _puppets);
+
+    function getParticipantShares(address _participant) external view returns (uint256 _shares);
+
+    function getLatestAmountIn(address _puppet) external view returns (uint256 _amountIn);
+
+    function isPuppetAdjusted(address _puppet) external view returns (bool _isAdjusted);
+
+    // Request Info
 
     function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (address[] memory _puppetsToAdjust, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts);
 
