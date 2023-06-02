@@ -285,7 +285,7 @@ contract Route is Base, IRoute, Test {
             // console.log("participantShares", participantShares[positionIndex][_routeInfo.trader]);
             uint256 _traderOwnedCollateral = _positionInfo.participantShares[_routeInfo.trader] * _totalRouteCollateral / _totalRouteSupply; // todo - use convertToAssets
             console.log("traderOwnedCollateral", _traderOwnedCollateral);
-            _collateralIncreaseRatio = _traderAmountIn * 1e18 / _traderOwnedCollateral;
+            _collateralIncreaseRatio = _traderAmountIn * 1e18 / _traderOwnedCollateral; // todo - instead of `_traderOwnedCollateral`, do `_traderLastAmountIn`
             console.log("collateralIncreaseRatio", _collateralIncreaseRatio);
 
             _puppets = _positionInfo.puppets;
@@ -309,8 +309,8 @@ contract Route is Base, IRoute, Test {
                 if (_positionInfo.adjustedPuppets[_puppet]) {
                     _allowanceAmount = 0;
                 } else {
-                    uint256 _ownedCollateral = _positionInfo.participantShares[_puppet] * _totalRouteCollateral / _totalRouteSupply;
-                    uint256 _requiredAdditionalCollateral = _ownedCollateral * _collateralIncreaseRatio / 1e18;
+                    uint256 _ownedCollateral = _positionInfo.participantShares[_puppet] * _totalRouteCollateral / _totalRouteSupply; // use last collateral added
+                    uint256 _requiredAdditionalCollateral = _ownedCollateral * _collateralIncreaseRatio / 1e18; // todo - lastCollateralAdded * ratio
                     if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
                         _puppetsToAdjust[_puppetsToAdjustIndex] = _puppet;
                         _puppetsToAdjustIndex += 1;
@@ -340,6 +340,7 @@ contract Route is Base, IRoute, Test {
 
             _puppetsShares[i] = _puppetShares;
             _puppetsAmounts[i] = _allowanceAmount;
+            // _latestAmountIn[_puppet] = _allowanceAmount; // todo
         }
 
         _puppetsRequestData = abi.encode(
@@ -418,6 +419,7 @@ contract Route is Base, IRoute, Test {
         emit CreatedDecreasePositionRequest(_requestKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
     }
 
+    // todo !! - record here the latestAmountIn for each participant 
     function _allocateShares(bytes32 _requestKey) internal {
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         uint256 _traderAmountIn = _request.traderAmountIn;
