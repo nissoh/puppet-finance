@@ -16,8 +16,8 @@ abstract contract Base is ReentrancyGuard, Auth, IBase {
     address public revenueDistributor;
     address public keeper;
 
-    address internal constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // the address representing ETH
-    address internal constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
+    address internal constant _ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // the address representing ETH
+    address internal constant _WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
 
     bytes32 public referralCode;
 

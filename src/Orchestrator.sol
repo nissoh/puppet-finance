@@ -198,7 +198,7 @@ contract Orchestrator is Base, IOrchestrator {
         if (_puppet == address(0)) revert ZeroAddress();
         if (msg.value > 0) {
             if (_amount != msg.value) revert InvalidAmount();
-            if (_asset != WETH) revert InvalidAsset();
+            if (_asset != _WETH) revert InvalidAsset();
         }
 
         puppetDepositAccount[_puppet][_asset] += _amount;
@@ -216,7 +216,7 @@ contract Orchestrator is Base, IOrchestrator {
         if (address(priceFeeds[_asset].priceFeed) == address(0)) revert NoPriceFeedForCollateralToken();
         if (_amount == 0) revert ZeroAmount();
         if (_receiver == address(0)) revert ZeroAddress();
-        if (_isETH && _asset != WETH) revert InvalidAsset();
+        if (_isETH && _asset != _WETH) revert InvalidAsset();
  
         puppetDepositAccount[msg.sender][_asset] -= _amount;
 

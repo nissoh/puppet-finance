@@ -28,7 +28,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
         uint256 traderShares;
         uint256 totalSupply;
         uint256 totalAssets;
-        address[] puppetsToAdjust;
         uint256[] puppetsShares;
         uint256[] puppetsAmounts;
     }
@@ -49,7 +48,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     // Request Info
 
-    function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (address[] memory _puppetsToAdjust, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts);
+    function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts);
 
     // ============================================================================================
     // Mutated Functions
@@ -61,7 +60,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     // keeper
 
-    function decreaseSize(address[] memory _puppets, bytes memory _traderPositionData, uint256 _executionFee) external returns (bytes32 _requestKey);
+    function decreaseSize(bytes memory _traderPositionData, uint256 _executionFee) external returns (bytes32 _requestKey);
 
     function liquidate() external;
 
@@ -72,6 +71,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     // ============================================================================================
     // Events
     // ============================================================================================
+    // todo - clean events & errors
 
     event Liquidated();
     event CallbackReceived(bytes32 indexed requestKey, bool indexed isExecuted, bool indexed isIncrease);

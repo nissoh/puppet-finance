@@ -95,9 +95,8 @@ contract Route is Base, IRoute, Test {
 
     // Request Info
 
-    function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (address[] memory _puppetsToAdjust, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) {
+    function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) {
         uint256 _index = requestKeyToAddCollateralRequestsIndex[_requestKey];
-        _puppetsToAdjust = addCollateralRequests[_index].puppetsToAdjust;
         _puppetsShares = addCollateralRequests[_index].puppetsShares;
         _puppetsAmounts = addCollateralRequests[_index].puppetsAmounts;
     }
@@ -112,9 +111,11 @@ contract Route is Base, IRoute, Test {
         if (msg.sender != routeInfo.trader) revert NotTrader();
         if (orchestrator.getIsPaused()) revert Paused();
 
+        _repayBalance(bytes32(0), false, true);
+
         if (_isIncrease) {
-            (uint256 _amountIn, bool _isPuppetsToAdjust) = _getAssets(_traderSwapData, _executionFee);
-            _requestKey = _createIncreasePositionRequest(_traderPositionData, _amountIn, _executionFee, _isPuppetsToAdjust);
+            uint256 _amountIn = _getAssets(_traderSwapData, _executionFee);
+            _requestKey = _createIncreasePositionRequest(_traderPositionData, _amountIn, _executionFee);
         } else {
             _validateRepaymentData(_traderSwapData);
             _traderRepaymentData = _traderSwapData;
@@ -127,21 +128,15 @@ contract Route is Base, IRoute, Test {
     // ============================================================================================
 
     /// @notice used to decrease the size of puppets that were not able to add collateral
-    function decreaseSize(address[] memory _puppets, bytes memory _traderPositionData, uint256 _executionFee) external nonReentrant onlyKeeper returns (bytes32 _requestKey) {
-        uint256 _positionIndex = positionIndex;
-        for (uint256 i = 0; i < _puppets.length; i++) {
-            positions[_positionIndex].adjustedPuppets[_puppets[i]] = true;
-        }
-
+    function decreaseSize(bytes memory _traderPositionData, uint256 _executionFee) external nonReentrant onlyKeeper returns (bytes32 _requestKey) {
         keeperRequests[_requestKey] = true;
-
         _requestKey = _createDecreasePositionRequest(_traderPositionData, _executionFee);
     }
 
     function liquidate() external nonReentrant onlyKeeper {
-        if (!_isLiquidated()) revert PositionStillAlive();
+        if (_isOpenInterest()) revert PositionStillAlive();
 
-        _repayBalance(bytes32(0), false);
+        _repayBalance(bytes32(0), false, true);
 
         emit Liquidated();
     }
@@ -161,7 +156,7 @@ contract Route is Base, IRoute, Test {
             _requestKey = bytes32(0); // repay any collateral to the exsisting sharesholders
         }
 
-        _repayBalance(_requestKey, _repayKeeper);
+        _repayBalance(_requestKey, _repayKeeper, false);
     }
 
     // ============================================================================================
@@ -201,7 +196,7 @@ contract Route is Base, IRoute, Test {
     // Internal Mutated Functions
     // ============================================================================================
 
-    function _getAssets(bytes memory _traderSwapData, uint256 _executionFee) internal returns (uint256 _amountIn, bool _isPuppetsToAdjust) {
+    function _getAssets(bytes memory _traderSwapData, uint256 _executionFee) internal returns (uint256 _amountIn) {
         (,uint256 _amount,) = abi.decode(_traderSwapData, (address[], uint256, uint256));
 
         if (_amount > 0) {
@@ -220,17 +215,15 @@ contract Route is Base, IRoute, Test {
             bytes memory _puppetsRequestData = _getPuppetsAssetsAndAllocateRequestShares(_totalSupply, _totalAssets);
 
             uint256 _puppetsAmountIn;
-            address[] memory _puppetsToAdjust;
             uint256[] memory _puppetsShares;
             uint256[] memory _puppetsAmounts;
             (
                 _puppetsAmountIn,
                 _totalSupply,
                 _totalAssets,
-                _puppetsToAdjust,
                 _puppetsShares,
                 _puppetsAmounts
-            ) = abi.decode(_puppetsRequestData, (uint256, uint256, uint256, address[], uint256[], uint256[]));
+            ) = abi.decode(_puppetsRequestData, (uint256, uint256, uint256, uint256[], uint256[]));
 
             // 3. store request data
             AddCollateralRequest memory _request = AddCollateralRequest({
@@ -239,7 +232,6 @@ contract Route is Base, IRoute, Test {
                 traderShares: _traderShares,
                 totalSupply: _totalSupply,
                 totalAssets: _totalAssets,
-                puppetsToAdjust: _puppetsToAdjust,
                 puppetsShares: _puppetsShares,
                 puppetsAmounts: _puppetsAmounts
             });
@@ -251,7 +243,7 @@ contract Route is Base, IRoute, Test {
             // 4. pull funds from Orchestrator
             orchestrator.sendFunds(_puppetsAmountIn, routeInfo.collateralToken, address(this));
 
-            return (_puppetsAmountIn + _traderAmountIn, _puppetsToAdjust[0] != address(0));
+            return (_puppetsAmountIn + _traderAmountIn);
         }
     }
 
@@ -260,9 +252,9 @@ contract Route is Base, IRoute, Test {
 
         if (msg.value - _executionFee > 0) {
             if (msg.value - _executionFee != _amount) revert InvalidExecutionFee();
-            if (_path[0] != WETH) revert InvalidPath();
+            if (_path[0] != _WETH) revert InvalidPath();
 
-            payable(WETH).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
+            payable(_WETH).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
         } else {
             IERC20(_path[0]).safeTransferFrom(msg.sender, address(this), _amount);
         }
@@ -300,9 +292,7 @@ contract Route is Base, IRoute, Test {
             _positionInfo.puppets = _puppets;
         }
 
-        uint256 _puppetsToAdjustIndex = 0;
         address _collateralToken = _routeInfo.collateralToken;
-        address[] memory _puppetsToAdjust = new address[](_puppets.length);
         uint256[] memory _puppetsShares = new uint256[](_puppets.length);
         uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
         for (uint256 i = 0; i < _puppets.length; i++) {
@@ -314,10 +304,9 @@ contract Route is Base, IRoute, Test {
                 if (_positionInfo.adjustedPuppets[_puppet]) {
                     _allowanceAmount = 0;
                 } else {
-                    uint256 _requiredAdditionalCollateral = _positionInfo.latestAmountIn[_puppet] * _increaseRatio / 1e18; // todo - not sure if 1e18 needed
+                    uint256 _requiredAdditionalCollateral = _positionInfo.latestAmountIn[_puppet] * _increaseRatio / 1e18;
                     if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
-                        _puppetsToAdjust[_puppetsToAdjustIndex] = _puppet;
-                        _puppetsToAdjustIndex += 1;
+                        _positionInfo.adjustedPuppets[_puppet] = true;
                         _allowanceAmount = 0;
                     } else {
                         _allowanceAmount = _requiredAdditionalCollateral;
@@ -350,13 +339,12 @@ contract Route is Base, IRoute, Test {
             _puppetsAmountIn,
             _totalSupply,
             _totalAssets,
-            _puppetsToAdjust,
             _puppetsShares,
             _puppetsAmounts
         );
     }
 
-    function _createIncreasePositionRequest(bytes memory _traderPositionData, uint256 _amountIn, uint256 _executionFee, bool _isPuppetsToAdjust) internal returns (bytes32 _requestKey) {
+    function _createIncreasePositionRequest(bytes memory _traderPositionData, uint256 _amountIn, uint256 _executionFee) internal returns (bytes32 _requestKey) {
         (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice) = abi.decode(_traderPositionData, (uint256, uint256, uint256));
 
         RouteInfo memory _routeInfo = routeInfo;
@@ -385,8 +373,6 @@ contract Route is Base, IRoute, Test {
         if (!_isOpenInterest()) {
             _updateLastPositionOpenedTimestamp(); // used to limit the number of position that can be opened in a given time period
         }
-
-        if (_isPuppetsToAdjust) emit PuppetsToAdjust(_requestKey);
 
         emit CreatedIncreasePositionRequest(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
@@ -458,7 +444,7 @@ contract Route is Base, IRoute, Test {
         }
     }
 
-    function _repayBalance(bytes32 _requestKey, bool _repayKeeper) internal {
+    function _repayBalance(bytes32 _requestKey, bool _repayKeeper, bool _isLiquidated) internal {
         RouteInfo memory _routeInfo = routeInfo;
         PositionInfo storage _positionInfo = positions[positionIndex];
         address _collateralToken = _routeInfo.collateralToken;
@@ -498,7 +484,7 @@ contract Route is Base, IRoute, Test {
             uint256 _traderAssets = _convertToAssets(_balance, _totalSupply, _traderShares);
 
             IERC20(_collateralToken).safeTransfer(address(_orchestrator), _puppetsAssets);
-            _repayTrader(_traderAssets, _isFailedRequest);
+            _repayTrader(_traderAssets, _isFailedRequest, _isLiquidated);
         }
 
         if (!_isOpenInterest()) {
@@ -514,15 +500,16 @@ contract Route is Base, IRoute, Test {
         emit RepaidBalance(_totalAssets);
     }
 
-    function _repayTrader(uint256 _traderAssets, bool _isFailedRequest) internal {
-        if (_isFailedRequest) {
+    function _repayTrader(uint256 _traderAssets, bool _isFailedRequest, bool _isLiquidated) internal {
+        if (_isFailedRequest || _isLiquidated) {
+            // NOTE: we do this because `_traderRepaymentData` is faulty on those scenarios
             IERC20(routeInfo.collateralToken).safeTransfer(routeInfo.trader, _traderAssets);
         } else {
             (address[] memory _path, uint256 _minOut, address _receiver) = abi.decode(_traderRepaymentData, (address[], uint256, address));
             address _fromToken = routeInfo.collateralToken;
-            address _toToken = _path[_path.length - 1];
+            address _toToken = _path[1];
             IGMXRouter _router = IGMXRouter(gmxInfo.gmxRouter);
-            if (_fromToken != _toToken && _toToken != ETH) {
+            if (_fromToken != _toToken && _toToken != _ETH) {
                 _approve(address(_router), _fromToken, _traderAssets);
 
                 uint256 _before = IERC20(_toToken).balanceOf(address(this));
@@ -530,7 +517,7 @@ contract Route is Base, IRoute, Test {
                 _traderAssets = IERC20(_toToken).balanceOf(address(this)) - _before;
             }
 
-            if (_toToken == ETH) {
+            if (_toToken == _ETH) {
                 _router.swapTokensToETH(_path, _traderAssets, _minOut, payable(_receiver));
             } else {
                 IERC20(_toToken).safeTransfer(_receiver, _traderAssets);
@@ -570,28 +557,21 @@ contract Route is Base, IRoute, Test {
         return _size > 0 && _collateral > 0;
     }
 
-    function _isLiquidated() internal view returns (bool) {
-        RouteInfo memory _routeInfo = routeInfo;
-
-        (uint256 state, ) = IGMXVault(gmxInfo.gmxVault).validateLiquidation(address(this), _routeInfo.collateralToken, _routeInfo.indexToken, _routeInfo.isLong, false);
-
-        return state > 0;
-    }
-
     function _validateRepaymentData(bytes memory _traderSwapData) internal view {
-        (address[] memory _path,,) = abi.decode(_traderSwapData, (address[], uint256, address));
+        (address[] memory _path, uint256 _amount,) = abi.decode(_traderSwapData, (address[], uint256, address));
         address _collateralToken = routeInfo.collateralToken;
 
-        if (_path[0] != _collateralToken) revert InvalidTokenIn();
         if (_path.length > 2) revert InvalidPathLength();
+        if (_path[0] != _collateralToken) revert InvalidTokenIn();
+        if (_getMaxAmountIn(_collateralToken, _path[1]) < _amount) revert InvalidMaxAmount();
+    }
 
-        uint256 _maxAmountTokenIn;
+    function _getMaxAmountIn(address _fromToken, address _toToken) internal view returns (uint256 _maxAmountTokenIn) {
         IGMXReader _gmxReader = IGMXReader(gmxInfo.gmxReader);
         IVault _gmxVault = IVault(gmxInfo.gmxVault);
 
-        _maxAmountTokenIn = _path[1] == ETH ? _gmxReader.getMaxAmountIn(_gmxVault, _collateralToken, WETH) : 
-        _gmxReader.getMaxAmountIn(_gmxVault, _collateralToken, _path[1]);
-        if (_maxAmountTokenIn == 0) revert InvalidMaxAmount();
+        _maxAmountTokenIn = _toToken == _ETH ? _gmxReader.getMaxAmountIn(_gmxVault, _fromToken, _WETH) : 
+        _gmxReader.getMaxAmountIn(_gmxVault, _fromToken, _toToken);
     }
 
     function _convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) internal pure returns (uint256 _shares) {
