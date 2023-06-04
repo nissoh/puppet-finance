@@ -9,7 +9,7 @@ interface IRouteFactory {
     // External Functions
     // ============================================================================================
 
-    function createRoute(Authority _authority, address _orchestrator, address _trader, address _collateralToken, address _indexToken, bool _isLong) external returns (address _route);
+    function createRoute(address _orchestrator, address _trader, address _collateralToken, address _indexToken, bool _isLong) external returns (address _route);
 
     // ============================================================================================
     // Events

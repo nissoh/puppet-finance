@@ -5,14 +5,14 @@ import {IPositionRouterCallbackReceiver} from "./IPositionRouterCallbackReceiver
 
 interface IRoute is IPositionRouterCallbackReceiver {
 
-    struct RouteInfo {
+    struct Route {
         bool isLong;
         address trader;
         address collateralToken;
         address indexToken;
     }
 
-    struct PositionInfo {
+    struct Position {
         uint256 addCollateralRequestsIndex;
         uint256 totalSupply;
         uint256 totalAssets;
@@ -54,19 +54,21 @@ interface IRoute is IPositionRouterCallbackReceiver {
     // Mutated Functions
     // ============================================================================================
 
-    // trader
+    // Trader
 
     function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, bool _isIncrease) external payable returns (bytes32 _requestKey);
 
-    // keeper
+    function approvePlugin() external;
+
+    // Keeper
 
     function decreaseSize(bytes memory _traderPositionData, uint256 _executionFee) external returns (bytes32 _requestKey);
 
     function liquidate() external;
 
-    // owner
+    // Orchestrator
 
-    function updateUtils(address _orchestrator) external;
+    function rescueTokens(uint256 _amount, address _token, address _receiver) external;
 
     // ============================================================================================
     // Events
@@ -78,16 +80,16 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event PluginApproved();
     event OrchestratorSet(address orchestrator);
     event GlobalInfoUpdated();
-    event GMXInfoUpdated();
     event CreatedIncreasePositionRequest(bytes32 indexed requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event CreatedDecreasePositionRequest(bytes32 indexed requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
-    event RepaidBalance(uint256 totalAssets);
+    event BalanceRepaid(uint256 totalAssets);
     event RouteReset();
     event InsolventPuppets(address[] _insolventPuppets);
     event RatioAdjustmentWaitOver();
     event PuppetsToAdjust(bytes32 indexed requestKey);
     event RatioAdjustmentFailed();
     event RatioAdjustmentExecuted();
+    event TokensRescued(uint256 _amount, address _token, address _receiver);
 
     // ============================================================================================
     // Errors
@@ -105,4 +107,5 @@ interface IRoute is IPositionRouterCallbackReceiver {
     error PositionStillAlive();
     error Paused();
     error InvalidPrice();
+    error NotOrchestrator();
 }

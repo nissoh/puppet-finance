@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-import {IBase} from "./IBase.sol";
-
-interface IOrchestrator is IBase {
+interface IOrchestrator {
 
     struct RouteType {
         address collateralToken;
@@ -18,7 +16,9 @@ interface IOrchestrator is IBase {
 
     // global
 
-    function getGlobalInfo() external view returns (bytes32, address, address);
+    function getKeeper() external view returns (address);
+
+    function getRefCode() external view returns (bytes32);
 
     function getRoutes() external view returns (address[] memory);
 
@@ -26,27 +26,35 @@ interface IOrchestrator is IBase {
 
     // route
 
+    function getRoute(bytes32 _routeKey) external view returns (address);
+
     function getRoute(address _trader, address _collateralToken, address _indexToken, bool _isLong) external view returns (address);
 
     function getRouteTypeKey(address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
 
     function getRouteKey(address _trader, bytes32 _routeTypeKey) external view returns (bytes32);
 
-    function getRoute(bytes32 _routeKey) external view returns (address);
-
-    function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory);
+    function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory _puppets);
 
     // puppet
 
     function isBelowThrottleLimit(address _puppet, address _route) external view returns (bool);
 
-    function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256);
+    function getPuppetThrottleLimit(address _puppet, address _route) external view returns (uint256);
+
+    function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance);
 
     function getPuppetAccountBalance(address _puppet, address _asset) external view returns (uint256);
 
+    function getLastPositionOpenedTimestamp(address _puppet, address _route) external view returns (uint256);
+
     // gmx
 
-    function getGMXInfo() external view returns (GMXInfo memory);
+    function getGMXRouter() external view returns (address);
+
+    function getGMXPositionRouter() external view returns (address);
+
+    function getGMXVault() external view returns (address);
 
     // ============================================================================================
     // Mutated Functions
@@ -78,13 +86,21 @@ interface IOrchestrator is IBase {
 
     function sendFunds(uint256 _amount, address _asset, address _receiver) external;
 
-    // Owner
+    // Authority
+
+    function rescueTokens(uint256 _amount, address _token, address _receiver) external;
+
+    function rescueRouteTokens(uint256 _amount, address _token, address _receiver, address _route) external;
+
+    function routeCreatePositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, address _route, bool _isIncrease) external payable returns (bytes32 _requestKey);
 
     function setRouteType(address _collateral, address _index, bool _isLong) external;
 
-    function setGMXUtils(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender) external;
+    function setGMXInfo(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender) external;
 
-    function setPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode) external;
+    function setKeeper(address _keeperAddr) external;
+
+    function setReferralCode(bytes32 _refCode) external;
 
     function pause(bool _pause) external;
 
@@ -103,8 +119,13 @@ interface IOrchestrator is IBase {
     event FundsSent(uint256 _amount, address indexed _asset, address indexed _receiver, address indexed _caller);
     event RouteTypeSet(bytes32 _routeTypeKey, address _collateral, address _index, bool _isLong);
     event GMXUtilsSet(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
-    event PuppetUtilsSet(address _revenueDistributor, address _keeper, bytes32 _referralCode);
+    event PuppetUtilsSet(address _keeper, bytes32 _referralCode);
     event Paused(bool _paused);
+    event ReferralCodeSet(bytes32 indexed _referralCode);
+    event KeeperSet(address indexed _keeper);
+    event PositionRequestCreated(bytes32 indexed _requestKey, address indexed _route, bool indexed _isIncrease);
+    event RouteTokensRescued(uint256 _amount, address indexed _token, address indexed _receiver, address indexed _route);
+    event TokensRescued(uint256 _amount, address indexed _token, address indexed _receiver);
 
     // ============================================================================================
     // Errors
@@ -121,4 +142,5 @@ interface IOrchestrator is IBase {
     error ZeroAddress();
     error InvalidAmount();
     error InvalidAsset();
+    error ZeroBytes32();
 }

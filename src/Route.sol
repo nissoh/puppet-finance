@@ -11,47 +11,40 @@ import {IRoute} from "./interfaces/IRoute.sol";
 
 import "./Base.sol";
 
-import "forge-std/Test.sol";
-import "forge-std/console.sol";
-
-contract Route is Base, IRoute, Test {
+contract Route is Base, IRoute {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
 
     uint256 public positionIndex;
 
-    bytes32 public routeTypeKey;
+    bytes32 private _routeTypeKey;
 
     mapping(bytes32 => bool) public keeperRequests; // requestKey => isKeeperRequest
 
     mapping(bytes32 => uint256) public requestKeyToAddCollateralRequestsIndex; // requestKey => addCollateralRequestsIndex
     mapping(uint256 => AddCollateralRequest) public addCollateralRequests; // addCollateralIndex => AddCollateralRequest
-    mapping(uint256 => PositionInfo) public positions; // positionIndex => PositionInfo
+    mapping(uint256 => Position) public positions; // positionIndex => Position
 
     IOrchestrator public orchestrator;
 
-    RouteInfo public routeInfo;
+    Route public route;
 
     // ============================================================================================
     // Constructor
     // ============================================================================================
 
-    constructor(Authority _authority, address _orchestrator, address _trader, address _collateralToken, address _indexToken, bool _isLong) Auth(address(0), _authority) {
+    constructor(address _orchestrator, address _trader, address _collateralToken, address _indexToken, bool _isLong) {
         orchestrator = IOrchestrator(_orchestrator);
 
-        routeInfo.trader = _trader;
-        routeInfo.collateralToken = _collateralToken;
-        routeInfo.indexToken = _indexToken;
-        routeInfo.isLong = _isLong;
+        route.trader = _trader;
+        route.collateralToken = _collateralToken;
+        route.indexToken = _indexToken;
+        route.isLong = _isLong;
 
-        (referralCode, keeper, revenueDistributor) = orchestrator.getGlobalInfo();
+        _routeTypeKey = orchestrator.getRouteTypeKey(_collateralToken, _indexToken, _isLong);
 
-        gmxInfo = orchestrator.getGMXInfo();
-
-        routeTypeKey = orchestrator.getRouteTypeKey(_collateralToken, _indexToken, _isLong);
-
-        IGMXRouter(gmxInfo.gmxRouter).approvePlugin(gmxInfo.gmxPositionRouter);
+        IGMXRouter(orchestrator.getGMXRouter()).approvePlugin(orchestrator.getGMXPositionRouter());
     }
 
     // ============================================================================================
@@ -59,7 +52,12 @@ contract Route is Base, IRoute, Test {
     // ============================================================================================
 
     modifier onlyKeeper() {
-        if (msg.sender != owner && msg.sender != keeper) revert NotKeeper();
+        if (msg.sender != orchestrator.getKeeper()) revert NotKeeper();
+        _;
+    }
+
+    modifier onlyTrader() {
+        if (msg.sender != route.trader && msg.sender != address(orchestrator)) revert NotTrader();
         _;
     }
 
@@ -99,11 +97,12 @@ contract Route is Base, IRoute, Test {
 
     /// @dev violates checks-effects-interactions pattern. we use reentrancy guard
     // slither-disable-next-line reentrancy-eth
-    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, bool _isIncrease) external payable nonReentrant returns (bytes32 _requestKey) {
-        if (msg.sender != routeInfo.trader) revert NotTrader();
+    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, bool _isIncrease) external payable onlyTrader nonReentrant returns (bytes32 _requestKey) {
         if (orchestrator.getIsPaused()) revert Paused();
 
-        _repayBalance(bytes32(0), msg.value, false); // this sends trader eth back to trader
+        _repayBalance(bytes32(0), msg.value, false);
+
+        if (!_isOpenInterest()) _updateLastPositionOpenedTimestamp();
 
         if (_isIncrease) {
             uint256 _amountIn = _getAssets(_traderSwapData, _executionFee);
@@ -113,8 +112,14 @@ contract Route is Base, IRoute, Test {
         }
     }
 
+    function approvePlugin() external onlyTrader {
+        IGMXRouter(orchestrator.getGMXRouter()).approvePlugin(orchestrator.getGMXPositionRouter());
+
+        emit PluginApproved();
+    }
+
     // ============================================================================================
-    // Keeper Function
+    // Keeper Functions
     // ============================================================================================
 
     /// @notice used to decrease the size of puppets that were not able to add collateral
@@ -136,43 +141,32 @@ contract Route is Base, IRoute, Test {
     // ============================================================================================
 
     function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant {
-        if (msg.sender != owner && msg.sender != gmxInfo.gmxPositionRouter) revert NotCallbackCaller();
+        if (msg.sender != orchestrator.getGMXPositionRouter()) revert NotCallbackCaller();
 
         emit CallbackReceived(_requestKey, _isExecuted, _isIncrease);
 
-        bool _repayKeeper = keeperRequests[_requestKey];
         if (_isExecuted) {
             if (_isIncrease) _allocateShares(_requestKey);
-            _requestKey = bytes32(0); // repay any collateral to the exsisting sharesholders
+            _requestKey = bytes32(0);
         }
 
-        _repayBalance(_requestKey, 0, _repayKeeper);
+        _repayBalance(_requestKey, 0, keeperRequests[_requestKey]);
     }
 
     // ============================================================================================
-    // Authority Functions
+    // Orchestrator Function
     // ============================================================================================
 
-    function updateUtils(address _orchestrator) external requiresAuth {
-        orchestrator = IOrchestrator(_orchestrator);
+    function rescueTokens(uint256 _amount, address _token, address _receiver) external {
+        if (msg.sender != address(orchestrator)) revert NotOrchestrator();
 
-        emit OrchestratorSet(_orchestrator);
+        if (_token == address(0)) {
+            payable(_receiver).sendValue(_amount);
+        } else {
+            IERC20(_token).safeTransfer(_receiver, _amount);
+        }
 
-        (
-            referralCode,
-            keeper,
-            revenueDistributor
-        ) = orchestrator.getGlobalInfo();
-
-        emit GlobalInfoUpdated();
-
-        gmxInfo = orchestrator.getGMXInfo();
-
-        emit GMXInfoUpdated();
-
-        IGMXRouter(gmxInfo.gmxRouter).approvePlugin(gmxInfo.gmxPositionRouter);
-
-        emit PluginApproved();
+        emit TokensRescued(_amount, _token, _receiver);
     }
 
     // ============================================================================================
@@ -224,7 +218,7 @@ contract Route is Base, IRoute, Test {
             positions[_positionIndex].addCollateralRequestsIndex += 1;
 
             // 4. pull funds from Orchestrator
-            orchestrator.sendFunds(_puppetsAmountIn, routeInfo.collateralToken, address(this));
+            orchestrator.sendFunds(_puppetsAmountIn, route.collateralToken, address(this));
 
             return (_puppetsAmountIn + _traderAmountIn);
         }
@@ -242,13 +236,13 @@ contract Route is Base, IRoute, Test {
             IERC20(_path[0]).safeTransferFrom(msg.sender, address(this), _amount);
         }
 
-        if (_path[0] == routeInfo.collateralToken) {
+        if (_path[0] == route.collateralToken) {
             _traderAmountIn = _amount;
         } else {
             address _toToken = _path[_path.length - 1];
-            if (_toToken != routeInfo.collateralToken) revert InvalidPath();
+            if (_toToken != route.collateralToken) revert InvalidPath();
 
-            address _router = gmxInfo.gmxRouter;
+            address _router = orchestrator.getGMXRouter();
             _approve(_router, _path[0], _amount);
 
             uint256 _before = IERC20(_toToken).balanceOf(address(this));
@@ -258,8 +252,8 @@ contract Route is Base, IRoute, Test {
     }
 
     function _getPuppetsAssetsAndAllocateRequestShares(uint256 _totalSupply, uint256 _totalAssets) internal returns (bytes memory _puppetsRequestData) {
-        RouteInfo memory _routeInfo = routeInfo;
-        PositionInfo storage _positionInfo = positions[positionIndex];
+        Route memory _route = route;
+        Position storage _position = positions[positionIndex];
         IOrchestrator _orchestrator = orchestrator;
         bool _isOI = _isOpenInterest();
         uint256 _puppetsAmountIn = 0;
@@ -267,15 +261,15 @@ contract Route is Base, IRoute, Test {
         uint256 _traderAmountIn = _totalAssets;
         address[] memory _puppets;
         if (_isOI) {
-            _increaseRatio = _traderAmountIn * 1e18 / _positionInfo.latestAmountIn[_routeInfo.trader];
-            _puppets = _positionInfo.puppets;
+            _increaseRatio = _traderAmountIn * 1e18 / _position.latestAmountIn[_route.trader];
+            _puppets = _position.puppets;
         } else {
-            bytes32 _routeKey = _orchestrator.getRouteKey(_routeInfo.trader, routeTypeKey);
+            bytes32 _routeKey = _orchestrator.getRouteKey(_route.trader, _routeTypeKey);
             _puppets = _orchestrator.getPuppetsForRoute(_routeKey);
-            _positionInfo.puppets = _puppets;
+            _position.puppets = _puppets;
         }
 
-        address _collateralToken = _routeInfo.collateralToken;
+        address _collateralToken = _route.collateralToken;
         uint256[] memory _puppetsShares = new uint256[](_puppets.length);
         uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
         for (uint256 i = 0; i < _puppets.length; i++) {
@@ -284,12 +278,12 @@ contract Route is Base, IRoute, Test {
             uint256 _allowancePercentage = _orchestrator.getPuppetAllowancePercentage(_puppet, address(this));
             uint256 _allowanceAmount = (_orchestrator.getPuppetAccountBalance(_puppet, _collateralToken) * _allowancePercentage) / 100;
             if (_isOI) {
-                if (_positionInfo.adjustedPuppets[_puppet]) {
+                if (_position.adjustedPuppets[_puppet]) {
                     _allowanceAmount = 0;
                 } else {
-                    uint256 _requiredAdditionalCollateral = _positionInfo.latestAmountIn[_puppet] * _increaseRatio / 1e18;
+                    uint256 _requiredAdditionalCollateral = _position.latestAmountIn[_puppet] * _increaseRatio / 1e18;
                     if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
-                        _positionInfo.adjustedPuppets[_puppet] = true;
+                        _position.adjustedPuppets[_puppet] = true;
                         _allowanceAmount = 0;
                     } else {
                         _allowanceAmount = _requiredAdditionalCollateral;
@@ -330,32 +324,28 @@ contract Route is Base, IRoute, Test {
     function _createIncreasePositionRequest(bytes memory _traderPositionData, uint256 _amountIn, uint256 _executionFee) internal returns (bytes32 _requestKey) {
         (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice) = abi.decode(_traderPositionData, (uint256, uint256, uint256));
 
-        RouteInfo memory _routeInfo = routeInfo;
+        Route memory _route = route;
 
         address[] memory _path = new address[](1);
-        _path[0] = _routeInfo.collateralToken;
+        _path[0] = _route.collateralToken;
 
-        _approve(gmxInfo.gmxRouter, _path[0], _amountIn);
+        _approve(orchestrator.getGMXRouter(), _path[0], _amountIn);
 
         // slither-disable-next-line arbitrary-send-eth
-        _requestKey = IGMXPositionRouter(gmxInfo.gmxPositionRouter).createIncreasePosition{ value: _executionFee } (
+        _requestKey = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).createIncreasePosition{ value: _executionFee } (
             _path,
-            _routeInfo.indexToken,
+            _route.indexToken,
             _amountIn,
             _minOut,
             _sizeDelta,
-            _routeInfo.isLong,
+            _route.isLong,
             _acceptablePrice,
             _executionFee,
-            referralCode,
+            orchestrator.getRefCode(),
             address(this)
         );
 
         if (_amountIn > 0) requestKeyToAddCollateralRequestsIndex[_requestKey] = positions[positionIndex].addCollateralRequestsIndex - 1;
-
-        if (!_isOpenInterest()) {
-            _updateLastPositionOpenedTimestamp(); // used to limit the number of position that can be opened in a given time period
-        }
 
         emit CreatedIncreasePositionRequest(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
     }
@@ -366,18 +356,18 @@ contract Route is Base, IRoute, Test {
 
         if (msg.value != _executionFee) revert InvalidExecutionFee();
 
-        RouteInfo memory _routeInfo = routeInfo;
+        Route memory _route = route;
 
         address[] memory _path = new address[](1);
-        _path[0] = _routeInfo.collateralToken;
+        _path[0] = _route.collateralToken;
 
         // slither-disable-next-line arbitrary-send-eth
-        _requestKey = IGMXPositionRouter(gmxInfo.gmxPositionRouter).createDecreasePosition{ value: _executionFee } (
+        _requestKey = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).createDecreasePosition{ value: _executionFee } (
             _path,
-            _routeInfo.indexToken,
+            _route.indexToken,
             _collateralDelta,
             _sizeDelta,
-            _routeInfo.isLong,
+            _route.isLong,
             address(this), // _receiver
             _acceptablePrice,
             _minOut,
@@ -393,20 +383,20 @@ contract Route is Base, IRoute, Test {
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         uint256 _traderAmountIn = _request.traderAmountIn;
         if (_traderAmountIn > 0) {
-            RouteInfo memory _routeInfo = routeInfo;
-            PositionInfo storage _positionInfo = positions[positionIndex];
-            uint256 _totalSupply = _positionInfo.totalSupply;
-            uint256 _totalAssets = _positionInfo.totalAssets;
-            address[] memory _puppets = _positionInfo.puppets;
+            Route memory _route = route;
+            Position storage _position = positions[positionIndex];
+            uint256 _totalSupply = _position.totalSupply;
+            uint256 _totalAssets = _position.totalAssets;
+            address[] memory _puppets = _position.puppets;
             for (uint256 i = 0; i < _puppets.length; i++) {
                 address _puppet = _puppets[i];
                 uint256 _puppetAmountIn = _request.puppetsAmounts[i];
                 if (_puppetAmountIn > 0) {
                     uint256 _newPuppetShares = _convertToShares(_totalAssets, _totalSupply, _puppetAmountIn);
 
-                    _positionInfo.participantShares[_puppet] += _newPuppetShares;
+                    _position.participantShares[_puppet] += _newPuppetShares;
 
-                    _positionInfo.latestAmountIn[_puppet] = _puppetAmountIn;
+                    _position.latestAmountIn[_puppet] = _puppetAmountIn;
 
                     _totalSupply = _totalSupply + _newPuppetShares;
                     _totalAssets = _totalAssets + _puppetAmountIn;
@@ -415,30 +405,28 @@ contract Route is Base, IRoute, Test {
 
             uint256 _newTraderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
 
-            _positionInfo.participantShares[_routeInfo.trader] += _newTraderShares;
+            _position.participantShares[_route.trader] += _newTraderShares;
 
-            _positionInfo.latestAmountIn[_routeInfo.trader] = _traderAmountIn;
+            _position.latestAmountIn[_route.trader] = _traderAmountIn;
 
             _totalSupply = _totalSupply + _newTraderShares;
             _totalAssets = _totalAssets + _traderAmountIn;
 
-            _positionInfo.totalSupply = _totalSupply;
-            _positionInfo.totalAssets = _totalAssets;
+            _position.totalSupply = _totalSupply;
+            _position.totalAssets = _totalAssets;
         }
     }
 
     function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _repayKeeper) internal {
-        RouteInfo memory _routeInfo = routeInfo;
-        PositionInfo storage _positionInfo = positions[positionIndex];
-        address _collateralToken = _routeInfo.collateralToken;
-        uint256 _totalAssets = IERC20(_collateralToken).balanceOf(address(this));
+        Route memory _route = route;
+        Position storage _position = positions[positionIndex];
+        uint256 _totalAssets = IERC20(_route.collateralToken).balanceOf(address(this));
         if (_totalAssets > 0) {
             uint256 _puppetsAssets = 0;
             uint256 _totalSupply = 0;
             uint256 _balance = _totalAssets;
             bool _isFailedRequest = _requestKey != bytes32(0);
-            IOrchestrator _orchestrator = orchestrator;
-            address[] memory _puppets = _positionInfo.puppets;
+            address[] memory _puppets = _position.puppets;
             AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
             for (uint256 i = 0; i < _puppets.length; i++) {
                 uint256 _shares;
@@ -447,14 +435,14 @@ contract Route is Base, IRoute, Test {
                     if (i == 0) _totalSupply = _request.totalSupply;
                     _shares = _request.puppetsShares[i];
                 } else {
-                    if (i == 0) _totalSupply = _positionInfo.totalSupply;
-                    _shares = _positionInfo.participantShares[_puppet];
+                    if (i == 0) _totalSupply = _position.totalSupply;
+                    _shares = _position.participantShares[_puppet];
                 }
 
                 if (_shares > 0) {
                     uint256 _assets = _convertToAssets(_balance, _totalSupply, _shares);
 
-                    _orchestrator.creditPuppetAccount(_assets, _collateralToken, _puppet);
+                    orchestrator.creditPuppetAccount(_assets, _route.collateralToken, _puppet);
 
                     _totalSupply -= _shares;
                     _balance -= _assets;
@@ -463,11 +451,11 @@ contract Route is Base, IRoute, Test {
                 }
             }
 
-            uint256 _traderShares = _isFailedRequest ? _request.traderShares : _positionInfo.participantShares[_routeInfo.trader];
+            uint256 _traderShares = _isFailedRequest ? _request.traderShares : _position.participantShares[_route.trader];
             uint256 _traderAssets = _convertToAssets(_balance, _totalSupply, _traderShares);
 
-            IERC20(_collateralToken).safeTransfer(address(_orchestrator), _puppetsAssets);
-            IERC20(_collateralToken).safeTransfer(routeInfo.trader, _traderAssets);
+            IERC20(_route.collateralToken).safeTransfer(address(orchestrator), _puppetsAssets);
+            IERC20(_route.collateralToken).safeTransfer(_route.trader, _traderAssets);
         }
 
         if (!_isOpenInterest()) {
@@ -475,12 +463,12 @@ contract Route is Base, IRoute, Test {
         }
 
         uint256 _ethBalance = address(this).balance;
-        if ((_ethBalance - _traderAmountIn)> 0) {
-            address _executionFeeReceiver = _repayKeeper ? keeper : _routeInfo.trader;
+        if ((_ethBalance - _traderAmountIn) > 0) {
+            address _executionFeeReceiver = _repayKeeper ? orchestrator.getKeeper() : _route.trader;
             payable(_executionFeeReceiver).sendValue(_ethBalance - _traderAmountIn);
         }
 
-        emit RepaidBalance(_totalAssets);
+        emit BalanceRepaid(_totalAssets);
     }
 
     function _resetRoute() internal {
@@ -508,9 +496,9 @@ contract Route is Base, IRoute, Test {
     // ============================================================================================
 
     function _isOpenInterest() internal view returns (bool) {
-        RouteInfo memory _routeInfo = routeInfo;
+        Route memory _route = route;
 
-        (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(gmxInfo.gmxVault).getPosition(address(this), _routeInfo.collateralToken, _routeInfo.indexToken, _routeInfo.isLong);
+        (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(orchestrator.getGMXVault()).getPosition(address(this), _route.collateralToken, _route.indexToken, _route.isLong);
 
         return _size > 0 && _collateral > 0;
     }
