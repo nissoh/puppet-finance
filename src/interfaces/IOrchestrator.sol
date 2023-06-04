@@ -10,6 +10,13 @@ interface IOrchestrator {
         bool isRegistered;
     }
 
+    struct GMXInfo {
+        address gmxRouter;
+        address gmxVault;
+        address gmxPositionRouter;
+        address gmxReferralRebatesSender;
+    }
+
     // ============================================================================================
     // View Functions
     // ============================================================================================
@@ -96,7 +103,7 @@ interface IOrchestrator {
 
     function setRouteType(address _collateral, address _index, bool _isLong) external;
 
-    function setGMXInfo(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender) external;
+    function setGMXInfo(address _gmxRouter, address _gmxVault, address _gmxPositionRouter) external;
 
     function setKeeper(address _keeperAddr) external;
 
@@ -118,7 +125,7 @@ interface IOrchestrator {
     event LastPositionOpenedTimestampUpdated(address indexed _puppet, address indexed _route, uint256 _timestamp);
     event FundsSent(uint256 _amount, address indexed _asset, address indexed _receiver, address indexed _caller);
     event RouteTypeSet(bytes32 _routeTypeKey, address _collateral, address _index, bool _isLong);
-    event GMXUtilsSet(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
+    event GMXUtilsSet(address _gmxRouter, address _gmxVault, address _gmxPositionRouter);
     event PuppetUtilsSet(address _keeper, bytes32 _referralCode);
     event Paused(bool _paused);
     event ReferralCodeSet(bytes32 indexed _referralCode);

@@ -11,12 +11,7 @@ import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
 
 abstract contract Base is ReentrancyGuard {
 
-    address internal _keeper;
-
-    address internal constant _ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE; // the address representing ETH
     address internal constant _WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
-
-    bytes32 internal _referralCode;
 
     // ============================================================================================
     // Events

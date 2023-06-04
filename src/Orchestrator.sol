@@ -23,21 +23,21 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     struct PuppetInfo {
-        mapping(address => uint256) throttleLimits; // Route => throttle limit (in seconds)
+        mapping(address => uint256) throttleLimits; // Route => throttle limit (in seconds) // todo - make per routeType (not per route)
         mapping(address => uint256) lastPositionOpenedTimestamp; // Route => timestamp
         mapping(address => uint256) depositAccount; // collateralToken => balance
         EnumerableMap.AddressToUintMap allowances; // Route => allowance percentage
     }
 
-    struct GMXInfo {
-        address gmxRouter;
-        address gmxReader;
-        address gmxVault;
-        address gmxPositionRouter;
-        address gmxReferralRebatesSender;
-    }
-
+    // settings
     address public routeFactory;
+    address private _keeper;
+
+    bool private _paused;
+
+    bytes32 private _referralCode;
+
+    GMXInfo private _gmxInfo;
 
     // routes info
     mapping(address => bool) public isRoute; // Route => isRoute
@@ -50,20 +50,15 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // puppets info
     mapping(address => PuppetInfo) private _puppetInfo;
 
-    // settings
-    bool private _paused; // used to pause all routes on update of gmx/global utils
-
-    GMXInfo private _gmxInfo;
-
     // ============================================================================================
     // Constructor
     // ============================================================================================
 
-    constructor(Authority _authority, address _routeFactory, address _keeperAddr, bytes32 _refCode, GMXInfo memory _gmx) Auth(address(0), _authority) {
+    constructor(Authority _authority, address _routeFactory, address _keeperAddr, bytes32 _refCode, bytes memory _gmx) Auth(address(0), _authority) {
         routeFactory = _routeFactory;
         _keeper = _keeperAddr;
 
-        _gmxInfo = _gmx;
+        (_gmxInfo.gmxRouter, _gmxInfo.gmxVault, _gmxInfo.gmxPositionRouter) = abi.decode(_gmx, (address, address, address));
 
         _referralCode = _refCode;
     }
@@ -232,13 +227,13 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         _puppetInfo[_puppet].depositAccount[_asset] += _amount;
 
-        emit Deposited(_amount, _asset, msg.sender, _puppet);
-
         if (msg.value > 0) {
             payable(_asset).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
         } else {
             IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
         }
+
+        emit Deposited(_amount, _asset, msg.sender, _puppet);
     }
 
     function withdraw(uint256 _amount, address _asset, address _receiver, bool _isETH) external nonReentrant {
@@ -249,14 +244,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
  
         _puppetInfo[msg.sender].depositAccount[_asset] -= _amount;
 
-        emit Withdrawn(_amount, _asset, _receiver, msg.sender);
-
         if (_isETH) {
             IWETH(_asset).withdraw(_amount);
             payable(_receiver).sendValue(_amount);
         } else {
             IERC20(_asset).safeTransfer(_receiver, _amount);
         }
+
+        emit Withdrawn(_amount, _asset, _receiver, msg.sender);
     }
 
     function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _subscribe) external nonReentrant {
@@ -318,9 +313,9 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     function sendFunds(uint256 _amount, address _asset, address _receiver) external onlyRoute {
-        emit FundsSent(_amount, _asset, _receiver, msg.sender);
-
         IERC20(_asset).safeTransfer(_receiver, _amount);
+
+        emit FundsSent(_amount, _asset, _receiver, msg.sender);
     }
 
     // ============================================================================================
@@ -357,16 +352,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit RouteTypeSet(_routeTypeKey, _collateral, _index, _isLong);
     }
 
-    function setGMXInfo(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _gmxReferralRebatesSender) external nonReentrant {
+    function setGMXInfo(address _gmxRouter, address _gmxVault, address _gmxPositionRouter) external nonReentrant {
         GMXInfo storage _gmx = _gmxInfo;
 
         _gmx.gmxRouter = _gmxRouter;
-        _gmx.gmxReader = _gmxReader;
         _gmx.gmxVault = _gmxVault;
         _gmx.gmxPositionRouter = _gmxPositionRouter;
-        _gmx.gmxReferralRebatesSender = _gmxReferralRebatesSender;
 
-        emit GMXUtilsSet(_gmxRouter, _gmxReader, _gmxVault, _gmxPositionRouter, _gmxReferralRebatesSender); // todo - clean unused
+        emit GMXUtilsSet(_gmxRouter, _gmxVault, _gmxPositionRouter);
     }
 
     function setKeeper(address _keeperAddr) external nonReentrant {
