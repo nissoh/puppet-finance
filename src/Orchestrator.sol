@@ -40,7 +40,6 @@ contract Orchestrator is Base, IOrchestrator {
 
     // settings
     bool public paused; // used to pause all routes on update of gmx/global utils
-    mapping(address => PriceFeedInfo) public priceFeeds; // collateralToken => PriceFeedInfo
 
     // ============================================================================================
     // Constructor
@@ -73,10 +72,6 @@ contract Orchestrator is Base, IOrchestrator {
 
     function getGlobalInfo() external view returns (bytes32, address, address) {
         return (referralCode, keeper, revenueDistributor);
-    }
-
-    function getPriceFeed(address _asset) external view returns (address, uint256) {
-        return (address(priceFeeds[_asset].priceFeed), priceFeeds[_asset].decimals);
     }
 
     function getRoutes() external view returns (address[] memory) {
@@ -193,9 +188,9 @@ contract Orchestrator is Base, IOrchestrator {
     // ============================================================================================
 
     function deposit(uint256 _amount, address _asset, address _puppet) external payable nonReentrant {
-        if (address(priceFeeds[_asset].priceFeed) == address(0)) revert NoPriceFeedForCollateralToken();
         if (_amount == 0) revert ZeroAmount();
         if (_puppet == address(0)) revert ZeroAddress();
+        if (_asset == address(0)) revert ZeroAddress();
         if (msg.value > 0) {
             if (_amount != msg.value) revert InvalidAmount();
             if (_asset != _WETH) revert InvalidAsset();
@@ -213,9 +208,9 @@ contract Orchestrator is Base, IOrchestrator {
     }
 
     function withdraw(uint256 _amount, address _asset, address _receiver, bool _isETH) external nonReentrant {
-        if (address(priceFeeds[_asset].priceFeed) == address(0)) revert NoPriceFeedForCollateralToken();
         if (_amount == 0) revert ZeroAmount();
         if (_receiver == address(0)) revert ZeroAddress();
+        if (_asset == address(0)) revert ZeroAddress();
         if (_isETH && _asset != _WETH) revert InvalidAsset();
  
         puppetDepositAccount[msg.sender][_asset] -= _amount;
@@ -324,19 +319,6 @@ contract Orchestrator is Base, IOrchestrator {
         referralCode = _referralCode;
 
         emit PuppetUtilsSet(_revenueDistributor, _keeper, _referralCode);
-    }
-
-    function setPriceFeeds(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external {
-        if (_assets.length != _priceFeeds.length || _assets.length != _decimals.length) revert MismatchedInputArrays();
-
-        for (uint256 i = 0; i < _assets.length; i++) {
-            priceFeeds[_assets[i]] = PriceFeedInfo({
-                decimals: _decimals[i],
-                priceFeed: AggregatorV3Interface(_priceFeeds[i])
-            });
-        }
-
-        emit PriceFeedsSet(_assets, _priceFeeds, _decimals);
     }
 
     function pause(bool _pause) external {

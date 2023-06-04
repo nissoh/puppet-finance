@@ -20,8 +20,6 @@ interface IOrchestrator is IBase {
 
     function getGlobalInfo() external view returns (bytes32, address, address);
 
-    function getPriceFeed(address _asset) external view returns (address, uint256);
-
     function getRoutes() external view returns (address[] memory);
 
     function getIsPaused() external view returns (bool);
@@ -88,8 +86,6 @@ interface IOrchestrator is IBase {
 
     function setPuppetUtils(address _revenueDistributor, address _keeper, bytes32 _referralCode) external;
 
-    function setPriceFeeds(address[] memory _assets, address[] memory _priceFeeds, uint256[] memory _decimals) external;
-
     function pause(bool _pause) external;
 
     // ============================================================================================
@@ -108,7 +104,6 @@ interface IOrchestrator is IBase {
     event RouteTypeSet(bytes32 _routeTypeKey, address _collateral, address _index, bool _isLong);
     event GMXUtilsSet(address _gmxRouter, address _gmxReader, address _gmxVault, address _gmxPositionRouter, address _referralRebatesSender);
     event PuppetUtilsSet(address _revenueDistributor, address _keeper, bytes32 _referralCode);
-    event PriceFeedsSet(address[] _asset, address[] _priceFeed, uint256[] _decimals);
     event Paused(bool _paused);
 
     // ============================================================================================
@@ -118,7 +113,6 @@ interface IOrchestrator is IBase {
     error NotRoute();
     error RouteTypeNotRegistered();
     error RouteAlreadyRegistered();
-    error NoPriceFeedForCollateralToken();
     error MismatchedInputArrays();
     error RouteNotRegistered();
     error PositionIsOpen();

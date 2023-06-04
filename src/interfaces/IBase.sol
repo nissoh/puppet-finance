@@ -5,11 +5,6 @@ import {AggregatorV3Interface} from "@chainlink/src/v0.8/interfaces/AggregatorV3
 
 interface IBase {
 
-    struct PriceFeedInfo {
-        uint256 decimals;
-        AggregatorV3Interface priceFeed;
-    }
-
     struct GMXInfo {
         address gmxRouter;
         address gmxReader;

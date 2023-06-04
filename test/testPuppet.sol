@@ -94,18 +94,18 @@ contract testPuppet is IBase, Test {
         vm.startPrank(owner);
         orchestrator.setRouteType(WETH, WETH, true);
 
-        // set price feed info
-        address ETH_USD_PRICE_FEED_ADDRESS = address(0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612);
-        uint256 ETH_USD_PRICE_FEED_DECIMALS = 8;
+        // // set price feed info
+        // address ETH_USD_PRICE_FEED_ADDRESS = address(0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612);
+        // uint256 ETH_USD_PRICE_FEED_DECIMALS = 8;
 
-        address[] memory _assets = new address[](1);
-        _assets[0] = WETH;
-        address[] memory _priceFeeds = new address[](1);
-        _priceFeeds[0] = ETH_USD_PRICE_FEED_ADDRESS;
-        uint256[] memory _decimals = new uint256[](1);
-        _decimals[0] = ETH_USD_PRICE_FEED_DECIMALS;
+        // address[] memory _assets = new address[](1);
+        // _assets[0] = WETH;
+        // address[] memory _priceFeeds = new address[](1);
+        // _priceFeeds[0] = ETH_USD_PRICE_FEED_ADDRESS;
+        // uint256[] memory _decimals = new uint256[](1);
+        // _decimals[0] = ETH_USD_PRICE_FEED_DECIMALS;
 
-        orchestrator.setPriceFeeds(_assets, _priceFeeds, _decimals);
+        // orchestrator.setPriceFeeds(_assets, _priceFeeds, _decimals);
         vm.stopPrank();
     }
 
@@ -403,7 +403,7 @@ contract testPuppet is IBase, Test {
         uint256 _positionIndexBefore = route.positionIndex();
 
         // 1. createPosition
-        bytes32 _requestKey = _testCreatePosition(_traderPositionData, _traderSwapData, _amountInTrader, _executionFee, _addCollateralToAnExistingPosition);
+        bytes32 _requestKey = _testCreatePosition(_traderPositionData, _traderSwapData, _amountInTrader, _executionFee, _positionIndexBefore, _addCollateralToAnExistingPosition);
 
         if (!_addCollateralToAnExistingPosition) {
             assertTrue(IERC20(WETH).balanceOf(address(orchestrator)) < _orchestratorBalanceBefore, "_testCreateInitialPosition: E05");
@@ -433,7 +433,7 @@ contract testPuppet is IBase, Test {
         if (!_addCollateralToAnExistingPosition) {
             if (_isOpenInterest(address(route))) {
                 assertTrue(!route.keeperRequests(_requestKey), "_testCreateInitialPosition: E006");
-                assertEq(_positionIndexBefore, _positionIndexAfter, "_testCreateInitialPosition: E0007");
+                assertEq(_positionIndexBefore + 1, _positionIndexAfter, "_testCreateInitialPosition: E0007");
                 assertApproxEqAbs(address(trader).balance, _traderBalanceBeforeEth - _amountInTrader - _executionFee, 1e18, "_testCreateInitialPosition: E009");
                 assertEq(route.getParticipantShares(alice), route.getParticipantShares(bob), "_testCreateInitialPosition: E0010");
                 assertEq(route.getParticipantShares(alice), route.getParticipantShares(yossi), "_testCreateInitialPosition: E0011");
@@ -509,7 +509,7 @@ contract testPuppet is IBase, Test {
         } 
     }
 
-    function _testCreatePosition(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _amountInTrader, uint256 _executionFee, bool _addCollateralToAnExistingPosition) internal returns (bytes32 _requestKey) {
+    function _testCreatePosition(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _amountInTrader, uint256 _executionFee, uint256 _positionIndexBefore, bool _addCollateralToAnExistingPosition) internal returns (bytes32 _requestKey) {
         // add weth to yossi's deposit account so he can join the increase
         if (_addCollateralToAnExistingPosition) {
             vm.startPrank(yossi);
@@ -539,15 +539,15 @@ contract testPuppet is IBase, Test {
         address[] memory _puppets = route.getPuppets();
         (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) = route.getPuppetsRequestInfo(_requestKey);
 
-        assertEq(_positionIndex, 0, "_testCreatePosition: E10");
-
         if (_addCollateralToAnExistingPosition) {
+            assertEq(_positionIndex, _positionIndexBefore, "_testCreatePosition: E10");
             assertTrue(_totalSupply > 0, "_testCreatePosition: E011");
             assertTrue(_totalAssets > 0, "_testCreatePosition: E012");
             assertEq(_puppetsShares[0], 0, "_testCreatePosition: E032");
             assertEq(_puppetsShares[1], 0, "_testCreatePosition: E033");
             assertTrue(_puppetsShares[2] > 0, "_testCreatePosition: E034"); // we increased Yossi's balance so he can join on the increase
         } else {
+            assertEq(_positionIndex, _positionIndexBefore + 1, "_testCreatePosition: E10");
             assertEq(_totalSupply, 0, "_testCreatePosition: E11");
             assertEq(_totalAssets, 0, "_testCreatePosition: E12");
             assertTrue(_puppetsShares[0] > 0, "_testCreatePosition: E32");
@@ -577,19 +577,12 @@ contract testPuppet is IBase, Test {
     function _testClosePosition() internal {
         assertTrue(_isOpenInterest(address(route)), "_testClosePosition: E1");
 
-        address[] memory _path = new address[](2);
-        _path[0] = collateralToken;
-        _path[1] = ETH;
+        bytes memory _traderSwapData;
 
         uint256 _minOut = 0;
-
-        address _receiver = trader;
-
-        bytes memory _traderSwapData = abi.encode(_path, _minOut, _receiver);
-
-        (uint256 _sizeDelta, uint256 _collateralDelta,,,,,,) = IGMXVault(gmxVault).getPosition(address(trader), collateralToken, indexToken, isLong);
-
-        uint256 _acceptablePrice = type(uint256).max; // the USD value of the max (for longs) or min (for shorts) index price acceptable when executing the request
+        (uint256 _sizeDelta, uint256 _collateralDelta,,,,,,) = IGMXVault(gmxVault).getPosition(address(route), collateralToken, indexToken, isLong);
+        // uint256 _acceptablePrice = type(uint256).max; // the USD value of the max (for longs) or min (for shorts) index price acceptable when executing the request
+        uint256 _acceptablePrice = 0;
         uint256 _executionFee = 180000000000000; // can be set to PositionRouter.minExecutionFee() https://arbiscan.io/address/0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868#readContract#F26
 
         bytes memory _traderPositionData = abi.encode(_collateralDelta, _sizeDelta, _acceptablePrice, _minOut);
@@ -597,17 +590,55 @@ contract testPuppet is IBase, Test {
         assertEq(IERC20(WETH).balanceOf(address(route)), 0, "_testClosePosition: E2");
         assertEq(address(route).balance, 0, "_testClosePosition: E3");
 
+        uint256 _traderBalanceBefore = IERC20(WETH).balanceOf(address(trader));
+        uint256 _aliceDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(alice, WETH);
+        uint256 _bobDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(bob, WETH);
+        uint256 _yossiDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(yossi, WETH);
+        uint256 _orchesratorBalanceBefore = IERC20(WETH).balanceOf(address(orchestrator));
+        uint256 _positionIndexBefore = route.positionIndex();
+
         vm.startPrank(trader);
 
-        vm.expectRevert();
+        vm.expectRevert(); // revert with `InvalidExecutionFee`
+        route.createPositionRequest{ value: _executionFee - 1 }(_traderPositionData, _traderSwapData, _executionFee, false);
 
-
-        route.createPositionRequest(_traderPositionData, _traderSwapData, _executionFee, false);
+        route.createPositionRequest{ value: _executionFee }(_traderPositionData, _traderSwapData, _executionFee, false);
         vm.stopPrank();
 
-        // todo - test that collateralToken in _traderSwapData is correct (check that reverts)
-        // todo - check that wrong path in _traderSwapData reverts
-        // todo - pass ETH in path[1] to get ETH back
+        vm.startPrank(GMXPositionRouterKeeper); // keeper
+        IGMXPositionRouter(gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
+        vm.stopPrank();
+
+        assertEq(IERC20(WETH).balanceOf(address(route)), 0, "_testClosePosition: E02");
+        assertEq(address(route).balance, 0, "_testClosePosition: E03");
+
+        if (_isOpenInterest(address(route))) {
+            // call was not executed
+            revert("decrease call was not executed");
+        } else {
+            // call was executed
+            assertTrue(_traderBalanceBefore < IERC20(WETH).balanceOf(address(trader)), "_testClosePosition: E4");
+            assertTrue(_aliceDepositAccountBalanceBefore < orchestrator.getPuppetAccountBalance(alice, WETH), "_testClosePosition: E5");
+            assertTrue(_bobDepositAccountBalanceBefore < orchestrator.getPuppetAccountBalance(bob, WETH), "_testClosePosition: E6");
+            assertTrue(_yossiDepositAccountBalanceBefore < orchestrator.getPuppetAccountBalance(yossi, WETH), "_testClosePosition: E7");
+            assertTrue(_orchesratorBalanceBefore < IERC20(WETH).balanceOf(address(orchestrator)), "_testClosePosition: E8");
+            assertEq(_aliceDepositAccountBalanceBefore, _bobDepositAccountBalanceBefore, "_testClosePosition: E9");
+            assertEq(orchestrator.getPuppetAccountBalance(alice, WETH), orchestrator.getPuppetAccountBalance(bob, WETH), "_testClosePosition: E10");
+            assertEq(_positionIndexBefore + 1, route.positionIndex(), "_testClosePosition: E11");
+            address[] memory _puppets = route.getPuppets();
+            assertEq(_puppets.length, 0, "_testClosePosition: E12");
+            assertEq(route.getParticipantShares(alice), 0, "_testClosePosition: E13");
+            assertEq(route.getParticipantShares(bob), 0, "_testClosePosition: E14");
+            assertEq(route.getParticipantShares(yossi), 0, "_testClosePosition: E15");
+            assertEq(route.getParticipantShares(trader), 0, "_testClosePosition: E16");
+            assertEq(route.getLatestAmountIn(alice), 0, "_testClosePosition: E17");
+            assertEq(route.getLatestAmountIn(bob), 0, "_testClosePosition: E18");
+            assertEq(route.getLatestAmountIn(yossi), 0, "_testClosePosition: E19");
+            assertEq(route.getLatestAmountIn(trader), 0, "_testClosePosition: E20");
+            assertEq(route.isPuppetAdjusted(alice), false, "_testClosePosition: E21");
+            assertEq(route.isPuppetAdjusted(bob), false, "_testClosePosition: E22");
+            assertEq(route.isPuppetAdjusted(yossi), false, "_testClosePosition: E23");
+        }
     }
 
     // ============================================================================================

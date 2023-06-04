@@ -29,11 +29,8 @@ contract Route is Base, IRoute, Test {
     mapping(uint256 => AddCollateralRequest) public addCollateralRequests; // addCollateralIndex => AddCollateralRequest
     mapping(uint256 => PositionInfo) public positions; // positionIndex => PositionInfo
 
-    bytes private _traderRepaymentData;
-
     IOrchestrator public orchestrator;
 
-    PriceFeedInfo public priceFeedInfo;
     RouteInfo public routeInfo;
 
     // ============================================================================================
@@ -47,11 +44,6 @@ contract Route is Base, IRoute, Test {
         routeInfo.collateralToken = _collateralToken;
         routeInfo.indexToken = _indexToken;
         routeInfo.isLong = _isLong;
-
-        (address _priceFeed, uint256 _decimals) = orchestrator.getPriceFeed(_collateralToken);
-
-        priceFeedInfo.decimals = _decimals;
-        priceFeedInfo.priceFeed = AggregatorV3Interface(_priceFeed);
 
         (referralCode, keeper, revenueDistributor) = orchestrator.getGlobalInfo();
 
@@ -85,8 +77,8 @@ contract Route is Base, IRoute, Test {
         _shares = positions[positionIndex].participantShares[_participant];
     }
 
-    function getLatestAmountIn(address _puppet) external view returns (uint256 _amountIn) {
-        _amountIn = positions[positionIndex].latestAmountIn[_puppet];
+    function getLatestAmountIn(address _participant) external view returns (uint256 _amountIn) {
+        _amountIn = positions[positionIndex].latestAmountIn[_participant];
     }
 
     function isPuppetAdjusted(address _puppet) external view returns (bool _isAdjusted) {
@@ -111,14 +103,12 @@ contract Route is Base, IRoute, Test {
         if (msg.sender != routeInfo.trader) revert NotTrader();
         if (orchestrator.getIsPaused()) revert Paused();
 
-        _repayBalance(bytes32(0), false, true);
+        _repayBalance(bytes32(0), msg.value, false); // this sends trader eth back to trader
 
         if (_isIncrease) {
             uint256 _amountIn = _getAssets(_traderSwapData, _executionFee);
             _requestKey = _createIncreasePositionRequest(_traderPositionData, _amountIn, _executionFee);
         } else {
-            _validateRepaymentData(_traderSwapData);
-            _traderRepaymentData = _traderSwapData;
             _requestKey = _createDecreasePositionRequest(_traderPositionData, _executionFee);
         }
     }
@@ -136,7 +126,7 @@ contract Route is Base, IRoute, Test {
     function liquidate() external nonReentrant onlyKeeper {
         if (_isOpenInterest()) revert PositionStillAlive();
 
-        _repayBalance(bytes32(0), false, true);
+        _repayBalance(bytes32(0), 0, false);
 
         emit Liquidated();
     }
@@ -156,7 +146,7 @@ contract Route is Base, IRoute, Test {
             _requestKey = bytes32(0); // repay any collateral to the exsisting sharesholders
         }
 
-        _repayBalance(_requestKey, _repayKeeper, false);
+        _repayBalance(_requestKey, 0, _repayKeeper);
     }
 
     // ============================================================================================
@@ -175,13 +165,6 @@ contract Route is Base, IRoute, Test {
         ) = orchestrator.getGlobalInfo();
 
         emit GlobalInfoUpdated();
-
-        (address _priceFeed, uint256 _decimals) = orchestrator.getPriceFeed(routeInfo.collateralToken);
-
-        priceFeedInfo.decimals = _decimals;
-        priceFeedInfo.priceFeed = AggregatorV3Interface(_priceFeed);
-
-        emit PriceFeedUpdated();
 
         gmxInfo = orchestrator.getGMXInfo();
 
@@ -444,7 +427,7 @@ contract Route is Base, IRoute, Test {
         }
     }
 
-    function _repayBalance(bytes32 _requestKey, bool _repayKeeper, bool _isLiquidated) internal {
+    function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _repayKeeper) internal {
         RouteInfo memory _routeInfo = routeInfo;
         PositionInfo storage _positionInfo = positions[positionIndex];
         address _collateralToken = _routeInfo.collateralToken;
@@ -484,7 +467,7 @@ contract Route is Base, IRoute, Test {
             uint256 _traderAssets = _convertToAssets(_balance, _totalSupply, _traderShares);
 
             IERC20(_collateralToken).safeTransfer(address(_orchestrator), _puppetsAssets);
-            _repayTrader(_traderAssets, _isFailedRequest, _isLiquidated);
+            IERC20(_collateralToken).safeTransfer(routeInfo.trader, _traderAssets);
         }
 
         if (!_isOpenInterest()) {
@@ -492,37 +475,12 @@ contract Route is Base, IRoute, Test {
         }
 
         uint256 _ethBalance = address(this).balance;
-        if (_ethBalance > 0) {
+        if ((_ethBalance - _traderAmountIn)> 0) {
             address _executionFeeReceiver = _repayKeeper ? keeper : _routeInfo.trader;
-            payable(_executionFeeReceiver).sendValue(_ethBalance);
+            payable(_executionFeeReceiver).sendValue(_ethBalance - _traderAmountIn);
         }
 
         emit RepaidBalance(_totalAssets);
-    }
-
-    function _repayTrader(uint256 _traderAssets, bool _isFailedRequest, bool _isLiquidated) internal {
-        if (_isFailedRequest || _isLiquidated) {
-            // NOTE: we do this because `_traderRepaymentData` is faulty on those scenarios
-            IERC20(routeInfo.collateralToken).safeTransfer(routeInfo.trader, _traderAssets);
-        } else {
-            (address[] memory _path, uint256 _minOut, address _receiver) = abi.decode(_traderRepaymentData, (address[], uint256, address));
-            address _fromToken = routeInfo.collateralToken;
-            address _toToken = _path[1];
-            IGMXRouter _router = IGMXRouter(gmxInfo.gmxRouter);
-            if (_fromToken != _toToken && _toToken != _ETH) {
-                _approve(address(_router), _fromToken, _traderAssets);
-
-                uint256 _before = IERC20(_toToken).balanceOf(address(this));
-                _router.swap(_path, _traderAssets, _minOut, address(this));
-                _traderAssets = IERC20(_toToken).balanceOf(address(this)) - _before;
-            }
-
-            if (_toToken == _ETH) {
-                _router.swapTokensToETH(_path, _traderAssets, _minOut, payable(_receiver));
-            } else {
-                IERC20(_toToken).safeTransfer(_receiver, _traderAssets);
-            }
-        }
     }
 
     function _resetRoute() internal {
@@ -555,23 +513,6 @@ contract Route is Base, IRoute, Test {
         (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(gmxInfo.gmxVault).getPosition(address(this), _routeInfo.collateralToken, _routeInfo.indexToken, _routeInfo.isLong);
 
         return _size > 0 && _collateral > 0;
-    }
-
-    function _validateRepaymentData(bytes memory _traderSwapData) internal view {
-        (address[] memory _path, uint256 _amount,) = abi.decode(_traderSwapData, (address[], uint256, address));
-        address _collateralToken = routeInfo.collateralToken;
-
-        if (_path.length > 2) revert InvalidPathLength();
-        if (_path[0] != _collateralToken) revert InvalidTokenIn();
-        if (_getMaxAmountIn(_collateralToken, _path[1]) < _amount) revert InvalidMaxAmount();
-    }
-
-    function _getMaxAmountIn(address _fromToken, address _toToken) internal view returns (uint256 _maxAmountTokenIn) {
-        IGMXReader _gmxReader = IGMXReader(gmxInfo.gmxReader);
-        IVault _gmxVault = IVault(gmxInfo.gmxVault);
-
-        _maxAmountTokenIn = _toToken == _ETH ? _gmxReader.getMaxAmountIn(_gmxVault, _fromToken, _WETH) : 
-        _gmxReader.getMaxAmountIn(_gmxVault, _fromToken, _toToken);
     }
 
     function _convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) internal pure returns (uint256 _shares) {

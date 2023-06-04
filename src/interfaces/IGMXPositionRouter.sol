@@ -47,6 +47,11 @@ interface IGMXPositionRouter {
         address payable _executionFeeReceiver
     ) external;
 
+    function executeDecreasePositions(
+        uint256 _endIndex,
+        address payable _executionFeeReceiver
+    ) external;
+
     function getRequestKey(
         address _account,
         uint256 _index

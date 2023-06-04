@@ -42,7 +42,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     function getParticipantShares(address _participant) external view returns (uint256 _shares);
 
-    function getLatestAmountIn(address _puppet) external view returns (uint256 _amountIn);
+    function getLatestAmountIn(address _participant) external view returns (uint256 _amountIn);
 
     function isPuppetAdjusted(address _puppet) external view returns (bool _isAdjusted);
 
@@ -77,7 +77,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event CallbackReceived(bytes32 indexed requestKey, bool indexed isExecuted, bool indexed isIncrease);
     event PluginApproved();
     event OrchestratorSet(address orchestrator);
-    event PriceFeedUpdated();
     event GlobalInfoUpdated();
     event GMXInfoUpdated();
     event CreatedIncreasePositionRequest(bytes32 indexed requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
