@@ -23,10 +23,10 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     struct PuppetInfo {
-        mapping(address => uint256) throttleLimits; // Route => throttle limit (in seconds) // todo - make per routeType (not per route)
-        mapping(address => uint256) lastPositionOpenedTimestamp; // Route => timestamp
+        mapping(bytes32 => uint256) throttleLimits; // routeType => throttle limit (in seconds)
+        mapping(bytes32 => uint256) lastPositionOpenedTimestamp; // routeType => timestamp
         mapping(address => uint256) depositAccount; // collateralToken => balance
-        EnumerableMap.AddressToUintMap allowances; // Route => allowance percentage
+        EnumerableMap.AddressToUintMap allowances; // route => allowance percentage
     }
 
     // settings
@@ -78,19 +78,19 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     // global
 
-    function getKeeper() external view returns (address) {
+    function keeper() external view returns (address) {
         return _keeper;
     }
 
-    function getRefCode() external view returns (bytes32) {
+    function referralCode() external view returns (bytes32) {
         return _referralCode;
     }
 
-    function getRoutes() external view returns (address[] memory) {
+    function routes() external view returns (address[] memory) {
         return _routes;
     }
 
-    function getIsPaused() external view returns (bool) {
+    function paused() external view returns (bool) {
         return _paused;
     }
 
@@ -119,7 +119,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
     }
 
-    function getPuppetsForRoute(bytes32 _routeKey) external view returns (address[] memory _puppets) {
+    function subscribedPuppets(bytes32 _routeKey) external view returns (address[] memory _puppets) {
         EnumerableSet.AddressSet storage _puppetsSet = _routeInfo[_routeKey].puppets;
         _puppets = new address[](EnumerableSet.length(_puppetsSet));
 
@@ -130,37 +130,37 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     // puppet
 
-    function isBelowThrottleLimit(address _puppet, address _route) external view returns (bool) {
-        return (block.timestamp - _puppetInfo[_puppet].lastPositionOpenedTimestamp[_route]) >= _puppetInfo[_puppet].throttleLimits[_route];
-    }
-
-    function getPuppetThrottleLimit(address _puppet, address _route) external view returns (uint256) {
-        return _puppetInfo[_puppet].throttleLimits[_route];
-    }
-
-    function getPuppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance) {
+    function puppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance) {
         return EnumerableMap.get(_puppetInfo[_puppet].allowances, _route);
     }
 
-    function getPuppetAccountBalance(address _puppet, address _asset) external view returns (uint256) {
+    function puppetAccountBalance(address _puppet, address _asset) external view returns (uint256) {
         return _puppetInfo[_puppet].depositAccount[_asset];
     }
 
-    function getLastPositionOpenedTimestamp(address _puppet, address _route) external view returns (uint256) {
-        return _puppetInfo[_puppet].lastPositionOpenedTimestamp[_route];
+    function puppetThrottleLimit(address _puppet, bytes32 _routeType) external view returns (uint256) {
+        return _puppetInfo[_puppet].throttleLimits[_routeType];
+    }
+
+    function lastPositionOpenedTimestamp(address _puppet, bytes32 _routeType) external view returns (uint256) {
+        return _puppetInfo[_puppet].lastPositionOpenedTimestamp[_routeType];
+    }
+
+    function isBelowThrottleLimit(address _puppet, bytes32 _routeType) external view returns (bool) {
+        return (block.timestamp - _puppetInfo[_puppet].lastPositionOpenedTimestamp[_routeType]) >= _puppetInfo[_puppet].throttleLimits[_routeType];
     }
 
     // gmx
 
-    function getGMXRouter() external view returns (address) {
+    function gmxRouter() external view returns (address) {
         return _gmxInfo.gmxRouter;
     }
 
-    function getGMXPositionRouter() external view returns (address) {
+    function gmxPositionRouter() external view returns (address) {
         return _gmxInfo.gmxPositionRouter;
     }
 
-    function getGMXVault() external view returns (address) {
+    function gmxVault() external view returns (address) {
         return _gmxInfo.gmxVault;
     }
 
@@ -263,6 +263,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             RouteInfo storage _route = _routeInfo[_routeKey];
 
             if (!_route.isRegistered) revert RouteNotRegistered();
+            if (IRoute(_route.route).isWaitingForCallback()) revert RouteWaitingForCallback();
 
             if (_subscribe) {
                 if (_allowances[i] > 100 || _allowances[i] == 0) revert InvalidAllowancePercentage();
@@ -284,10 +285,10 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit RoutesSubscriptionUpdated(_traders, _allowances, _puppet, _routeTypeKey, _subscribe);
     }
 
-    function setThrottleLimit(uint256 _throttleLimit, address _route) external {
-        _puppetInfo[msg.sender].throttleLimits[_route] = _throttleLimit;
+    function setThrottleLimit(uint256 _throttleLimit, bytes32 _routeType) external {
+        _puppetInfo[msg.sender].throttleLimits[_routeType] = _throttleLimit;
 
-        emit ThrottleLimitSet(msg.sender, _route, _throttleLimit);
+        emit ThrottleLimitSet(msg.sender, _routeType, _throttleLimit);
     }
 
     // ============================================================================================
@@ -306,10 +307,10 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit PuppetAccountCredited(_amount, _asset, _puppet, msg.sender);
     }
 
-    function updateLastPositionOpenedTimestamp(address _puppet, address _route) external onlyRoute {
-        _puppetInfo[_puppet].lastPositionOpenedTimestamp[_route] = block.timestamp;
+    function updateLastPositionOpenedTimestamp(address _puppet, bytes32 _routeType) external onlyRoute {
+        _puppetInfo[_puppet].lastPositionOpenedTimestamp[_routeType] = block.timestamp;
 
-        emit LastPositionOpenedTimestampUpdated(_puppet, _route, block.timestamp);
+        emit LastPositionOpenedTimestampUpdated(_puppet, _routeType, block.timestamp);
     }
 
     function sendFunds(uint256 _amount, address _asset, address _receiver) external onlyRoute {
@@ -321,9 +322,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // ============================================================================================
     // Authority Functions
     // ============================================================================================
-    // TODO - add requiresAuth
 
-    function rescueTokens(uint256 _amount, address _token, address _receiver) external nonReentrant {
+    function rescueTokens(uint256 _amount, address _token, address _receiver) external requiresAuth nonReentrant {
         if (_token == address(0)) {
             payable(_receiver).sendValue(_amount);
         } else {
@@ -333,26 +333,37 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit TokensRescued(_amount, _token, _receiver);
     }
 
-    function rescueRouteTokens(uint256 _amount, address _token, address _receiver, address _route) external nonReentrant {
+    function rescueRouteTokens(uint256 _amount, address _token, address _receiver, address _route) external requiresAuth nonReentrant {
         IRoute(_route).rescueTokens(_amount, _token, _receiver);
 
         emit RouteTokensRescued(_amount, _token, _receiver, _route);
     }
 
-    function routeCreatePositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, address _route, bool _isIncrease) external payable nonReentrant returns (bytes32 _requestKey) {
+    function routeCreatePositionRequest(bytes memory _traderPositionData,
+        bytes memory _traderSwapData,
+        uint256 _executionFee,
+        address _route,
+        bool _isIncrease
+    ) external payable requiresAuth nonReentrant returns (bytes32 _requestKey) {
         _requestKey = IRoute(_route).createPositionRequest{value: msg.value}(_traderPositionData, _traderSwapData, _executionFee, _isIncrease);
 
         emit PositionRequestCreated(_requestKey, _route, _isIncrease);
     }
 
-    function setRouteType(address _collateral, address _index, bool _isLong) external nonReentrant {
+    function freezeRoute(address _route, bool _freeze) external requiresAuth nonReentrant {
+        IRoute(_route).freeze(_freeze);
+
+        emit RouteFrozen(_route, _freeze);
+    }
+
+    function setRouteType(address _collateral, address _index, bool _isLong) external requiresAuth nonReentrant {
         bytes32 _routeTypeKey = getRouteTypeKey(_collateral, _index, _isLong);
         routeType[_routeTypeKey] = RouteType(_collateral, _index, _isLong, true);
 
         emit RouteTypeSet(_routeTypeKey, _collateral, _index, _isLong);
     }
 
-    function setGMXInfo(address _gmxRouter, address _gmxVault, address _gmxPositionRouter) external nonReentrant {
+    function setGMXInfo(address _gmxRouter, address _gmxVault, address _gmxPositionRouter) external requiresAuth nonReentrant {
         GMXInfo storage _gmx = _gmxInfo;
 
         _gmx.gmxRouter = _gmxRouter;
@@ -362,7 +373,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit GMXUtilsSet(_gmxRouter, _gmxVault, _gmxPositionRouter);
     }
 
-    function setKeeper(address _keeperAddr) external nonReentrant {
+    function setKeeper(address _keeperAddr) external requiresAuth nonReentrant {
         if (_keeperAddr == address(0)) revert ZeroAddress();
 
         _keeper = _keeperAddr;
@@ -370,7 +381,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit KeeperSet(_keeper);
     }
 
-    function setReferralCode(bytes32 _refCode) external nonReentrant {
+    function setReferralCode(bytes32 _refCode) external requiresAuth nonReentrant {
         if (_refCode == bytes32(0)) revert ZeroBytes32();
 
         _referralCode = _refCode;
@@ -378,7 +389,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit ReferralCodeSet(_refCode);
     }
 
-    function pause(bool _pause) external nonReentrant {
+    function pause(bool _pause) external requiresAuth nonReentrant {
         _paused = _pause;
 
         emit Paused(_pause);

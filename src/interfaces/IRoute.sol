@@ -16,6 +16,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
         uint256 addCollateralRequestsIndex;
         uint256 totalSupply;
         uint256 totalAssets;
+        bytes32[] requestKeys;
         address[] puppets;
         mapping(address => uint256) participantShares; // participant => shares
         mapping(address => bool) adjustedPuppets; // puppet => isAdjusted
@@ -38,17 +39,19 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     // Position Info
 
-    function getPuppets() external view returns (address[] memory _puppets);
+    function puppets() external view returns (address[] memory _puppets);
 
-    function getParticipantShares(address _participant) external view returns (uint256 _shares);
+    function participantShares(address _participant) external view returns (uint256 _shares);
 
-    function getLatestAmountIn(address _participant) external view returns (uint256 _amountIn);
+    function latestAmountIn(address _participant) external view returns (uint256 _amountIn);
 
     function isPuppetAdjusted(address _puppet) external view returns (bool _isAdjusted);
 
     // Request Info
 
-    function getPuppetsRequestInfo(bytes32 _requestKey) external view returns (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts);
+    function puppetsRequestAmounts(bytes32 _requestKey) external view returns (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts);
+
+    function isWaitingForCallback() external view returns (bool);
 
     // ============================================================================================
     // Mutated Functions
@@ -70,42 +73,33 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     function rescueTokens(uint256 _amount, address _token, address _receiver) external;
 
+    function freeze(bool _freeze) external;
+
     // ============================================================================================
     // Events
     // ============================================================================================
-    // todo - clean events & errors
 
     event Liquidated();
     event CallbackReceived(bytes32 indexed requestKey, bool indexed isExecuted, bool indexed isIncrease);
     event PluginApproved();
-    event OrchestratorSet(address orchestrator);
-    event GlobalInfoUpdated();
     event CreatedIncreasePositionRequest(bytes32 indexed requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event CreatedDecreasePositionRequest(bytes32 indexed requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
     event BalanceRepaid(uint256 totalAssets);
     event RouteReset();
-    event InsolventPuppets(address[] _insolventPuppets);
-    event RatioAdjustmentWaitOver();
-    event PuppetsToAdjust(bytes32 indexed requestKey);
-    event RatioAdjustmentFailed();
-    event RatioAdjustmentExecuted();
     event TokensRescued(uint256 _amount, address _token, address _receiver);
+    event Frozen(bool indexed _freeze);
 
     // ============================================================================================
     // Errors
     // ============================================================================================
 
-    error NotCallbackCaller();
     error NotKeeper();
     error NotTrader();
     error InvalidExecutionFee();
     error InvalidPath();
-    error InvalidValue();
-    error InvalidMaxAmount();
-    error InvalidPathLength();
-    error InvalidTokenIn();
     error PositionStillAlive();
     error Paused();
-    error InvalidPrice();
     error NotOrchestrator();
+    error RouteFrozen();
+    error NotCallbackCaller();
 }

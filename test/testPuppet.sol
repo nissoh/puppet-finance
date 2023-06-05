@@ -83,8 +83,8 @@ contract testPuppet is Test {
 
         // deploy orchestrator
         address _gmxRouter = 0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064;
-        address _gmxReader = 0x22199a49A999c351eF7927602CFB187ec3cae489;
-        address _gmxReferralRebatesSender = address(0);
+        // address _gmxReader = 0x22199a49A999c351eF7927602CFB187ec3cae489;
+        // address _gmxReferralRebatesSender = address(0);
         bytes32 _referralCode = bytes32(0);
 
         bytes memory _gmxInfo = abi.encode(_gmxRouter, gmxVault, gmxPositionRouter);
@@ -125,9 +125,10 @@ contract testPuppet is Test {
         _testPuppetWithdraw(_assets, WETH);
 
         // route
-        _testIncreasePosition(false);
-        _testIncreasePosition(true);
+        _testIncreasePosition(false, false);
+        _testIncreasePosition(true, false);
         _testClosePosition();
+        _testIncreasePosition(false, true);
     }
 
     // ============================================================================================
@@ -154,7 +155,7 @@ contract testPuppet is Test {
         vm.expectRevert(); // reverts with RouteAlreadyRegistered()
         orchestrator.registerRoute(WETH, WETH, true);
 
-        address[] memory _pupptsForRoute = orchestrator.getPuppetsForRoute(_routeKey);
+        address[] memory _pupptsForRoute = orchestrator.subscribedPuppets(_routeKey);
 
         address payable _route = payable(orchestrator.getRoute(_routeKey));
 
@@ -162,7 +163,7 @@ contract testPuppet is Test {
         assertEq(_routeKey, orchestrator.getRouteKey(trader, _routeTypeKey), "_testRegisterRoute: E0");
         assertEq(_pupptsForRoute.length, 0, "_testRegisterRoute: E1");
         assertEq(orchestrator.isRoute(_route), true, "_testRegisterRoute: E2");
-        address[] memory _routes = orchestrator.getRoutes();
+        address[] memory _routes = orchestrator.routes();
         assertEq(_routes[0], _route, "_testRegisterRoute: E3");
         assertEq(address(Route(_route).orchestrator()), address(orchestrator), "_testRegisterRoute: E4");
         vm.stopPrank();
@@ -184,10 +185,10 @@ contract testPuppet is Test {
         vm.expectRevert(); // reverts with NoPriceFeedForCollateralToken()
         orchestrator.deposit{ value: _assets }(_assets, FRAX, alice);
         
-        uint256 _puppetAssetsBefore = orchestrator.getPuppetAccountBalance(bob, _token);
+        uint256 _puppetAssetsBefore = orchestrator.puppetAccountBalance(bob, _token);
         orchestrator.deposit{ value: _assets }(_assets, _token, alice);
         
-        assertEq(orchestrator.getPuppetAccountBalance(alice, _token), _puppetAssetsBefore + _assets, "_testPuppetDeposit: E0");
+        assertEq(orchestrator.puppetAccountBalance(alice, _token), _puppetAssetsBefore + _assets, "_testPuppetDeposit: E0");
         assertEq(_aliceBalanceBefore - _assets, address(alice).balance, "_testPuppetDeposit: E1");
         vm.stopPrank();
 
@@ -195,9 +196,9 @@ contract testPuppet is Test {
         uint256 _bobBalanceBefore = IERC20(_token).balanceOf(bob);
         vm.startPrank(bob);
         _approve(address(orchestrator), _token, _assets);
-        _puppetAssetsBefore = orchestrator.getPuppetAccountBalance(bob, _token);
+        _puppetAssetsBefore = orchestrator.puppetAccountBalance(bob, _token);
         orchestrator.deposit(_assets, _token, bob);
-        assertEq(orchestrator.getPuppetAccountBalance(bob, _token), _puppetAssetsBefore + _assets, "_testPuppetDeposit: E2");
+        assertEq(orchestrator.puppetAccountBalance(bob, _token), _puppetAssetsBefore + _assets, "_testPuppetDeposit: E2");
         assertEq(_bobBalanceBefore - _assets, IERC20(_token).balanceOf(bob), "_testPuppetDeposit: E3");
         vm.stopPrank();
 
@@ -205,9 +206,9 @@ contract testPuppet is Test {
         uint256 _yossiBalanceBefore = IERC20(_token).balanceOf(yossi);
         vm.startPrank(yossi);
         _approve(address(orchestrator), _token, _assets);
-        _puppetAssetsBefore = orchestrator.getPuppetAccountBalance(yossi, _token);
+        _puppetAssetsBefore = orchestrator.puppetAccountBalance(yossi, _token);
         orchestrator.deposit(_assets, _token, yossi);
-        assertEq(orchestrator.getPuppetAccountBalance(yossi, _token), _puppetAssetsBefore + _assets, "_testPuppetDeposit: E4");
+        assertEq(orchestrator.puppetAccountBalance(yossi, _token), _puppetAssetsBefore + _assets, "_testPuppetDeposit: E4");
         assertEq(_yossiBalanceBefore - _assets, IERC20(_token).balanceOf(yossi), "_testPuppetDeposit: E5");
         vm.stopPrank();
 
@@ -243,57 +244,59 @@ contract testPuppet is Test {
         orchestrator.updateRoutesSubscription(_traders, _allowances, _faultyRouteTypeKey, true);
 
         orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
-        assertEq(orchestrator.getPuppetAllowancePercentage(alice, _route), _allowances[0], "_testUpdateRoutesSubscription: E0");
-        assertEq(orchestrator.getPuppetsForRoute(_routeKey)[0], alice, "_testUpdateRoutesSubscription: E1");
-        assertEq(orchestrator.getPuppetsForRoute(_routeKey).length, 1, "_testUpdateRoutesSubscription: E2");
+        assertEq(orchestrator.puppetAllowancePercentage(alice, _route), _allowances[0], "_testUpdateRoutesSubscription: E0");
+        assertEq(orchestrator.subscribedPuppets(_routeKey)[0], alice, "_testUpdateRoutesSubscription: E1");
+        assertEq(orchestrator.subscribedPuppets(_routeKey).length, 1, "_testUpdateRoutesSubscription: E2");
         vm.stopPrank();
 
         vm.startPrank(bob);
         orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
-        assertEq(orchestrator.getPuppetAllowancePercentage(bob, _route), _allowances[0], "_testUpdateRoutesSubscription: E3");
-        assertEq(orchestrator.getPuppetsForRoute(_routeKey)[1], bob, "_testUpdateRoutesSubscription: E4");
-        assertEq(orchestrator.getPuppetsForRoute(_routeKey).length, 2, "_testUpdateRoutesSubscription: E5");
+        assertEq(orchestrator.puppetAllowancePercentage(bob, _route), _allowances[0], "_testUpdateRoutesSubscription: E3");
+        assertEq(orchestrator.subscribedPuppets(_routeKey)[1], bob, "_testUpdateRoutesSubscription: E4");
+        assertEq(orchestrator.subscribedPuppets(_routeKey).length, 2, "_testUpdateRoutesSubscription: E5");
         // again
         orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
-        assertEq(orchestrator.getPuppetAllowancePercentage(bob, _route), _allowances[0], "_testUpdateRoutesSubscription: E03");
-        assertEq(orchestrator.getPuppetsForRoute(_routeKey)[1], bob, "_testUpdateRoutesSubscription: E04");
-        assertEq(orchestrator.getPuppetsForRoute(_routeKey).length, 2, "_testUpdateRoutesSubscription: E05");
+        assertEq(orchestrator.puppetAllowancePercentage(bob, _route), _allowances[0], "_testUpdateRoutesSubscription: E03");
+        assertEq(orchestrator.subscribedPuppets(_routeKey)[1], bob, "_testUpdateRoutesSubscription: E04");
+        assertEq(orchestrator.subscribedPuppets(_routeKey).length, 2, "_testUpdateRoutesSubscription: E05");
         vm.stopPrank();
 
         vm.startPrank(yossi);
         orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
-        assertEq(orchestrator.getPuppetAllowancePercentage(yossi, _route), _allowances[0], "_testUpdateRoutesSubscription: E6");
-        assertEq(orchestrator.getPuppetsForRoute(_routeKey)[2], yossi, "_testUpdateRoutesSubscription: E7");
-        assertEq(orchestrator.getPuppetsForRoute(_routeKey).length, 3, "_testUpdateRoutesSubscription: E8");
+        assertEq(orchestrator.puppetAllowancePercentage(yossi, _route), _allowances[0], "_testUpdateRoutesSubscription: E6");
+        assertEq(orchestrator.subscribedPuppets(_routeKey)[2], yossi, "_testUpdateRoutesSubscription: E7");
+        assertEq(orchestrator.subscribedPuppets(_routeKey).length, 3, "_testUpdateRoutesSubscription: E8");
         vm.stopPrank();
 
-        assertTrue(orchestrator.getPuppetAllowancePercentage(alice, _route) > 0, "_testUpdateRoutesSubscription: E9");
-        assertTrue(orchestrator.getPuppetAllowancePercentage(bob, _route) > 0, "_testUpdateRoutesSubscription: E10");
-        assertTrue(orchestrator.getPuppetAllowancePercentage(yossi, _route) > 0, "_testUpdateRoutesSubscription: E11");
+        assertTrue(orchestrator.puppetAllowancePercentage(alice, _route) > 0, "_testUpdateRoutesSubscription: E9");
+        assertTrue(orchestrator.puppetAllowancePercentage(bob, _route) > 0, "_testUpdateRoutesSubscription: E10");
+        assertTrue(orchestrator.puppetAllowancePercentage(yossi, _route) > 0, "_testUpdateRoutesSubscription: E11");
     }
 
     function _testSetThrottleLimit() internal {
 
+        bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(WETH, WETH, true);
+
         vm.startPrank(alice);
-        orchestrator.setThrottleLimit(1 days, address(route));
-        assertEq(orchestrator.getPuppetThrottleLimit(alice, address(route)), 1 days, "_testSetThrottleLimit: E0");
+        orchestrator.setThrottleLimit(1 days, _routeTypeKey);
+        assertEq(orchestrator.puppetThrottleLimit(alice, _routeTypeKey), 1 days, "_testSetThrottleLimit: E0");
         vm.stopPrank();
 
         vm.startPrank(bob);
-        orchestrator.setThrottleLimit(2 days, address(route));
-        assertEq(orchestrator.getPuppetThrottleLimit(bob, address(route)), 2 days, "_testSetThrottleLimit: E1");
+        orchestrator.setThrottleLimit(2 days, _routeTypeKey);
+        assertEq(orchestrator.puppetThrottleLimit(bob, _routeTypeKey), 2 days, "_testSetThrottleLimit: E1");
         vm.stopPrank();
 
         vm.startPrank(yossi);
-        orchestrator.setThrottleLimit(3 days, address(route));
-        assertEq(orchestrator.getPuppetThrottleLimit(yossi, address(route)), 3 days, "_testSetThrottleLimit: E2");
+        orchestrator.setThrottleLimit(3 days, _routeTypeKey);
+        assertEq(orchestrator.puppetThrottleLimit(yossi, _routeTypeKey), 3 days, "_testSetThrottleLimit: E2");
         vm.stopPrank();
     }
 
     function _testPuppetWithdraw(uint256 _assets, address _token) internal {
-        uint256 _aliceDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(alice, _token);
-        uint256 _bobDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(bob, _token);
-        uint256 _yossiDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(yossi, _token);
+        uint256 _aliceDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(alice, _token);
+        uint256 _bobDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(bob, _token);
+        uint256 _yossiDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(yossi, _token);
 
         _testPuppetDeposit(_assets, _token);
 
@@ -306,7 +309,7 @@ contract testPuppet is Test {
         vm.stopPrank();
 
         assertEq(_orchestratorBalanceBefore - _orchestratorBalanceAfter, _assets, "_testPuppetWithdraw: E0");
-        assertEq(orchestrator.getPuppetAccountBalance(alice, _token), _aliceDepositAccountBalanceBefore, "_testPuppetWithdraw: E1");
+        assertEq(orchestrator.puppetAccountBalance(alice, _token), _aliceDepositAccountBalanceBefore, "_testPuppetWithdraw: E1");
         assertEq(_puppetBalanceBefore + _assets, _puppetBalanceAfter, "_testPuppetWithdraw: E2");
 
         vm.startPrank(bob);
@@ -318,7 +321,7 @@ contract testPuppet is Test {
         vm.stopPrank();
 
         assertEq(_orchestratorBalanceBefore - _orchestratorBalanceAfter, _assets, "_testPuppetWithdraw: E3");
-        assertEq(orchestrator.getPuppetAccountBalance(bob, _token), _bobDepositAccountBalanceBefore, "_testPuppetWithdraw: E4");
+        assertEq(orchestrator.puppetAccountBalance(bob, _token), _bobDepositAccountBalanceBefore, "_testPuppetWithdraw: E4");
         assertEq(_puppetBalanceBefore + _assets, _puppetBalanceAfter, "_testPuppetWithdraw: E5");
 
         vm.startPrank(yossi);
@@ -330,7 +333,7 @@ contract testPuppet is Test {
         vm.stopPrank();
 
         assertEq(_orchestratorBalanceBefore - _orchestratorBalanceAfter, _assets, "_testPuppetWithdraw: E6");
-        assertEq(orchestrator.getPuppetAccountBalance(yossi, _token), _yossiDepositAccountBalanceBefore, "_testPuppetWithdraw: E7");
+        assertEq(orchestrator.puppetAccountBalance(yossi, _token), _yossiDepositAccountBalanceBefore, "_testPuppetWithdraw: E7");
         assertEq(_puppetBalanceBefore + _assets, _puppetBalanceAfter, "_testPuppetWithdraw: E8");
     }
 
@@ -341,7 +344,7 @@ contract testPuppet is Test {
     // open position
     // add collateral + increase size
     // trader adds ETH collateral
-    function _testIncreasePosition(bool _addCollateralToAnExistingPosition) internal {
+    function _testIncreasePosition(bool _addCollateralToAnExistingPosition, bool _testNonCollateralTraderAmountIn) internal {
         // (, int256 _price,,,) = priceFeed.latestRoundData();
 
         uint256 _minOut = 0; // _minOut can be zero if no swap is required
@@ -367,12 +370,26 @@ contract testPuppet is Test {
         _path[0] = WETH;
         bytes memory _traderSwapData = abi.encode(_path, _amountInTrader, _minOut);
 
-        assertEq(orchestrator.getIsPaused(), false, "_testCreateInitialPosition: E0");
+        address[] memory _pathNonCollateral = new address[](2);
+        _pathNonCollateral[0] = FRAX;
+        _pathNonCollateral[1] = WETH;
+        bytes memory _traderSwapDataNonCollateral = abi.encode(_pathNonCollateral, _amountInTrader, _minOut);
+
+        assertEq(orchestrator.paused(), false, "_testCreateInitialPosition: E0");
 
         vm.expectRevert(); // reverts with NotTrader()
         route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _traderSwapData, _executionFee, true);
 
         vm.startPrank(trader);
+
+        if (_testNonCollateralTraderAmountIn) {
+            _dealERC20(FRAX, trader , _amountInTrader);
+            uint256 _traderFraxBalanceBefore = IERC20(FRAX).balanceOf(trader);
+            _approve(address(route), FRAX, type(uint256).max);
+            route.createPositionRequest{ value: _executionFee }(_traderPositionData, _traderSwapDataNonCollateral, _executionFee, true);
+            assertTrue(IERC20(FRAX).balanceOf(trader) < _traderFraxBalanceBefore, "_testCreateInitialPosition: E1");
+            return; // just want to test the swap
+        }
 
         vm.expectRevert(); // reverts with InvalidExecutionFee()
         route.createPositionRequest{ value: _amountInTrader + _executionFee + 10 }(_traderPositionData, _traderSwapData, _executionFee, true);
@@ -380,24 +397,25 @@ contract testPuppet is Test {
         vm.expectRevert(); // reverts with InvalidPath()
         route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _faultyTraderSwapData, _executionFee, true);
 
+        bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(WETH, WETH, true);
         if (!_addCollateralToAnExistingPosition) {
-            assertEq(orchestrator.getLastPositionOpenedTimestamp(alice, address(route)), 0, "_testCreateInitialPosition: E3");
-            assertEq(orchestrator.getLastPositionOpenedTimestamp(bob, address(route)), 0, "_testCreateInitialPosition: E4");
-            assertEq(orchestrator.getLastPositionOpenedTimestamp(yossi, address(route)), 0, "_testCreateInitialPosition: E5");
+            assertEq(orchestrator.lastPositionOpenedTimestamp(alice, _routeTypeKey), 0, "_testCreateInitialPosition: E3");
+            assertEq(orchestrator.lastPositionOpenedTimestamp(bob, _routeTypeKey), 0, "_testCreateInitialPosition: E4");
+            assertEq(orchestrator.lastPositionOpenedTimestamp(yossi, _routeTypeKey), 0, "_testCreateInitialPosition: E5");
         }
 
         vm.stopPrank();
 
-        uint256 _aliceDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(alice, WETH);
-        uint256 _bobDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(bob, WETH);
-        uint256 _yossiDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(yossi, WETH);
+        uint256 _aliceDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(alice, WETH);
+        uint256 _bobDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(bob, WETH);
+        uint256 _yossiDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(yossi, WETH);
         uint256 _orchestratorBalanceBefore = IERC20(WETH).balanceOf(address(orchestrator));
         uint256 _traderBalanceBeforeCollatToken = IERC20(WETH).balanceOf(trader);
         uint256 _traderBalanceBeforeEth = address(trader).balance;
-        uint256 _alicePositionSharesBefore = route.getParticipantShares(alice);
-        uint256 _bobPositionSharesBefore = route.getParticipantShares(bob);
-        uint256 _yossiPositionSharesBefore = route.getParticipantShares(yossi);
-        uint256 _traderPositionSharesBefore = route.getParticipantShares(trader);
+        uint256 _alicePositionSharesBefore = route.participantShares(alice);
+        uint256 _bobPositionSharesBefore = route.participantShares(bob);
+        uint256 _yossiPositionSharesBefore = route.participantShares(yossi);
+        uint256 _traderPositionSharesBefore = route.participantShares(trader);
 
 
         (uint256 _addCollateralRequestsIndexBefore,,) = route.positions(route.positionIndex());
@@ -408,20 +426,33 @@ contract testPuppet is Test {
 
         if (!_addCollateralToAnExistingPosition) {
             assertTrue(IERC20(WETH).balanceOf(address(orchestrator)) < _orchestratorBalanceBefore, "_testCreateInitialPosition: E05");
-            assertTrue(orchestrator.getPuppetAccountBalance(alice, WETH) < _aliceDepositAccountBalanceBefore, "_testCreateInitialPosition: E06");
-            assertTrue(orchestrator.getPuppetAccountBalance(bob, WETH) < _bobDepositAccountBalanceBefore, "_testCreateInitialPosition: E07");
-            assertTrue(orchestrator.getPuppetAccountBalance(yossi, WETH) < _yossiDepositAccountBalanceBefore, "_testCreateInitialPosition: E08");
+            assertTrue(orchestrator.puppetAccountBalance(alice, WETH) < _aliceDepositAccountBalanceBefore, "_testCreateInitialPosition: E06");
+            assertTrue(orchestrator.puppetAccountBalance(bob, WETH) < _bobDepositAccountBalanceBefore, "_testCreateInitialPosition: E07");
+            assertTrue(orchestrator.puppetAccountBalance(yossi, WETH) < _yossiDepositAccountBalanceBefore, "_testCreateInitialPosition: E08");
         }
 
         vm.expectRevert(); // reverts with NotCallbackCaller()
         route.gmxPositionCallback(_requestKey, true, true);
 
-        (,uint256 _collateralInPositionGMXBefore,,,,,,) = IGMXVault(gmxVault).getPosition(address(route), collateralToken, indexToken, isLong); 
+        (,uint256 _collateralInPositionGMXBefore,,,,,,) = IGMXVault(gmxVault).getPosition(address(route), collateralToken, indexToken, isLong);
+
+        uint256[] memory _allowances = new uint256[](1);
+        address[] memory _traders = new address[](1);
+        _traders[0] = trader;
+        _allowances[0] = 10; // 10% of the puppet's deposit account
+        vm.startPrank(alice);
+        vm.expectRevert(); // reverts with RouteWaitingForCallback()
+        orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, false);
+        vm.stopPrank();
+
+        assertEq(route.isWaitingForCallback(), true, "_testCreateInitialPosition: E100");
 
         // 2. executePosition
         vm.startPrank(GMXPositionRouterKeeper); // keeper
         IGMXPositionRouter(gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
         vm.stopPrank();
+
+        assertEq(route.isWaitingForCallback(), false, "_testCreateInitialPosition: E101");
 
         (uint256 _addCollateralRequestsIndexAfter,,) = route.positions(route.positionIndex());
         uint256 _positionIndexAfter = route.positionIndex();
@@ -436,17 +467,17 @@ contract testPuppet is Test {
                 assertTrue(!route.keeperRequests(_requestKey), "_testCreateInitialPosition: E006");
                 assertEq(_positionIndexBefore + 1, _positionIndexAfter, "_testCreateInitialPosition: E0007");
                 assertApproxEqAbs(address(trader).balance, _traderBalanceBeforeEth - _amountInTrader - _executionFee, 1e18, "_testCreateInitialPosition: E009");
-                assertEq(route.getParticipantShares(alice), route.getParticipantShares(bob), "_testCreateInitialPosition: E0010");
-                assertEq(route.getParticipantShares(alice), route.getParticipantShares(yossi), "_testCreateInitialPosition: E0011");
-                assertTrue(route.getParticipantShares(trader) > route.getParticipantShares(alice), "_testCreateInitialPosition: E0012");
-                uint256 _totalParticipantShares = route.getParticipantShares(alice) + route.getParticipantShares(bob) + route.getParticipantShares(yossi) + route.getParticipantShares(trader);
+                assertEq(route.participantShares(alice), route.participantShares(bob), "_testCreateInitialPosition: E0010");
+                assertEq(route.participantShares(alice), route.participantShares(yossi), "_testCreateInitialPosition: E0011");
+                assertTrue(route.participantShares(trader) > route.participantShares(alice), "_testCreateInitialPosition: E0012");
+                uint256 _totalParticipantShares = route.participantShares(alice) + route.participantShares(bob) + route.participantShares(yossi) + route.participantShares(trader);
                 assertEq(_totalSupply, _totalParticipantShares, "_testCreateInitialPosition: E0013");
                 assertEq(_totalAssets, _totalSupply, "_testCreateInitialPosition: E0014");
                 assertTrue(_totalAssets > 0, "_testCreateInitialPosition: E0015");
-                assertTrue(route.getParticipantShares(alice) > _alicePositionSharesBefore, "_testCreateInitialPosition: E0016");
-                assertTrue(route.getParticipantShares(bob) > _bobPositionSharesBefore, "_testCreateInitialPosition: E0017");
-                assertTrue(route.getParticipantShares(yossi) > _yossiPositionSharesBefore, "_testCreateInitialPosition: E0018");
-                assertTrue(route.getParticipantShares(trader) > _traderPositionSharesBefore, "_testCreateInitialPosition: E0019");
+                assertTrue(route.participantShares(alice) > _alicePositionSharesBefore, "_testCreateInitialPosition: E0016");
+                assertTrue(route.participantShares(bob) > _bobPositionSharesBefore, "_testCreateInitialPosition: E0017");
+                assertTrue(route.participantShares(yossi) > _yossiPositionSharesBefore, "_testCreateInitialPosition: E0018");
+                assertTrue(route.participantShares(trader) > _traderPositionSharesBefore, "_testCreateInitialPosition: E0019");
                 assertTrue(!route.isPuppetAdjusted(alice), "_testCreateInitialPosition: E0031");
                 assertTrue(!route.isPuppetAdjusted(bob), "_testCreateInitialPosition: E0032");
                 assertTrue(!route.isPuppetAdjusted(yossi), "_testCreateInitialPosition: E0033");
@@ -458,18 +489,18 @@ contract testPuppet is Test {
                 assertEq(_totalAssets, 0, "_testCreateInitialPosition: E11");
                 assertEq(IERC20(WETH).balanceOf(address(route)), 0, "_testCreateInitialPosition: E12");
                 assertEq(address(route).balance, 0, "_testCreateInitialPosition: E13");
-                assertEq(orchestrator.getPuppetAccountBalance(alice, WETH), _aliceDepositAccountBalanceBefore, "_testCreateInitialPosition: E14");
-                assertEq(orchestrator.getPuppetAccountBalance(bob, WETH), _bobDepositAccountBalanceBefore, "_testCreateInitialPosition: E15");
-                assertEq(orchestrator.getPuppetAccountBalance(yossi, WETH), _yossiDepositAccountBalanceBefore, "_testCreateInitialPosition: E16");
-                assertTrue(orchestrator.getPuppetAccountBalance(alice, WETH) > 0, "_testCreateInitialPosition: E014");
-                assertTrue(orchestrator.getPuppetAccountBalance(bob, WETH) > 0, "_testCreateInitialPosition: E015");
-                assertTrue(orchestrator.getPuppetAccountBalance(yossi, WETH) > 0, "_testCreateInitialPosition: E016");
+                assertEq(orchestrator.puppetAccountBalance(alice, WETH), _aliceDepositAccountBalanceBefore, "_testCreateInitialPosition: E14");
+                assertEq(orchestrator.puppetAccountBalance(bob, WETH), _bobDepositAccountBalanceBefore, "_testCreateInitialPosition: E15");
+                assertEq(orchestrator.puppetAccountBalance(yossi, WETH), _yossiDepositAccountBalanceBefore, "_testCreateInitialPosition: E16");
+                assertTrue(orchestrator.puppetAccountBalance(alice, WETH) > 0, "_testCreateInitialPosition: E014");
+                assertTrue(orchestrator.puppetAccountBalance(bob, WETH) > 0, "_testCreateInitialPosition: E015");
+                assertTrue(orchestrator.puppetAccountBalance(yossi, WETH) > 0, "_testCreateInitialPosition: E016");
                 assertEq(IERC20(WETH).balanceOf(address(orchestrator)), _orchestratorBalanceBefore, "_testCreateInitialPosition: E17");
                 assertEq(IERC20(WETH).balanceOf(trader) - _traderBalanceBeforeCollatToken, _amountInTrader, "_testCreateInitialPosition: E18");
-                assertEq(route.getParticipantShares(alice), _alicePositionSharesBefore, "_testCreateInitialPosition: E00016");
-                assertEq(route.getParticipantShares(bob), _bobPositionSharesBefore, "_testCreateInitialPosition: E00017");
-                assertEq(route.getParticipantShares(yossi), _yossiPositionSharesBefore, "_testCreateInitialPosition: E00018");
-                assertEq(route.getParticipantShares(trader), _traderPositionSharesBefore, "_testCreateInitialPosition: E00019");
+                assertEq(route.participantShares(alice), _alicePositionSharesBefore, "_testCreateInitialPosition: E00016");
+                assertEq(route.participantShares(bob), _bobPositionSharesBefore, "_testCreateInitialPosition: E00017");
+                assertEq(route.participantShares(yossi), _yossiPositionSharesBefore, "_testCreateInitialPosition: E00018");
+                assertEq(route.participantShares(trader), _traderPositionSharesBefore, "_testCreateInitialPosition: E00019");
                 assertTrue(!route.isPuppetAdjusted(alice), "_testCreateInitialPosition: E00031");
                 assertTrue(!route.isPuppetAdjusted(bob), "_testCreateInitialPosition: E00032");
                 assertTrue(!route.isPuppetAdjusted(yossi), "_testCreateInitialPosition: E00033");
@@ -484,21 +515,21 @@ contract testPuppet is Test {
                 // adding collatral request was executed
                 assertTrue(!route.keeperRequests(_requestKey), "_testCreateInitialPosition: E19");
                 assertApproxEqAbs(address(trader).balance, _traderBalanceBeforeEth - _amountInTrader - _executionFee, 1e18, "_testCreateInitialPosition: E20");
-                assertEq(route.getParticipantShares(alice), route.getParticipantShares(bob), "_testCreateInitialPosition: E21");
-                assertTrue(route.getParticipantShares(alice) < route.getParticipantShares(yossi), "_testCreateInitialPosition: E22");
-                assertTrue(route.getParticipantShares(trader) > route.getParticipantShares(yossi), "_testCreateInitialPosition: E23");
-                uint256 _totalParticipantShares = route.getParticipantShares(alice) + route.getParticipantShares(bob) + route.getParticipantShares(yossi) + route.getParticipantShares(trader);
+                assertEq(route.participantShares(alice), route.participantShares(bob), "_testCreateInitialPosition: E21");
+                assertTrue(route.participantShares(alice) < route.participantShares(yossi), "_testCreateInitialPosition: E22");
+                assertTrue(route.participantShares(trader) > route.participantShares(yossi), "_testCreateInitialPosition: E23");
+                uint256 _totalParticipantShares = route.participantShares(alice) + route.participantShares(bob) + route.participantShares(yossi) + route.participantShares(trader);
                 assertEq(_totalSupply, _totalParticipantShares, "_testCreateInitialPosition: E24");
                 assertEq(_totalAssets, _totalSupply, "_testCreateInitialPosition: E25");
                 assertTrue(_totalAssets > 0, "_testCreateInitialPosition: E26");
                 assertTrue(IERC20(WETH).balanceOf(address(orchestrator)) - _amountInTrader < _orchestratorBalanceBefore, "_testCreateInitialPosition: E27"); // using _amountInTrader because that's what we added for yossi
-                assertEq(orchestrator.getPuppetAccountBalance(alice, WETH), _aliceDepositAccountBalanceBefore, "_testCreateInitialPosition: E28");
-                assertEq(orchestrator.getPuppetAccountBalance(bob, WETH), _bobDepositAccountBalanceBefore, "_testCreateInitialPosition: E29");
-                assertTrue(orchestrator.getPuppetAccountBalance(yossi, WETH) - _amountInTrader < _yossiDepositAccountBalanceBefore, "_testCreateInitialPosition: E30"); // using _amountInTrader because that's what we added for yossi
-                assertEq(route.getParticipantShares(alice), _alicePositionSharesBefore, "_testCreateInitialPosition: E0016");
-                assertEq(route.getParticipantShares(bob), _bobPositionSharesBefore, "_testCreateInitialPosition: E0017");
-                assertTrue(route.getParticipantShares(yossi) > _yossiPositionSharesBefore, "_testCreateInitialPosition: E0018");
-                assertTrue(route.getParticipantShares(trader) > _traderPositionSharesBefore, "_testCreateInitialPosition: E0019");
+                assertEq(orchestrator.puppetAccountBalance(alice, WETH), _aliceDepositAccountBalanceBefore, "_testCreateInitialPosition: E28");
+                assertEq(orchestrator.puppetAccountBalance(bob, WETH), _bobDepositAccountBalanceBefore, "_testCreateInitialPosition: E29");
+                assertTrue(orchestrator.puppetAccountBalance(yossi, WETH) - _amountInTrader < _yossiDepositAccountBalanceBefore, "_testCreateInitialPosition: E30"); // using _amountInTrader because that's what we added for yossi
+                assertEq(route.participantShares(alice), _alicePositionSharesBefore, "_testCreateInitialPosition: E0016");
+                assertEq(route.participantShares(bob), _bobPositionSharesBefore, "_testCreateInitialPosition: E0017");
+                assertTrue(route.participantShares(yossi) > _yossiPositionSharesBefore, "_testCreateInitialPosition: E0018");
+                assertTrue(route.participantShares(trader) > _traderPositionSharesBefore, "_testCreateInitialPosition: E0019");
                 assertTrue(route.isPuppetAdjusted(alice), "_testCreateInitialPosition: E31");
                 assertTrue(route.isPuppetAdjusted(bob), "_testCreateInitialPosition: E32");
                 assertTrue(!route.isPuppetAdjusted(yossi), "_testCreateInitialPosition: E33");
@@ -519,9 +550,9 @@ contract testPuppet is Test {
         }
 
         uint256 _orchesratorBalanceBefore = IERC20(WETH).balanceOf(address(orchestrator));
-        uint256 _aliceDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(alice, WETH);
-        uint256 _bobDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(bob, WETH);
-        uint256 _yossiDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(yossi, WETH);
+        uint256 _aliceDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(alice, WETH);
+        uint256 _bobDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(bob, WETH);
+        uint256 _yossiDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(yossi, WETH);
         (uint256 _addCollateralRequestsIndexBefore,,) = route.positions(route.positionIndex());
 
         vm.startPrank(trader);
@@ -537,8 +568,8 @@ contract testPuppet is Test {
         assertTrue(_requestTotalSupply > 0, "_testCreatePosition: E8");
         assertTrue(_requestTotalAssets >= _amountInTrader, "_testCreatePosition: E9");
 
-        address[] memory _puppets = route.getPuppets();
-        (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) = route.getPuppetsRequestInfo(_requestKey);
+        address[] memory _puppets = route.puppets();
+        (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) = route.puppetsRequestAmounts(_requestKey);
 
         if (_addCollateralToAnExistingPosition) {
             assertEq(_positionIndex, _positionIndexBefore, "_testCreatePosition: E10");
@@ -558,19 +589,20 @@ contract testPuppet is Test {
             assertEq(_puppetsAmounts[0], _puppetsAmounts[2], "_testCreatePosition: E31");
         }
 
+        bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(WETH, WETH, true);
         assertEq(IERC20(WETH).balanceOf(address(route)), 0, "_testCreatePosition: E14");
         assertEq(route.requestKeyToAddCollateralRequestsIndex(_requestKey), _addCollateralRequestsIndexBefore, "_testCreatePosition: E15");
-        assertEq(orchestrator.getLastPositionOpenedTimestamp(alice, address(route)), block.timestamp, "_testCreatePosition: E16");
-        assertEq(orchestrator.getLastPositionOpenedTimestamp(bob, address(route)), block.timestamp, "_testCreatePosition: E17");
-        assertEq(orchestrator.getLastPositionOpenedTimestamp(yossi, address(route)), block.timestamp, "_testCreatePosition: E18");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(alice, _routeTypeKey), block.timestamp, "_testCreatePosition: E16");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(bob, _routeTypeKey), block.timestamp, "_testCreatePosition: E17");
+        assertEq(orchestrator.lastPositionOpenedTimestamp(yossi, _routeTypeKey), block.timestamp, "_testCreatePosition: E18");
         assertEq(_addCollateralRequestsIndexAfter, _addCollateralRequestsIndexBefore + 1, "_testCreatePosition: E19");
         assertEq(IERC20(WETH).balanceOf(address(orchestrator)) + _puppetsAmountIn, _orchesratorBalanceBefore, "_testCreatePosition: E20");
         assertEq(_puppetsShares.length, 3, "_testCreatePosition: E22");
         assertEq(_puppetsAmounts.length, 3, "_testCreatePosition: E23");
         assertEq(_puppets.length, 3, "_testCreatePosition: E24");
-        assertEq(_aliceDepositAccountBalanceBefore - _puppetsAmounts[0], orchestrator.getPuppetAccountBalance(alice, WETH), "_testCreatePosition: E25");
-        assertEq(_bobDepositAccountBalanceBefore - _puppetsAmounts[1], orchestrator.getPuppetAccountBalance(bob, WETH), "_testCreatePosition: E26");
-        assertEq(_yossiDepositAccountBalanceBefore - _puppetsAmounts[2], orchestrator.getPuppetAccountBalance(yossi, WETH), "_testCreatePosition: E27");
+        assertEq(_aliceDepositAccountBalanceBefore - _puppetsAmounts[0], orchestrator.puppetAccountBalance(alice, WETH), "_testCreatePosition: E25");
+        assertEq(_bobDepositAccountBalanceBefore - _puppetsAmounts[1], orchestrator.puppetAccountBalance(bob, WETH), "_testCreatePosition: E26");
+        assertEq(_yossiDepositAccountBalanceBefore - _puppetsAmounts[2], orchestrator.puppetAccountBalance(yossi, WETH), "_testCreatePosition: E27");
         assertEq(_puppetsShares[0], _puppetsShares[1], "_testCreatePosition: E28");
         assertEq(_puppetsAmounts[0], _puppetsAmounts[1], "_testCreatePosition: E30");
     }
@@ -592,9 +624,9 @@ contract testPuppet is Test {
         assertEq(address(route).balance, 0, "_testClosePosition: E3");
 
         uint256 _traderBalanceBefore = IERC20(WETH).balanceOf(address(trader));
-        uint256 _aliceDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(alice, WETH);
-        uint256 _bobDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(bob, WETH);
-        uint256 _yossiDepositAccountBalanceBefore = orchestrator.getPuppetAccountBalance(yossi, WETH);
+        uint256 _aliceDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(alice, WETH);
+        uint256 _bobDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(bob, WETH);
+        uint256 _yossiDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(yossi, WETH);
         uint256 _orchesratorBalanceBefore = IERC20(WETH).balanceOf(address(orchestrator));
         uint256 _positionIndexBefore = route.positionIndex();
 
@@ -619,27 +651,31 @@ contract testPuppet is Test {
         } else {
             // call was executed
             assertTrue(_traderBalanceBefore < IERC20(WETH).balanceOf(address(trader)), "_testClosePosition: E4");
-            assertTrue(_aliceDepositAccountBalanceBefore < orchestrator.getPuppetAccountBalance(alice, WETH), "_testClosePosition: E5");
-            assertTrue(_bobDepositAccountBalanceBefore < orchestrator.getPuppetAccountBalance(bob, WETH), "_testClosePosition: E6");
-            assertTrue(_yossiDepositAccountBalanceBefore < orchestrator.getPuppetAccountBalance(yossi, WETH), "_testClosePosition: E7");
+            assertTrue(_aliceDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(alice, WETH), "_testClosePosition: E5");
+            assertTrue(_bobDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(bob, WETH), "_testClosePosition: E6");
+            assertTrue(_yossiDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(yossi, WETH), "_testClosePosition: E7");
             assertTrue(_orchesratorBalanceBefore < IERC20(WETH).balanceOf(address(orchestrator)), "_testClosePosition: E8");
             assertEq(_aliceDepositAccountBalanceBefore, _bobDepositAccountBalanceBefore, "_testClosePosition: E9");
-            assertEq(orchestrator.getPuppetAccountBalance(alice, WETH), orchestrator.getPuppetAccountBalance(bob, WETH), "_testClosePosition: E10");
+            assertEq(orchestrator.puppetAccountBalance(alice, WETH), orchestrator.puppetAccountBalance(bob, WETH), "_testClosePosition: E10");
             assertEq(_positionIndexBefore + 1, route.positionIndex(), "_testClosePosition: E11");
-            address[] memory _puppets = route.getPuppets();
+            address[] memory _puppets = route.puppets();
             assertEq(_puppets.length, 0, "_testClosePosition: E12");
-            assertEq(route.getParticipantShares(alice), 0, "_testClosePosition: E13");
-            assertEq(route.getParticipantShares(bob), 0, "_testClosePosition: E14");
-            assertEq(route.getParticipantShares(yossi), 0, "_testClosePosition: E15");
-            assertEq(route.getParticipantShares(trader), 0, "_testClosePosition: E16");
-            assertEq(route.getLatestAmountIn(alice), 0, "_testClosePosition: E17");
-            assertEq(route.getLatestAmountIn(bob), 0, "_testClosePosition: E18");
-            assertEq(route.getLatestAmountIn(yossi), 0, "_testClosePosition: E19");
-            assertEq(route.getLatestAmountIn(trader), 0, "_testClosePosition: E20");
+            assertEq(route.participantShares(alice), 0, "_testClosePosition: E13");
+            assertEq(route.participantShares(bob), 0, "_testClosePosition: E14");
+            assertEq(route.participantShares(yossi), 0, "_testClosePosition: E15");
+            assertEq(route.participantShares(trader), 0, "_testClosePosition: E16");
+            assertEq(route.latestAmountIn(alice), 0, "_testClosePosition: E17");
+            assertEq(route.latestAmountIn(bob), 0, "_testClosePosition: E18");
+            assertEq(route.latestAmountIn(yossi), 0, "_testClosePosition: E19");
+            assertEq(route.latestAmountIn(trader), 0, "_testClosePosition: E20");
             assertEq(route.isPuppetAdjusted(alice), false, "_testClosePosition: E21");
             assertEq(route.isPuppetAdjusted(bob), false, "_testClosePosition: E22");
             assertEq(route.isPuppetAdjusted(yossi), false, "_testClosePosition: E23");
         }
+    }
+
+    function _testCreatePositionWithNonCollateralToken() internal {
+
     }
 
     // ============================================================================================

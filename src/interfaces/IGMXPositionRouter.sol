@@ -56,4 +56,8 @@ interface IGMXPositionRouter {
         address _account,
         uint256 _index
     ) external pure returns (bytes32);
+
+    function getIncreasePositionRequestPath(bytes32 _key) external view returns (address[] memory);
+
+    function getDecreasePositionRequestPath(bytes32 _key) external view returns (address[] memory);
 }
