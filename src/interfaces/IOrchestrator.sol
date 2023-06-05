@@ -33,13 +33,13 @@ interface IOrchestrator {
 
     // route
 
+    function getRouteTypeKey(address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32);
+
+    function getRouteKey(address _trader, bytes32 _routeTypeKey) public view returns (bytes32);
+
     function getRoute(bytes32 _routeKey) external view returns (address);
 
     function getRoute(address _trader, address _collateralToken, address _indexToken, bool _isLong) external view returns (address);
-
-    function getRouteTypeKey(address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
-
-    function getRouteKey(address _trader, bytes32 _routeTypeKey) external view returns (bytes32);
 
     function subscribedPuppets(bytes32 _routeKey) external view returns (address[] memory _puppets);
 

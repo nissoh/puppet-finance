@@ -96,17 +96,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     // route
 
-    function getRoute(bytes32 _routeKey) external view returns (address) {
-        return _routeInfo[_routeKey].route;
-    }
-
-    function getRoute(address _trader, address _collateralToken, address _indexToken, bool _isLong) external view returns (address) {
-        bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
-        bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
-
-        return _routeInfo[_routeKey].route;
-    }
-
     function getRouteTypeKey(address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(_collateralToken, _indexToken, _isLong));
     }
@@ -117,6 +106,17 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bool _isLong = routeType[_routeTypeKey].isLong;
 
         return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
+    }
+
+    function getRoute(bytes32 _routeKey) external view returns (address) {
+        return _routeInfo[_routeKey].route;
+    }
+
+    function getRoute(address _trader, address _collateralToken, address _indexToken, bool _isLong) external view returns (address) {
+        bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
+        bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
+
+        return _routeInfo[_routeKey].route;
     }
 
     function subscribedPuppets(bytes32 _routeKey) external view returns (address[] memory _puppets) {
