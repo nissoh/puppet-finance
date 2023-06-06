@@ -8,7 +8,7 @@ pragma solidity 0.8.17;
 // |__|  |___|  _|  _|___|_|    |__|  |_|_|_|__,|_|_|___|___|   |
 //           |_| |_|                                            |
 // ==============================================================
-// ============================ Base ============================
+// ========================== Dictator ==========================
 // ==============================================================
 // Puppet Finance: https://github.com/GMX-Blueberry-Club/Puppet
 
@@ -18,18 +18,11 @@ pragma solidity 0.8.17;
 // Reviewers
 // itburnz: https://github.com/nissoh
 
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {RolesAuthority, Authority} from "@solmate/auth/authorities/RolesAuthority.sol";
 
-import {IWETH} from "./interfaces/IWETH.sol";
-import {IOrchestrator} from "./interfaces/IOrchestrator.sol";
-
-/// @title Base
+/// @title Dictator
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
-/// @notice An abstract contract that contains common libraries, and constants
-abstract contract Base is ReentrancyGuard {
-
-    address internal constant _WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
+/// @notice This contract manages user and roles permisions in all contracts which have this contract as Autority
+contract Dictator is RolesAuthority {
+    constructor(address _owner) RolesAuthority(_owner, Authority(address(0))) {}
 }

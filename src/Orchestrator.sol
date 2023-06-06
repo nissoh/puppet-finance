@@ -1,6 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
+// ==============================================================
+//  _____                 _      _____ _                        |
+// |  _  |_ _ ___ ___ ___| |_   |   __|_|___ ___ ___ ___ ___    |
+// |   __| | | . | . | -_|  _|  |   __| |   | .'|   |  _| -_|   |
+// |__|  |___|  _|  _|___|_|    |__|  |_|_|_|__,|_|_|___|___|   |
+//           |_| |_|                                            |
+// ==============================================================
+// ======================== Orchestrator ========================
+// ==============================================================
+// Puppet Finance: https://github.com/GMX-Blueberry-Club/Puppet
+
+// Primary Author
+// johnnyonline: https://github.com/johnnyonline
+
+// Reviewers
+// itburnz: https://github.com/nissoh
+
+// ==============================================================
+
 import {Auth, Authority} from "@solmate/auth/Auth.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
@@ -10,6 +29,9 @@ import {IRouteFactory} from "./interfaces/IRouteFactory.sol";
 
 import "./Base.sol";
 
+/// @title Orchestrator
+/// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
+/// @notice This contract contains the logic and storage for managing routes and puppets
 contract Orchestrator is Auth, Base, IOrchestrator {
 
     using SafeERC20 for IERC20;
@@ -54,6 +76,12 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // Constructor
     // ============================================================================================
 
+    /// @notice The ```constructor``` function is called on deployment
+    /// @param _authority The Authority contract instance
+    /// @param _routeFactory The RouteFactory contract address
+    /// @param _keeperAddr The address of the keeper
+    /// @param _refCode The GMX referral code
+    /// @param _gmx The GMX contract addresses
     constructor(Authority _authority, address _routeFactory, address _keeperAddr, bytes32 _refCode, bytes memory _gmx) Auth(address(0), _authority) {
         routeFactory = _routeFactory;
         _keeper = _keeperAddr;
@@ -67,6 +95,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // Modifiers
     // ============================================================================================
 
+    /// @notice Modifier that ensures the caller is a route
     modifier onlyRoute() {
         if (!isRoute[msg.sender]) revert NotRoute();
         _;
@@ -78,28 +107,34 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     // global
 
+    /// @inheritdoc IOrchestrator
     function keeper() external view returns (address) {
         return _keeper;
     }
 
+    /// @inheritdoc IOrchestrator
     function referralCode() external view returns (bytes32) {
         return _referralCode;
     }
 
+    /// @inheritdoc IOrchestrator
     function routes() external view returns (address[] memory) {
         return _routes;
     }
 
+    /// @inheritdoc IOrchestrator
     function paused() external view returns (bool) {
         return _paused;
     }
 
     // route
 
+    /// @inheritdoc IOrchestrator
     function getRouteTypeKey(address _collateralToken, address _indexToken, bool _isLong) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(_collateralToken, _indexToken, _isLong));
     }
 
+    /// @inheritdoc IOrchestrator
     function getRouteKey(address _trader, bytes32 _routeTypeKey) public view returns (bytes32) {
         address _collateralToken = routeType[_routeTypeKey].collateralToken;
         address _indexToken = routeType[_routeTypeKey].indexToken;
@@ -108,10 +143,12 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         return keccak256(abi.encodePacked(_trader, _collateralToken, _indexToken, _isLong));
     }
 
+    /// @inheritdoc IOrchestrator
     function getRoute(bytes32 _routeKey) external view returns (address) {
         return _routeInfo[_routeKey].route;
     }
 
+    /// @inheritdoc IOrchestrator
     function getRoute(address _trader, address _collateralToken, address _indexToken, bool _isLong) external view returns (address) {
         bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
         bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
@@ -119,6 +156,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         return _routeInfo[_routeKey].route;
     }
 
+    /// @inheritdoc IOrchestrator
     function subscribedPuppets(bytes32 _routeKey) external view returns (address[] memory _puppets) {
         EnumerableSet.AddressSet storage _puppetsSet = _routeInfo[_routeKey].puppets;
         _puppets = new address[](EnumerableSet.length(_puppetsSet));
@@ -130,36 +168,44 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     // puppet
 
+    /// @inheritdoc IOrchestrator
     function puppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance) {
         return EnumerableMap.get(_puppetInfo[_puppet].allowances, _route);
     }
 
+    /// @inheritdoc IOrchestrator
     function puppetAccountBalance(address _puppet, address _asset) external view returns (uint256) {
         return _puppetInfo[_puppet].depositAccount[_asset];
     }
 
+    /// @inheritdoc IOrchestrator
     function puppetThrottleLimit(address _puppet, bytes32 _routeType) external view returns (uint256) {
         return _puppetInfo[_puppet].throttleLimits[_routeType];
     }
 
+    /// @inheritdoc IOrchestrator
     function lastPositionOpenedTimestamp(address _puppet, bytes32 _routeType) external view returns (uint256) {
         return _puppetInfo[_puppet].lastPositionOpenedTimestamp[_routeType];
     }
 
+    /// @inheritdoc IOrchestrator
     function isBelowThrottleLimit(address _puppet, bytes32 _routeType) external view returns (bool) {
         return (block.timestamp - _puppetInfo[_puppet].lastPositionOpenedTimestamp[_routeType]) >= _puppetInfo[_puppet].throttleLimits[_routeType];
     }
 
     // gmx
 
+    /// @inheritdoc IOrchestrator
     function gmxRouter() external view returns (address) {
         return _gmxInfo.gmxRouter;
     }
 
+    /// @inheritdoc IOrchestrator
     function gmxPositionRouter() external view returns (address) {
         return _gmxInfo.gmxPositionRouter;
     }
 
+    /// @inheritdoc IOrchestrator
     function gmxVault() external view returns (address) {
         return _gmxInfo.gmxVault;
     }
@@ -168,7 +214,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // Trader Function
     // ============================================================================================
 
-    /// @dev violates checks-effects-interactions pattern. we use reentrancy guard
+    /// @inheritdoc IOrchestrator
     // slither-disable-next-line reentrancy-no-eth
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) public nonReentrant returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
@@ -200,6 +246,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit RouteRegistered(msg.sender, _routeAddr, _routeTypeKey);
     }
 
+    /// @inheritdoc IOrchestrator
     function registerRouteAndCreateIncreasePositionRequest(
         bytes memory _traderPositionData,
         bytes memory _traderSwapData,
@@ -216,6 +263,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // Puppet Functions
     // ============================================================================================
 
+    /// @inheritdoc IOrchestrator
     function deposit(uint256 _amount, address _asset, address _puppet) external payable nonReentrant {
         if (_amount == 0) revert ZeroAmount();
         if (_puppet == address(0)) revert ZeroAddress();
@@ -236,6 +284,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit Deposited(_amount, _asset, msg.sender, _puppet);
     }
 
+    /// @inheritdoc IOrchestrator
     function withdraw(uint256 _amount, address _asset, address _receiver, bool _isETH) external nonReentrant {
         if (_amount == 0) revert ZeroAmount();
         if (_receiver == address(0)) revert ZeroAddress();
@@ -254,6 +303,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit Withdrawn(_amount, _asset, _receiver, msg.sender);
     }
 
+    /// @inheritdoc IOrchestrator
     function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _subscribe) external nonReentrant {
         if (_traders.length != _allowances.length) revert MismatchedInputArrays();
 
@@ -285,6 +335,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit RoutesSubscriptionUpdated(_traders, _allowances, _puppet, _routeTypeKey, _subscribe);
     }
 
+    /// @inheritdoc IOrchestrator
     function setThrottleLimit(uint256 _throttleLimit, bytes32 _routeType) external {
         _puppetInfo[msg.sender].throttleLimits[_routeType] = _throttleLimit;
 
@@ -295,24 +346,28 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // Route Functions
     // ============================================================================================
 
+    /// @inheritdoc IOrchestrator
     function debitPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
         _puppetInfo[_puppet].depositAccount[_asset] -= _amount;
 
         emit PuppetAccountDebited(_amount, _asset, _puppet, msg.sender);
     }
 
+    /// @inheritdoc IOrchestrator
     function creditPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
         _puppetInfo[_puppet].depositAccount[_asset] += _amount;
 
         emit PuppetAccountCredited(_amount, _asset, _puppet, msg.sender);
     }
 
+    /// @inheritdoc IOrchestrator
     function updateLastPositionOpenedTimestamp(address _puppet, bytes32 _routeType) external onlyRoute {
         _puppetInfo[_puppet].lastPositionOpenedTimestamp[_routeType] = block.timestamp;
 
         emit LastPositionOpenedTimestampUpdated(_puppet, _routeType, block.timestamp);
     }
 
+    /// @inheritdoc IOrchestrator
     function sendFunds(uint256 _amount, address _asset, address _receiver) external onlyRoute {
         IERC20(_asset).safeTransfer(_receiver, _amount);
 
@@ -323,6 +378,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // Authority Functions
     // ============================================================================================
 
+    /// @inheritdoc IOrchestrator
     function rescueTokens(uint256 _amount, address _token, address _receiver) external requiresAuth nonReentrant {
         if (_token == address(0)) {
             payable(_receiver).sendValue(_amount);
@@ -333,12 +389,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit TokensRescued(_amount, _token, _receiver);
     }
 
+    /// @inheritdoc IOrchestrator
     function rescueRouteTokens(uint256 _amount, address _token, address _receiver, address _route) external requiresAuth nonReentrant {
         IRoute(_route).rescueTokens(_amount, _token, _receiver);
 
         emit RouteTokensRescued(_amount, _token, _receiver, _route);
     }
 
+    /// @inheritdoc IOrchestrator
     function routeCreatePositionRequest(bytes memory _traderPositionData,
         bytes memory _traderSwapData,
         uint256 _executionFee,
@@ -350,12 +408,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit PositionRequestCreated(_requestKey, _route, _isIncrease);
     }
 
+    /// @inheritdoc IOrchestrator
     function freezeRoute(address _route, bool _freeze) external requiresAuth nonReentrant {
         IRoute(_route).freeze(_freeze);
 
         emit RouteFrozen(_route, _freeze);
     }
 
+    /// @inheritdoc IOrchestrator
     function setRouteType(address _collateral, address _index, bool _isLong) external requiresAuth nonReentrant {
         bytes32 _routeTypeKey = getRouteTypeKey(_collateral, _index, _isLong);
         routeType[_routeTypeKey] = RouteType(_collateral, _index, _isLong, true);
@@ -363,6 +423,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit RouteTypeSet(_routeTypeKey, _collateral, _index, _isLong);
     }
 
+    /// @inheritdoc IOrchestrator
     function setGMXInfo(address _gmxRouter, address _gmxVault, address _gmxPositionRouter) external requiresAuth nonReentrant {
         GMXInfo storage _gmx = _gmxInfo;
 
@@ -373,6 +434,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit GMXUtilsSet(_gmxRouter, _gmxVault, _gmxPositionRouter);
     }
 
+    /// @inheritdoc IOrchestrator
     function setKeeper(address _keeperAddr) external requiresAuth nonReentrant {
         if (_keeperAddr == address(0)) revert ZeroAddress();
 
@@ -381,6 +443,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit KeeperSet(_keeper);
     }
 
+    /// @inheritdoc IOrchestrator
     function setReferralCode(bytes32 _refCode) external requiresAuth nonReentrant {
         if (_refCode == bytes32(0)) revert ZeroBytes32();
 
@@ -389,6 +452,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit ReferralCodeSet(_refCode);
     }
 
+    /// @inheritdoc IOrchestrator
     function pause(bool _pause) external requiresAuth nonReentrant {
         _paused = _pause;
 

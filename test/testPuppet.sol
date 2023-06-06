@@ -11,8 +11,8 @@ import {Auth, Authority} from "@solmate/auth/Auth.sol";
 
 import {Orchestrator} from "../src/Orchestrator.sol";
 import {Route} from "../src/Route.sol";
-import {RevenueDistributor} from "../src/RevenueDistributor.sol";
 import {RouteFactory} from "../src/RouteFactory.sol";
+import {Dictator} from "../src/Dictator.sol";
 
 import {IOrchestrator} from "../src/interfaces/IOrchestrator.sol";
 
@@ -44,6 +44,7 @@ contract testPuppet is Test {
 
     address gmxVault = 0x489ee077994B6658eAfA855C308275EAd8097C4A;
     address gmxPositionRouter = 0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868;
+    address gmxRouter = 0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064;
     address GMXPositionRouterKeeper = address(0x11D62807dAE812a0F1571243460Bf94325F43BB7);
     address revenueDistributor;
 
@@ -74,39 +75,20 @@ contract testPuppet is Test {
         vm.deal(bob, 100 ether);
         vm.deal(yossi, 100 ether);
 
-        // deploy RevenueDistributor
-        Authority _authority = Authority(0x575F40E8422EfA696108dAFD12cD8d6366982416);
-        revenueDistributor = address(new RevenueDistributor(_authority));
+        Dictator _dictator = new Dictator(owner);
+        RouteFactory _routeFactory = new RouteFactory();
 
-        // deploy RouteFactory
-        address _routeFactory = address(new RouteFactory());
+        bytes memory _gmxInfo = abi.encode(gmxRouter, gmxVault, gmxPositionRouter);
 
-        // deploy orchestrator
-        address _gmxRouter = 0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064;
-        // address _gmxReader = 0x22199a49A999c351eF7927602CFB187ec3cae489;
-        // address _gmxReferralRebatesSender = address(0);
-        bytes32 _referralCode = bytes32(0);
+        orchestrator = new Orchestrator(_dictator, address(_routeFactory), address(0), bytes32(0), _gmxInfo);
 
-        bytes memory _gmxInfo = abi.encode(_gmxRouter, gmxVault, gmxPositionRouter);
+        bytes4 functionSig = orchestrator.setRouteType.selector;
 
-        orchestrator = new Orchestrator(_authority, _routeFactory, keeper, _referralCode, _gmxInfo);
-
-        // set route type
         vm.startPrank(owner);
+        _setRoleCapability(_dictator, 0, address(orchestrator), functionSig, true);
+        _setUserRole(_dictator, owner, 0, true);
+
         orchestrator.setRouteType(WETH, WETH, true);
-
-        // // set price feed info
-        // address ETH_USD_PRICE_FEED_ADDRESS = address(0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612);
-        // uint256 ETH_USD_PRICE_FEED_DECIMALS = 8;
-
-        // address[] memory _assets = new address[](1);
-        // _assets[0] = WETH;
-        // address[] memory _priceFeeds = new address[](1);
-        // _priceFeeds[0] = ETH_USD_PRICE_FEED_ADDRESS;
-        // uint256[] memory _decimals = new uint256[](1);
-        // _decimals[0] = ETH_USD_PRICE_FEED_DECIMALS;
-
-        // orchestrator.setPriceFeeds(_assets, _priceFeeds, _decimals);
         vm.stopPrank();
     }
 
@@ -695,5 +677,13 @@ contract testPuppet is Test {
         (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(gmxVault).getPosition(_account, collateralToken, indexToken, isLong);
 
         return _size > 0 && _collateral > 0;
+    }
+
+    function _setRoleCapability(Dictator _dictator, uint8 role, address target, bytes4 functionSig, bool enabled) internal {
+        _dictator.setRoleCapability(role, target, functionSig, enabled);
+    }
+
+    function _setUserRole(Dictator _dictator, address user, uint8 role, bool enabled) internal {
+        _dictator.setUserRole(user, role, enabled);
     }
 }
