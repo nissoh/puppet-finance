@@ -13,6 +13,7 @@ import {Orchestrator} from "../src/Orchestrator.sol";
 import {Route} from "../src/Route.sol";
 import {RouteFactory} from "../src/RouteFactory.sol";
 import {Dictator} from "../src/Dictator.sol";
+import {IRoute} from "../src/interfaces/IRoute.sol";
 
 import {IOrchestrator} from "../src/interfaces/IOrchestrator.sol";
 
@@ -111,6 +112,7 @@ contract testPuppet is Test {
         _testIncreasePosition(true, false);
         _testClosePosition();
         _testIncreasePosition(false, true);
+        revert("ad");
     }
 
     // ============================================================================================
@@ -327,8 +329,6 @@ contract testPuppet is Test {
     // add collateral + increase size
     // trader adds ETH collateral
     function _testIncreasePosition(bool _addCollateralToAnExistingPosition, bool _testNonCollateralTraderAmountIn) internal {
-        // (, int256 _price,,,) = priceFeed.latestRoundData();
-
         uint256 _minOut = 0; // _minOut can be zero if no swap is required
         uint256 _acceptablePrice = type(uint256).max; // the USD value of the max (for longs) or min (for shorts) index price acceptable when executing the request
         uint256 _executionFee = 180000000000000; // can be set to PositionRouter.minExecutionFee() https://arbiscan.io/address/0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868#readContract#F26
@@ -344,23 +344,43 @@ contract testPuppet is Test {
         // the amount of tokenIn to deposit as collateral
         uint256 _amountInTrader = 10 ether;
 
-        bytes memory _traderPositionData = abi.encode(_minOut, _sizeDelta, _acceptablePrice);
-
         address[] memory _path = new address[](1);
+        
         _path[0] = FRAX;
-        bytes memory _faultyTraderSwapData = abi.encode(_path, _amountInTrader, _minOut);
-        _path[0] = WETH;
-        bytes memory _traderSwapData = abi.encode(_path, _amountInTrader, _minOut);
+        IRoute.SwapParams memory _faultyTraderSwapData = IRoute.SwapParams({
+            path: _path,
+            amount: _amountInTrader,
+            minOut: _minOut
+        });
 
         address[] memory _pathNonCollateral = new address[](2);
         _pathNonCollateral[0] = FRAX;
         _pathNonCollateral[1] = WETH;
-        bytes memory _traderSwapDataNonCollateral = abi.encode(_pathNonCollateral, _amountInTrader, _minOut);
+        IRoute.SwapParams memory _traderSwapDataNonCollateral = IRoute.SwapParams({
+            path: _pathNonCollateral,
+            amount: _amountInTrader,
+            minOut: _minOut
+        });
+
+        IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
+            amountIn: _amountInTrader,
+            collateralDelta: 0,
+            sizeDelta: _sizeDelta,
+            acceptablePrice: _acceptablePrice,
+            minOut: _minOut
+        });
+
+        _path[0] = WETH;
+        IRoute.SwapParams memory _swapParams = IRoute.SwapParams({
+            path: _path,
+            amount: _amountInTrader,
+            minOut: _minOut
+        });
 
         assertEq(orchestrator.paused(), false, "_testCreateInitialPosition: E0");
 
         vm.expectRevert(); // reverts with NotTrader()
-        route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _traderSwapData, _executionFee, true);
+        route.requestPosition{ value: _amountInTrader + _executionFee }(_adjustPositionParams, _swapParams, _executionFee, true);
 
         vm.startPrank(trader);
 
@@ -368,16 +388,23 @@ contract testPuppet is Test {
             _dealERC20(FRAX, trader , _amountInTrader);
             uint256 _traderFraxBalanceBefore = IERC20(FRAX).balanceOf(trader);
             _approve(address(route), FRAX, type(uint256).max);
-            route.createPositionRequest{ value: _executionFee }(_traderPositionData, _traderSwapDataNonCollateral, _executionFee, true);
+            route.requestPosition{ value: _executionFee }(_adjustPositionParams, _traderSwapDataNonCollateral, _executionFee, true);
             assertTrue(IERC20(FRAX).balanceOf(trader) < _traderFraxBalanceBefore, "_testCreateInitialPosition: E1");
             return; // just want to test the swap
         }
 
         vm.expectRevert(); // reverts with InvalidExecutionFee()
-        route.createPositionRequest{ value: _amountInTrader + _executionFee + 10 }(_traderPositionData, _traderSwapData, _executionFee, true);
+        route.requestPosition{ value: _amountInTrader + _executionFee + 10 }(_adjustPositionParams, _swapParams, _executionFee, true);
 
-        vm.expectRevert(); // reverts with InvalidPath()
-        route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _faultyTraderSwapData, _executionFee, true);
+        vm.expectRevert(); // reverts with InvalidPath() // todo
+        console.log("++++++++++++++++++++++++++");
+        console.log("route.requestPosition - TESTS");
+        console.log("_faultyTraderSwapData.path0 = ", _faultyTraderSwapData.path[0]);
+        console.log("_faultyTraderSwapData.path1 = ", _faultyTraderSwapData.path[1]);
+        console.log("_faultyTraderSwapData.amount = ", _faultyTraderSwapData.amount);
+        console.log("_faultyTraderSwapData.minOut = ", _faultyTraderSwapData.minOut);
+        console.log("++++++++++++++++++++++++++");
+        route.requestPosition{ value: _amountInTrader + _executionFee }(_adjustPositionParams, _faultyTraderSwapData, _executionFee, true);
 
         bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(WETH, WETH, true);
         if (!_addCollateralToAnExistingPosition) {
@@ -404,7 +431,7 @@ contract testPuppet is Test {
         uint256 _positionIndexBefore = route.positionIndex();
 
         // 1. createPosition
-        bytes32 _requestKey = _testCreatePosition(_traderPositionData, _traderSwapData, _amountInTrader, _executionFee, _positionIndexBefore, _addCollateralToAnExistingPosition);
+        bytes32 _requestKey = _testCreatePosition(_adjustPositionParams, _swapParams, _amountInTrader, _executionFee, _positionIndexBefore, _addCollateralToAnExistingPosition);
 
         if (!_addCollateralToAnExistingPosition) {
             assertTrue(IERC20(WETH).balanceOf(address(orchestrator)) < _orchestratorBalanceBefore, "_testCreateInitialPosition: E05");
@@ -523,7 +550,7 @@ contract testPuppet is Test {
         } 
     }
 
-    function _testCreatePosition(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _amountInTrader, uint256 _executionFee, uint256 _positionIndexBefore, bool _addCollateralToAnExistingPosition) internal returns (bytes32 _requestKey) {
+    function _testCreatePosition(IRoute.AdjustPositionParams memory _adjustPositionParams, IRoute.SwapParams memory _swapParams, uint256 _amountInTrader, uint256 _executionFee, uint256 _positionIndexBefore, bool _addCollateralToAnExistingPosition) internal returns (bytes32 _requestKey) {
         // add weth to yossi's deposit account so he can join the increase
         if (_addCollateralToAnExistingPosition) {
             vm.startPrank(yossi);
@@ -538,7 +565,7 @@ contract testPuppet is Test {
         (uint256 _addCollateralRequestsIndexBefore,,) = route.positions(route.positionIndex());
 
         vm.startPrank(trader);
-        _requestKey = route.createPositionRequest{ value: _amountInTrader + _executionFee }(_traderPositionData, _traderSwapData, _executionFee, true);
+        _requestKey = route.requestPosition{ value: _amountInTrader + _executionFee }(_adjustPositionParams, _swapParams, _executionFee, true);
         vm.stopPrank();
 
         (uint256 _puppetsAmountIn, uint256 _traderAmountInReq, uint256 _traderRequestShares, uint256 _requestTotalSupply, uint256 _requestTotalAssets) = route.addCollateralRequests(route.requestKeyToAddCollateralRequestsIndex(_requestKey));
@@ -592,16 +619,26 @@ contract testPuppet is Test {
     function _testClosePosition() internal {
         assertTrue(_isOpenInterest(address(route)), "_testClosePosition: E1");
 
-        bytes memory _traderSwapData;
-
         uint256 _minOut = 0;
         (uint256 _sizeDelta, uint256 _collateralDelta,,,,,,) = IGMXVault(gmxVault).getPosition(address(route), collateralToken, indexToken, isLong);
         // uint256 _acceptablePrice = type(uint256).max; // the USD value of the max (for longs) or min (for shorts) index price acceptable when executing the request
         uint256 _acceptablePrice = 0;
         uint256 _executionFee = 180000000000000; // can be set to PositionRouter.minExecutionFee() https://arbiscan.io/address/0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868#readContract#F26
 
-        bytes memory _traderPositionData = abi.encode(_collateralDelta, _sizeDelta, _acceptablePrice, _minOut);
+        IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
+            amountIn: 0,
+            collateralDelta: _collateralDelta,
+            sizeDelta: _sizeDelta,
+            acceptablePrice: _acceptablePrice,
+            minOut: _minOut
+        });
 
+        IRoute.SwapParams memory _swapParams = IRoute.SwapParams({
+            path: new address[](0),
+            amount: 0,
+            minOut: 0
+        });
+        
         assertEq(IERC20(WETH).balanceOf(address(route)), 0, "_testClosePosition: E2");
         assertEq(address(route).balance, 0, "_testClosePosition: E3");
 
@@ -615,9 +652,9 @@ contract testPuppet is Test {
         vm.startPrank(trader);
 
         vm.expectRevert(); // revert with `InvalidExecutionFee`
-        route.createPositionRequest{ value: _executionFee - 1 }(_traderPositionData, _traderSwapData, _executionFee, false);
+        route.requestPosition{ value: _executionFee - 1 }(_adjustPositionParams, _swapParams, _executionFee, false);
 
-        route.createPositionRequest{ value: _executionFee }(_traderPositionData, _traderSwapData, _executionFee, false);
+        route.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, _executionFee, false);
         vm.stopPrank();
 
         vm.startPrank(GMXPositionRouterKeeper); // keeper

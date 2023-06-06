@@ -24,7 +24,6 @@ import {Auth, Authority} from "@solmate/auth/Auth.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
-import {IRoute} from "./interfaces/IRoute.sol";
 import {IRouteFactory} from "./interfaces/IRouteFactory.sol";
 
 import "./Base.sol";
@@ -247,16 +246,16 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function registerRouteAndCreateIncreasePositionRequest(
-        bytes memory _traderPositionData,
-        bytes memory _traderSwapData,
+    function registerRouteAndRequestPosition(
+        IRoute.AdjustPositionParams memory _adjustPositionParams,
+        IRoute.SwapParams memory _swapParams,
         uint256 _executionFee,
         address _collateralToken,
         address _indexToken,
         bool _isLong
     ) external payable returns (bytes32 _routeKey, bytes32 _requestKey) {
         _routeKey = registerRoute(_collateralToken, _indexToken, _isLong);
-        _requestKey = IRoute(_routeInfo[_routeKey].route).createPositionRequest{value: msg.value}(_traderPositionData, _traderSwapData, _executionFee, true);
+        _requestKey = IRoute(_routeInfo[_routeKey].route).requestPosition{value: msg.value}(_adjustPositionParams, _swapParams, _executionFee, true);
     }
 
     // ============================================================================================
@@ -397,13 +396,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function routeCreatePositionRequest(bytes memory _traderPositionData,
-        bytes memory _traderSwapData,
+    function requestRoutePosition(
+        IRoute.AdjustPositionParams memory _adjustPositionParams,
+        IRoute.SwapParams memory _swapParams,
         uint256 _executionFee,
         address _route,
         bool _isIncrease
     ) external payable requiresAuth nonReentrant returns (bytes32 _requestKey) {
-        _requestKey = IRoute(_route).createPositionRequest{value: msg.value}(_traderPositionData, _traderSwapData, _executionFee, _isIncrease);
+        _requestKey = IRoute(_route).requestPosition{value: msg.value}(_adjustPositionParams, _swapParams, _executionFee, _isIncrease);
 
         emit PositionRequestCreated(_requestKey, _route, _isIncrease);
     }

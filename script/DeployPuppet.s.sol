@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-import {RouteFactory} from "../src/RouteFactory.sol";
-import {Orchestrator} from "../src/Orchestrator.sol";
-
 import "./utilities/DeployerUtilities.sol";
+
+// ---- Usage ----
+// forge script script/DeployPuppet.s.sol:DeployPuppet --rpc-url $RPC_URL --broadcast
+// forge verify-contract --verifier-url https://arbiscan.io/ $CONTRACT_ADDRESS src/Orchestrator.sol:Orchestrator
+
+// forge verify-contract --constructor-args 0x000000000000000000000000189b21eda0cff16461913d616a0a4f711cd986cb --watch --chain-id 42161 --compiler-version v0.8.17+commit.8df45f5f --verifier-url https://api.arbiscan.io/api 0xc514680Bc42E57BfCdA5E9c7eaf9eD4234c66977 src/Dictator.sol:Dictator
+// --constructor-args $(cast abi-encode "constructor(address)" 0xBF73FEBB672CC5B8707C2D75cB49B0ee2e2C9DaA)
+
+//   dictator: 0xc514680Bc42E57BfCdA5E9c7eaf9eD4234c66977
+//   routeFactory: 0x5e5B5C1f69cFb1F0a84AD03d242B07C3A8e53B71
+//   orchestrator: 0xA12a6281c1773F267C274c3BE1B71DB2BACE06Cb
 
 contract DeployPuppet is DeployerUtilities {
 

@@ -2,6 +2,8 @@
 pragma solidity 0.8.17;
 
 import {Dictator} from "../../src/Dictator.sol";
+import {RouteFactory} from "../../src/RouteFactory.sol";
+import {Orchestrator} from "../../src/Orchestrator.sol";
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
@@ -33,10 +35,11 @@ contract DeployerUtilities is Script {
     // Puppet info
 
     address internal _keeper = address(0);
+    address internal _dictator = 0xc514680Bc42E57BfCdA5E9c7eaf9eD4234c66977;
+    address internal _routeFactory = 0x5e5B5C1f69cFb1F0a84AD03d242B07C3A8e53B71;
+    address internal orchestrator = 0xA12a6281c1773F267C274c3BE1B71DB2BACE06Cb;
 
     bytes32 internal _referralCode = bytes32(0);
-
-    // todo - add Dictator and RouteFactory addresses 
 
     // ============================================================================================
     // Authority Functions
@@ -50,13 +53,3 @@ contract DeployerUtilities is Script {
         _dictator.setUserRole(user, role, enabled);
     }
 }
-
-
-// ---- Notes ----
-
-// forge script script/arbitrum/InitFortressArbi.s.sol:InitFortress --rpc-url $RPC_URL --broadcast
-// cast call COMPUNDER_ADDRESS "balanceOf(address)(uint256)" 0x24aDB12fE4b03b780989B5D7C5A5114b2fc45F01 --rpc-url RPC_URL
-// cast call REG_ADDRESS "getTokenCompounder(address)(address)" 0x24aDB12fE4b03b780989B5D7C5A5114b2fc45F01 --rpc-url RPC_URL
-// https://abi.hashex.org/ - for constructor
-// forge flatten --output GlpCompounder.sol src/arbitrum/compounders/gmx/GlpCompounder.sol
-// forge verify-contract --verifier-url https://arbiscan.io/ 0x03605C3A3dAf860774448df807742c0d0e49460C src/arbitrum/utils/FortressArbiRegistry.sol:FortressArbiRegistry

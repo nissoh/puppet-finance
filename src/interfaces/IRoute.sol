@@ -33,6 +33,26 @@ interface IRoute is IPositionRouterCallbackReceiver {
         uint256[] puppetsAmounts;
     }
 
+    struct AdjustPositionParams {
+        uint256 amountIn;
+        uint256 collateralDelta;
+        uint256 sizeDelta;
+        uint256 acceptablePrice;
+        uint256 minOut;
+    }
+
+    struct SwapParams {
+        address[] path;
+        uint256 amount;
+        uint256 minOut;
+    }
+
+    struct GetPuppetAdditionalAmountContext {
+        bool isOI;
+        uint256 increaseRatio;
+        uint256 traderAmountIn;
+    }
+
     // ============================================================================================
     // View Functions
     // ============================================================================================
@@ -77,13 +97,13 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     // Trader
 
-    /// @notice The ```createPositionRequest``` function creates a new position request
-    /// @param _traderPositionData The position data of the trader, encoded as bytes
-    /// @param _traderSwapData The swap data of the Trader, encoded as bytes, enables the Trader to add collateral with a non-collateral token
+    /// @notice The ```requestPosition``` function creates a new position request
+    /// @param _adjustPositionParams The adjusment params for the position
+    /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
     /// @param _executionFee The total execution fee, paid by the Trader in ETH
     /// @param _isIncrease The boolean indicating if the request is an increase or decrease request
     /// @return _requestKey The request key
-    function createPositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, bool _isIncrease) external payable returns (bytes32 _requestKey);
+    function requestPosition(AdjustPositionParams memory _adjustPositionParams, SwapParams memory _swapParams, uint256 _executionFee, bool _isIncrease) external payable returns (bytes32 _requestKey);
 
     /// @notice The ```approvePlugin``` function is used to approve the GMX plugin in case we change the gmxPositionRouter address
     function approvePlugin() external;
@@ -91,10 +111,10 @@ interface IRoute is IPositionRouterCallbackReceiver {
     // Keeper
 
     /// @notice The ```decreaseSize``` function is called by Puppet keepers to decrease the position size in case there are Puppets to adjust
-    /// @param _traderPositionData The position data of the trader, encoded as bytes
+    /// @param _adjustPositionParams The adjusment params for the position
     /// @param _executionFee The total execution fee, paid by the Keeper in ETH
     /// @return _requestKey The request key 
-    function decreaseSize(bytes memory _traderPositionData, uint256 _executionFee) external returns (bytes32 _requestKey);
+    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external returns (bytes32 _requestKey);
 
     /// @notice The ```liquidate``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
     function liquidate() external;
@@ -118,8 +138,8 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event Liquidated();
     event CallbackReceived(bytes32 indexed requestKey, bool indexed isExecuted, bool indexed isIncrease);
     event PluginApproved();
-    event CreatedIncreasePositionRequest(bytes32 indexed requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
-    event CreatedDecreasePositionRequest(bytes32 indexed requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice, uint256 executionFee);
+    event CreatedIncreasePositionRequest(bytes32 indexed requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice);
+    event CreatedDecreasePositionRequest(bytes32 indexed requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice);
     event BalanceRepaid(uint256 totalAssets);
     event RouteReset();
     event TokensRescued(uint256 _amount, address _token, address _receiver);

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
+import {IRoute} from "./IRoute.sol";
+
 interface IOrchestrator {
 
     struct RouteType {
@@ -132,14 +134,14 @@ interface IOrchestrator {
     /// @return bytes32 The Route key
     function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external returns (bytes32);
 
-    /// @notice The ```registerRouteAndCreateIncreasePositionRequest``` function is called by a Trader to register a new Route and create an Increase Position Request
-    /// @param _traderPositionData The position data of the trader, encoded as bytes
-    /// @param _traderSwapData The swap data of the Trader, encoded as bytes, enables the Trader to add collateral with a non-collateral token
+    /// @notice The ```registerRouteAndRequestPosition``` function is called by a Trader to register a new Route and create an Increase Position Request
+    /// @param _adjustPositionParams The adjusment params for the position
+    /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
     /// @param _executionFee The total execution fee, paid by the Trader in ETH
     /// @param _collateralToken The address of the Collateral Token
     /// @param _indexToken The address of the Index Token
     /// @param _isLong The boolean value of the position
-    function registerRouteAndCreateIncreasePositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, address _collateralToken, address _indexToken, bool _isLong) external payable returns (bytes32 _routeKey, bytes32 _requestKey);
+    function registerRouteAndRequestPosition(IRoute.AdjustPositionParams memory _adjustPositionParams, IRoute.SwapParams memory _swapParams, uint256 _executionFee, address _collateralToken, address _indexToken, bool _isLong) external payable returns (bytes32 _routeKey, bytes32 _requestKey);
 
     // Puppet
 
@@ -208,14 +210,14 @@ interface IOrchestrator {
     /// @param _route The address of the Route
     function rescueRouteTokens(uint256 _amount, address _token, address _receiver, address _route) external;
 
-    /// @notice The ```rescueRouteTokensFromPuppet``` function is called by the Authority to create a new position request for a Route
-    /// @param _traderPositionData The position data of the trader, encoded as bytes
-    /// @param _traderSwapData The swap data of the Trader, encoded as bytes, enables the Trader to add collateral with a non-collateral token
+    /// @notice The ```requestRoutePosition``` function is called by the Authority to create a new position request for a Route
+    /// @param _adjustPositionParams The adjusment params for the position
+    /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
     /// @param _executionFee The total execution fee, paid by the Trader in ETH
     /// @param _route The address of the Route
     /// @param _isIncrease Whether to increase or decrease the position
     /// @return _requestKey The Request key
-    function routeCreatePositionRequest(bytes memory _traderPositionData, bytes memory _traderSwapData, uint256 _executionFee, address _route, bool _isIncrease) external payable returns (bytes32 _requestKey);
+    function requestRoutePosition(IRoute.AdjustPositionParams memory _adjustPositionParams, IRoute.SwapParams memory _swapParams, uint256 _executionFee, address _route, bool _isIncrease) external payable returns (bytes32 _requestKey);
 
     /// @notice The ```freezeRoute``` function is called by the Authority to freeze or unfreeze a Route
     /// @param _route The address of the Route

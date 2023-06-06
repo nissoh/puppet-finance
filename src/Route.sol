@@ -27,11 +27,12 @@ import {IGMXVault} from "./interfaces/IGMXVault.sol";
 import {IRoute} from "./interfaces/IRoute.sol";
 
 import "./Base.sol";
-
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
 /// @title Route
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
 /// @notice This contract acts as a container account which a trader can use to manage their position, and puppets can subscribe to
-contract Route is Base, IRoute {
+contract Route is Base, IRoute, Test {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
@@ -40,7 +41,7 @@ contract Route is Base, IRoute {
 
     uint256 public positionIndex;
 
-    bytes32 private _routeTypeKey;
+    bytes32 private immutable _routeTypeKey;
 
     mapping(bytes32 => bool) public keeperRequests; // requestKey => isKeeperRequest
 
@@ -161,9 +162,9 @@ contract Route is Base, IRoute {
 
     /// @inheritdoc IRoute
     // slither-disable-next-line reentrancy-eth
-    function createPositionRequest(
-        bytes memory _traderPositionData,
-        bytes memory _traderSwapData,
+    function requestPosition(
+        AdjustPositionParams memory _adjustPositionParams,
+        SwapParams memory _swapParams,
         uint256 _executionFee,
         bool _isIncrease
     ) external payable onlyTrader nonReentrant returns (bytes32 _requestKey) {
@@ -171,10 +172,10 @@ contract Route is Base, IRoute {
         _repayBalance(bytes32(0), msg.value, false);
 
         if (_isIncrease) {
-            uint256 _amountIn = _getAssets(_traderSwapData, _executionFee);
-            _requestKey = _createIncreasePositionRequest(_traderPositionData, _amountIn, _executionFee);
+            uint256 _amountIn = _getAssets(_swapParams, _executionFee);
+            _requestKey = _requestIncreasePosition(_adjustPositionParams, _amountIn, _executionFee);
         } else {
-            _requestKey = _createDecreasePositionRequest(_traderPositionData, _executionFee);
+            _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
         }
     }
 
@@ -190,9 +191,9 @@ contract Route is Base, IRoute {
     // ============================================================================================
 
     /// @inheritdoc IRoute
-    function decreaseSize(bytes memory _traderPositionData, uint256 _executionFee) external onlyKeeper nonReentrant returns (bytes32 _requestKey) {
+    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external onlyKeeper nonReentrant returns (bytes32 _requestKey) {
         keeperRequests[_requestKey] = true;
-        _requestKey = _createDecreasePositionRequest(_traderPositionData, _executionFee);
+        _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
     }
 
     /// @inheritdoc IRoute
@@ -246,17 +247,10 @@ contract Route is Base, IRoute {
     // Internal Mutated Functions
     // ============================================================================================
 
-    /// @notice The ```_getAssets``` function is used to get the assets of the Trader and Puppets and update the request accounting
-    /// @dev This function is called by ```createPositionRequest```
-    /// @param _traderSwapData The swap data of the Trader, encoded as bytes, enables the Trader to add collateral with a non-collateral token
-    /// @param _executionFee The execution fee paid by the Trader, in ETH
-    /// @return _amountIn The total amount of collateral Puppets and Traders are requesting to add to the position
-    function _getAssets(bytes memory _traderSwapData, uint256 _executionFee) internal returns (uint256 _amountIn) {
-        (,uint256 _amount,) = abi.decode(_traderSwapData, (address[], uint256, uint256));
-
-        if (_amount > 0) {
+    function _getAssets(SwapParams memory _swapParams, uint256 _executionFee) internal returns (uint256 _amountIn) {
+        if (_swapParams.amount > 0) {
             // 1. get trader assets and allocate request shares. pull funds too, if needed
-            uint256 _traderAmountIn = _getTraderAssets(_traderSwapData, _executionFee);
+            uint256 _traderAmountIn = _getTraderAssets(_swapParams, _executionFee);
 
             uint256 _traderShares = _convertToShares(0, 0, _traderAmountIn);
         
@@ -299,36 +293,37 @@ contract Route is Base, IRoute {
         }
     }
 
-    /// @notice The ```_getTraderAssets``` function is used to get the assets of the Trader
-    /// @dev This function is called by ```_getAssets```
-    /// @param _traderSwapData The swap data of the Trader, encoded as bytes, enables the Trader to add collateral with a non-collateral token
-    /// @param _executionFee The execution fee paid by the Trader, in ETH
-    /// @return _traderAmountIn The total amount of collateral the Trader is requesting to add to the position
-    function _getTraderAssets(bytes memory _traderSwapData, uint256 _executionFee) internal returns (uint256 _traderAmountIn) {
-        (address[] memory _path, uint256 _amount, uint256 _minOut) = abi.decode(_traderSwapData, (address[], uint256, uint256));
-
+    function _getTraderAssets(SwapParams memory _swapParams, uint256 _executionFee) internal returns (uint256 _traderAmountIn) {
+        console.log("------------------");
+        console.log("getTraderAssets");
+        console.log(_swapParams.amount);
+        console.log(_executionFee);
+        console.log(_swapParams.path[0]);
+        console.log(_swapParams.path[_swapParams.path.length - 1]);
+        console.log(route.trader);
+        console.log("------------------");
         if (msg.value - _executionFee > 0) {
-            if (msg.value - _executionFee != _amount) revert InvalidExecutionFee();
-            if (_path[0] != _WETH) revert InvalidPath();
+            if (msg.value - _executionFee != _swapParams.amount) revert InvalidExecutionFee();
+            if (_swapParams.path[0] != _WETH) revert InvalidPath();
 
-            payable(_WETH).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
+            payable(_WETH).functionCallWithValue(abi.encodeWithSignature("deposit()"), _swapParams.amount);
         } else {
             if (msg.value != _executionFee) revert InvalidExecutionFee();
 
-            IERC20(_path[0]).safeTransferFrom(route.trader, address(this), _amount);
+            IERC20(_swapParams.path[0]).safeTransferFrom(route.trader, address(this), _swapParams.amount);
         }
 
-        if (_path[0] == route.collateralToken) {
-            _traderAmountIn = _amount;
+        if (_swapParams.path[0] == route.collateralToken) {
+            _traderAmountIn = _swapParams.amount;
         } else {
-            address _toToken = _path[_path.length - 1];
+            address _toToken = _swapParams.path[_swapParams.path.length - 1];
             if (_toToken != route.collateralToken) revert InvalidPath();
 
             address _router = orchestrator.gmxRouter();
-            _approve(_router, _path[0], _amount);
+            _approve(_router, _swapParams.path[0], _swapParams.amount);
 
             uint256 _before = IERC20(_toToken).balanceOf(address(this));
-            IGMXRouter(_router).swap(_path, _amount, _minOut, address(this));
+            IGMXRouter(_router).swap(_swapParams.path, _swapParams.amount, _swapParams.minOut, address(this));
             _traderAmountIn = IERC20(_toToken).balanceOf(address(this)) - _before;
         }
     }
@@ -339,17 +334,16 @@ contract Route is Base, IRoute {
     /// @param _totalAssets The current total assets in the request
     /// @return _puppetsRequestData The request data of the Puppets, encoded as bytes
     function _getPuppetsAssetsAndAllocateRequestShares(uint256 _totalSupply, uint256 _totalAssets) internal returns (bytes memory _puppetsRequestData) {
-        Route memory _route = route;
         Position storage _position = positions[positionIndex];
         bool _isOI = _isOpenInterest();
         uint256 _increaseRatio = 0;
         uint256 _traderAmountIn = _totalAssets;
         address[] memory _puppets;
         if (_isOI) {
-            _increaseRatio = _traderAmountIn * 1e18 / _position.latestAmountIn[_route.trader];
+            _increaseRatio = _traderAmountIn * 1e18 / _position.latestAmountIn[route.trader];
             _puppets = _position.puppets;
         } else {
-            _puppets = orchestrator.subscribedPuppets(orchestrator.getRouteKey(_route.trader, _routeTypeKey));
+            _puppets = orchestrator.subscribedPuppets(orchestrator.getRouteKey(route.trader, _routeTypeKey));
             _position.puppets = _puppets;
         }
 
@@ -360,7 +354,7 @@ contract Route is Base, IRoute {
             address _puppet = _puppets[i];
             uint256 _puppetShares = 0;
             uint256 _allowancePercentage = orchestrator.puppetAllowancePercentage(_puppet, address(this));
-            uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, _route.collateralToken) * _allowancePercentage) / 100;
+            uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / 100;
             if (_isOI) {
                 if (_position.adjustedPuppets[_puppet]) {
                     _allowanceAmount = 0;
@@ -385,7 +379,7 @@ contract Route is Base, IRoute {
             }
 
             if (_allowanceAmount > 0) {
-                orchestrator.debitPuppetAccount(_allowanceAmount, _route.collateralToken, _puppet);
+                orchestrator.debitPuppetAccount(_allowanceAmount, route.collateralToken, _puppet);
 
                 _puppetsAmountIn = _puppetsAmountIn + _allowanceAmount;
 
@@ -406,31 +400,131 @@ contract Route is Base, IRoute {
         );
     }
 
-    /// @notice The ```_createIncreasePositionRequest``` function is used to create a request to increase the position size and/or collateral
-    /// @dev This function is called by ```createPositionRequest```
-    /// @param _traderPositionData The position data of the trader, encoded as bytes
-    /// @param _amountIn The total amount of collateral to increase the position by
-    /// @param _executionFee The total execution fee, paid by the Trader in ETH
-    /// @return _requestKey The request key of the request
-    function _createIncreasePositionRequest(bytes memory _traderPositionData, uint256 _amountIn, uint256 _executionFee) internal returns (bytes32 _requestKey) {
-        (uint256 _minOut, uint256 _sizeDelta, uint256 _acceptablePrice) = abi.decode(_traderPositionData, (uint256, uint256, uint256));
+    // function _getPuppetsAssetsAndAllocateRequestShares(uint256 _totalSupply, uint256 _totalAssets) internal returns (bytes memory _puppetsRequestData) {
+    //     bool _isOI = _isOpenInterest();
+    //     uint256 _increaseRatio = _isOI ? _totalAssets * 1e18 / positions[positionIndex].latestAmountIn[route.trader] : 0;
 
-        Route memory _route = route;
+    //     uint256 _puppetsAmountIn = 0;
+    //     uint256 _traderAmountIn = _totalAssets;
+    //     address[] memory _puppets = _getRelevantPuppets(_isOI);
+    //     uint256[] memory _puppetsShares = new uint256[](_puppets.length);
+    //     uint256[] memory _puppetsAmounts = new uint256[](_puppets.length);
 
+    //     GetPuppetAdditionalAmountContext memory _context = GetPuppetAdditionalAmountContext({
+    //         isOI: _isOI,
+    //         increaseRatio: _increaseRatio,
+    //         traderAmountIn: _traderAmountIn
+    //     });
+
+    //     for (uint256 i = 0; i < _puppets.length; i++) {
+    //         (uint256 _allowanceAmount, uint256 _additionalShares) = _getPuppetAdditionalAmounts(_context, _totalSupply, _totalAssets, _puppets[i]);
+
+    //         _totalSupply += _additionalShares;
+    //         _totalAssets += _allowanceAmount;
+
+    //         _puppetsAmountIn += _allowanceAmount;
+    //         _puppetsShares[i] = _additionalShares;
+    //         _puppetsAmounts[i] = _allowanceAmount;
+    //     }
+
+    //     _puppetsRequestData = abi.encode(_puppetsAmountIn, _totalSupply, _totalAssets, _puppetsShares, _puppetsAmounts);
+    // }
+
+    // function _getRelevantPuppets(bool _isOI) internal view returns (address[] memory _puppets) {
+    //     return _isOI ? positions[positionIndex].puppets : orchestrator.subscribedPuppets(orchestrator.getRouteKey(route.trader, _routeTypeKey));
+    // }
+
+    // // function _getPuppetAdditionalAmounts(
+    // //     bool _isOI,
+    // //     uint256 _increaseRatio,
+    // //     uint256 _totalSupply,
+    // //     uint256 _totalAssets,
+    // //     address _puppet
+    // // ) internal returns (uint256 _allowanceAmount, uint256 _additionalShares) {
+    
+    // //     Position storage _position = positions[positionIndex];
+    // //     uint256 _allowancePercentage = orchestrator.puppetAllowancePercentage(_puppet, address(this));
+
+    // //     _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / 100;
+
+    // //     if (_isOI && !_shouldPuppetAdjust(_position.adjustedPuppets[_puppet], _increaseRatio, _allowanceAmount, _position.latestAmountIn[_puppet])) {
+    // //         _position.adjustedPuppets[_puppet] = true;
+    // //         _allowanceAmount = 0;
+    // //     } else if (!_isOI && !_shouldAllowEligiblePuppet(orchestrator.isBelowThrottleLimit(_puppet, _routeTypeKey), _allowanceAmount, _totalAssets)) {
+    // //         _allowanceAmount = 0;
+    // //     }
+
+    // //     if (_allowanceAmount > 0) {
+    // //         orchestrator.debitPuppetAccount(_allowanceAmount, route.collateralToken, _puppet);
+    // //         _additionalShares = _convertToShares(_totalAssets, _totalSupply, _allowanceAmount);
+    // //     }
+        
+    // //     return (_allowanceAmount, _additionalShares);
+    // // }
+
+    // function _getPuppetAdditionalAmounts(
+    //     GetPuppetAdditionalAmountContext memory _context,
+    //     uint256 _totalSupply,
+    //     uint256 _totalAssets,
+    //     address _puppet
+    // ) internal returns (uint256 _allowanceAmount, uint256 _additionalShares) {
+    //     if (_context.isOI) {
+    //         Position storage _position = positions[positionIndex];
+    //         if (_position.adjustedPuppets[_puppet]) {
+    //             _allowanceAmount = 0;
+    //         } else {
+    //             uint256 _requiredAdditionalCollateral = _position.latestAmountIn[_puppet] * _context.increaseRatio / 1e18;
+    //             if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
+    //                 _position.adjustedPuppets[_puppet] = true;
+    //                 _allowanceAmount = 0;
+    //             } else {
+    //                 _allowanceAmount = _requiredAdditionalCollateral;
+    //                 _additionalShares = _convertToShares(_totalAssets, _totalSupply, _allowanceAmount);
+    //             }
+    //         }
+    //     } else {
+    //         if (_allowanceAmount > 0 && orchestrator.isBelowThrottleLimit(_puppet, _routeTypeKey)) {
+    //             if (_allowanceAmount > _context.traderAmountIn) _allowanceAmount = _context.traderAmountIn;
+    //             _additionalShares = _convertToShares(_totalAssets, _totalSupply, _allowanceAmount);
+    //             orchestrator.updateLastPositionOpenedTimestamp(_puppet, _routeTypeKey);
+    //         } else {
+    //             _allowanceAmount = 0;
+    //         }
+    //     }
+    // }
+
+    // // function _shouldPuppetAdjust(bool _alreadyAdjusted, uint256 _increaseRatio, uint256 _allowanceAmount, uint256 _latestAmountIn) internal pure returns (bool) {
+    // //     if (_alreadyAdjusted) return false;
+
+    // //     uint256 _requiredAdditionalCollateral = _latestAmountIn * _increaseRatio / 1e18;
+    // //     bool notRequired =  (_requiredAdditionalCollateral == 0 || (_requiredAdditionalCollateral > _allowanceAmount));
+    // //     return !notRequired;
+    // // }
+
+    // // function _shouldAllowEligiblePuppet(bool _isEligible, uint256 _allowanceAmount, uint256 _totalAssets) internal pure returns (bool) {
+    // //     if(!_isEligible) return false;
+    // //     return _allowanceAmount > _min(_allowanceAmount, _totalAssets);
+    // // }
+
+    // // function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+    // //     return a < b ? a : b;
+    // // }
+
+    function _requestIncreasePosition(AdjustPositionParams memory _adjustPositionParams, uint256 _amountIn, uint256 _executionFee) internal returns (bytes32 _requestKey) {
         address[] memory _path = new address[](1);
-        _path[0] = _route.collateralToken;
+        _path[0] = route.collateralToken;
 
         _approve(orchestrator.gmxRouter(), _path[0], _amountIn);
 
         // slither-disable-next-line arbitrary-send-eth
         _requestKey = IGMXPositionRouter(orchestrator.gmxPositionRouter()).createIncreasePosition{ value: _executionFee } (
             _path,
-            _route.indexToken,
+            route.indexToken,
             _amountIn,
-            _minOut,
-            _sizeDelta,
-            _route.isLong,
-            _acceptablePrice,
+            _adjustPositionParams.minOut,
+            _adjustPositionParams.sizeDelta,
+            route.isLong,
+            _adjustPositionParams.acceptablePrice,
             _executionFee,
             orchestrator.referralCode(),
             address(this)
@@ -440,35 +534,31 @@ contract Route is Base, IRoute {
 
         if (_amountIn > 0) requestKeyToAddCollateralRequestsIndex[_requestKey] = positions[positionIndex].addCollateralRequestsIndex - 1;
 
-        emit CreatedIncreasePositionRequest(_requestKey, _amountIn, _minOut, _sizeDelta, _acceptablePrice, _executionFee);
+        emit CreatedIncreasePositionRequest(
+            _requestKey,
+            _adjustPositionParams.amountIn,
+            _adjustPositionParams.minOut,
+            _adjustPositionParams.sizeDelta,
+            _adjustPositionParams.acceptablePrice
+        );
     }
 
-    /// @notice The ```_createDecreasePositionRequest``` function is used to create a request to decrease the position size and/or collateral
-    /// @dev This function is called by ```createPositionRequest```
-    /// @param _traderPositionData The position data of the trader, encoded as bytes
-    /// @param _executionFee The total execution fee, paid by the Trader in ETH
-    /// @return _requestKey The request key of the request
-    function _createDecreasePositionRequest(bytes memory _traderPositionData, uint256 _executionFee) internal returns (bytes32 _requestKey) {
-        (uint256 _collateralDelta, uint256 _sizeDelta, uint256 _acceptablePrice, uint256 _minOut)
-            = abi.decode(_traderPositionData, (uint256, uint256, uint256, uint256));
-
+    function _requestDecreasePosition(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) internal returns (bytes32 _requestKey) {
         if (msg.value != _executionFee) revert InvalidExecutionFee();
 
-        Route memory _route = route;
-
         address[] memory _path = new address[](1);
-        _path[0] = _route.collateralToken;
+        _path[0] = route.collateralToken;
 
         // slither-disable-next-line arbitrary-send-eth
         _requestKey = IGMXPositionRouter(orchestrator.gmxPositionRouter()).createDecreasePosition{ value: _executionFee } (
             _path,
-            _route.indexToken,
-            _collateralDelta,
-            _sizeDelta,
-            _route.isLong,
+            route.indexToken,
+            _adjustPositionParams.collateralDelta,
+            _adjustPositionParams.sizeDelta,
+            route.isLong,
             address(this), // _receiver
-            _acceptablePrice,
-            _minOut,
+            _adjustPositionParams.acceptablePrice,
+            _adjustPositionParams.minOut,
             _executionFee,
             false, // _withdrawETH
             address(this)
@@ -476,12 +566,15 @@ contract Route is Base, IRoute {
 
         positions[positionIndex].requestKeys.push(_requestKey);
 
-        emit CreatedDecreasePositionRequest(_requestKey, _minOut, _collateralDelta, _sizeDelta, _acceptablePrice, _executionFee);
+        emit CreatedDecreasePositionRequest(
+            _requestKey,
+            _adjustPositionParams.minOut,
+            _adjustPositionParams.collateralDelta,
+            _adjustPositionParams.sizeDelta,
+            _adjustPositionParams.acceptablePrice
+        );
     }
 
-    /// @notice The ```_allocateShares``` function is used to update the position accounting with the request data
-    /// @dev This function is called by ```gmxPositionCallback```
-    /// @param _requestKey The request key of the request
     function _allocateShares(bytes32 _requestKey) internal {
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         uint256 _traderAmountIn = _request.traderAmountIn;
@@ -520,11 +613,6 @@ contract Route is Base, IRoute {
         }
     }
 
-    /// @notice The ```_repayBalance``` function is used to repay the balance of the Route
-    /// @dev This function is called by ```createPositionRequest```, ```liquidate``` and ```gmxPositionCallback```
-    /// @param _requestKey The request key of the request, expected to be `bytes32(0)` if called on a successful request
-    /// @param _traderAmountIn The amount ETH paid by the trader before this function is called
-    /// @param _repayKeeper A boolean indicating whether the keeper should be repaid the unused execution fee
     function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _repayKeeper) internal {
         Position storage _position = positions[positionIndex];
         Route memory _route = route;
@@ -580,19 +668,12 @@ contract Route is Base, IRoute {
         emit BalanceRepaid(_totalAssets);
     }
 
-    /// @notice The ```_resetRoute``` function is used to increment the position index, which is used to track the current position
-    /// @dev This function is called by ```_repayBalance```, only if there's no open interest
     function _resetRoute() internal {
         positionIndex += 1;
 
         emit RouteReset();
     }
 
-    /// @notice The ```_approve``` function is used to approve a spender to spend a token
-    /// @dev This function is called by ```_getTraderAssets``` and ```_createIncreasePositionRequest```
-    /// @param _spender The address of the spender
-    /// @param _token The address of the token
-    /// @param _amount The amount of the token to approve
     function _approve(address _spender, address _token, uint256 _amount) internal {
         IERC20(_token).safeApprove(_spender, 0);
         IERC20(_token).safeApprove(_spender, _amount);
@@ -602,9 +683,6 @@ contract Route is Base, IRoute {
     // Internal View Functions
     // ============================================================================================
 
-    /// @notice The ```_isOpenInterest``` function is used to indicate whether the Route has open interest
-    /// @dev This function is called by ```liquidate```, ```_getPuppetsAssetsAndAllocateRequestShares``` and ```_repayBalance```
-    /// @return bool A boolean indicating whether the Route has open interest
     function _isOpenInterest() internal view returns (bool) {
         Route memory _route = route;
 
@@ -613,11 +691,6 @@ contract Route is Base, IRoute {
         return _size > 0 && _collateral > 0;
     }
 
-    /// @notice The ```_convertToShares``` function is used to convert an amount of assets to shares, given the total assets and total supply
-    /// @param _totalAssets The total assets
-    /// @param _totalSupply The total supply
-    /// @param _assets The amount of assets to convert
-    /// @return _shares The amount of shares
     function _convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) internal pure returns (uint256 _shares) {
         if (_assets == 0) revert ZeroAmount();
 
@@ -630,11 +703,6 @@ contract Route is Base, IRoute {
         if (_shares == 0) revert ZeroAmount();
     }
 
-    /// @notice The ```_convertToAssets``` function is used to convert an amount of shares to assets, given the total assets and total supply
-    /// @param _totalAssets The total assets
-    /// @param _totalSupply The total supply
-    /// @param _shares The amount of shares to convert
-    /// @return _assets The amount of assets
     function _convertToAssets(uint256 _totalAssets, uint256 _totalSupply, uint256 _shares) internal pure returns (uint256 _assets) {
         if (_shares == 0) revert ZeroAmount();
 
