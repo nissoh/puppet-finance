@@ -112,7 +112,6 @@ contract testPuppet is Test {
         _testIncreasePosition(true, false);
         _testClosePosition();
         _testIncreasePosition(false, true);
-        revert("ad");
     }
 
     // ============================================================================================
@@ -345,6 +344,14 @@ contract testPuppet is Test {
         uint256 _amountInTrader = 10 ether;
 
         address[] memory _path = new address[](1);
+
+        IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
+            amountIn: _amountInTrader,
+            collateralDelta: 0,
+            sizeDelta: _sizeDelta,
+            acceptablePrice: _acceptablePrice,
+            minOut: _minOut
+        });
         
         _path[0] = FRAX;
         IRoute.SwapParams memory _faultyTraderSwapData = IRoute.SwapParams({
@@ -353,20 +360,15 @@ contract testPuppet is Test {
             minOut: _minOut
         });
 
+        vm.expectRevert(); // reverts with InvalidPath()
+        route.requestPosition{ value: _amountInTrader + _executionFee }(_adjustPositionParams, _faultyTraderSwapData, _executionFee, true);
+
         address[] memory _pathNonCollateral = new address[](2);
         _pathNonCollateral[0] = FRAX;
         _pathNonCollateral[1] = WETH;
         IRoute.SwapParams memory _traderSwapDataNonCollateral = IRoute.SwapParams({
             path: _pathNonCollateral,
             amount: _amountInTrader,
-            minOut: _minOut
-        });
-
-        IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
-            amountIn: _amountInTrader,
-            collateralDelta: 0,
-            sizeDelta: _sizeDelta,
-            acceptablePrice: _acceptablePrice,
             minOut: _minOut
         });
 
@@ -395,16 +397,6 @@ contract testPuppet is Test {
 
         vm.expectRevert(); // reverts with InvalidExecutionFee()
         route.requestPosition{ value: _amountInTrader + _executionFee + 10 }(_adjustPositionParams, _swapParams, _executionFee, true);
-
-        vm.expectRevert(); // reverts with InvalidPath() // todo
-        console.log("++++++++++++++++++++++++++");
-        console.log("route.requestPosition - TESTS");
-        console.log("_faultyTraderSwapData.path0 = ", _faultyTraderSwapData.path[0]);
-        console.log("_faultyTraderSwapData.path1 = ", _faultyTraderSwapData.path[1]);
-        console.log("_faultyTraderSwapData.amount = ", _faultyTraderSwapData.amount);
-        console.log("_faultyTraderSwapData.minOut = ", _faultyTraderSwapData.minOut);
-        console.log("++++++++++++++++++++++++++");
-        route.requestPosition{ value: _amountInTrader + _executionFee }(_adjustPositionParams, _faultyTraderSwapData, _executionFee, true);
 
         bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(WETH, WETH, true);
         if (!_addCollateralToAnExistingPosition) {
