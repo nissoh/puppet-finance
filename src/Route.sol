@@ -246,6 +246,11 @@ contract Route is Base, IRoute {
     // Internal Mutated Functions
     // ============================================================================================
 
+    /// @notice The ```_getAssets``` function is used to get the assets of the Trader and Puppets and update the request accounting
+    /// @dev This function is called by ```requestPosition```
+    /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
+    /// @param _executionFee The execution fee paid by the Trader, in ETH
+    /// @return _amountIn The total amount of collateral Puppets and Traders are requesting to add to the position
     // slither-disable-next-line reentrancy-eth
     function _getAssets(SwapParams memory _swapParams, uint256 _executionFee) internal returns (uint256 _amountIn) {
         if (_swapParams.amount > 0) {
@@ -293,6 +298,11 @@ contract Route is Base, IRoute {
         }
     }
 
+    /// @notice The ```_getTraderAssets``` function is used to get the assets of the Trader
+    /// @dev This function is called by ```_getAssets```
+    /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
+    /// @param _executionFee The execution fee paid by the Trader, in ETH
+    /// @return _traderAmountIn The total amount of collateral the Trader is requesting to add to the position
     function _getTraderAssets(SwapParams memory _swapParams, uint256 _executionFee) internal returns (uint256 _traderAmountIn) {
         if (msg.value - _executionFee > 0) {
             if (msg.value - _executionFee != _swapParams.amount) revert InvalidExecutionFee();
@@ -372,6 +382,10 @@ contract Route is Base, IRoute {
         );
     }
 
+    /// @notice The ```_getRelevantPuppets``` function is used to get the relevant Puppets for the request and update the Position's Puppets, if needed
+    /// @dev This function is called by ```_getPuppetsAssetsAndAllocateRequestShares```
+    /// @param _isOI A boolean indicating if the request is adding to an already opened position
+    /// @return _puppets The relevant Puppets for the request
     function _getRelevantPuppets(bool _isOI) internal returns (address[] memory _puppets) {
         Position storage _position = positions[positionIndex];
         if (_isOI) {
@@ -382,6 +396,14 @@ contract Route is Base, IRoute {
         }
     }
 
+    /// @notice The ```_getPuppetAmounts``` function is used to get the additional amount and shares for a Puppet
+    /// @dev This function is called by ```_getPuppetsAssetsAndAllocateRequestShares```
+    /// @param _context The context of the request
+    /// @param _totalSupply The current total supply of shares in the request
+    /// @param _totalAssets The current total assets in the request
+    /// @param _puppet The Puppet address
+    /// @return _additionalAmount The additional amount the Puppet has to deposit
+    /// @return _additionalShares The additional shares for the deposit
     function _getPuppetAmounts(
         GetPuppetAdditionalAmountContext memory _context,
         uint256 _totalSupply,
@@ -417,6 +439,12 @@ contract Route is Base, IRoute {
         }
     }
 
+    /// @notice The ```_requestIncreasePosition``` function is used to create a request to increase the position size and/or collateral
+    /// @dev This function is called by ```requestPosition```
+    /// @param _adjustPositionParams The adjusment params for the position
+    /// @param _amountIn The total amount of collateral to increase the position by
+    /// @param _executionFee The total execution fee, paid by the Trader in ETH
+    /// @return _requestKey The request key of the request
     function _requestIncreasePosition(AdjustPositionParams memory _adjustPositionParams, uint256 _amountIn, uint256 _executionFee) internal returns (bytes32 _requestKey) {
         address[] memory _path = new address[](1);
         _path[0] = route.collateralToken;
@@ -450,6 +478,11 @@ contract Route is Base, IRoute {
         );
     }
 
+    /// @notice The ```_requestDecreasePosition``` function is used to create a request to decrease the position size and/or collateral
+    /// @dev This function is called by ```requestPosition```
+    /// @param _adjustPositionParams The adjusment params for the position
+    /// @param _executionFee The total execution fee, paid by the Trader in ETH
+    /// @return _requestKey The request key of the request
     function _requestDecreasePosition(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) internal returns (bytes32 _requestKey) {
         if (msg.value != _executionFee) revert InvalidExecutionFee();
 
@@ -482,6 +515,9 @@ contract Route is Base, IRoute {
         );
     }
 
+    /// @notice The ```_allocateShares``` function is used to update the position accounting with the request data
+    /// @dev This function is called by ```gmxPositionCallback```
+    /// @param _requestKey The request key of the request
     function _allocateShares(bytes32 _requestKey) internal {
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         uint256 _traderAmountIn = _request.traderAmountIn;
@@ -520,6 +556,11 @@ contract Route is Base, IRoute {
         }
     }
 
+    /// @notice The ```_repayBalance``` function is used to repay the balance of the Route
+    /// @dev This function is called by ```requestPosition```, ```liquidate``` and ```gmxPositionCallback```
+    /// @param _requestKey The request key of the request, expected to be `bytes32(0)` if called on a successful request
+    /// @param _traderAmountIn The amount ETH paid by the trader before this function is called
+    /// @param _repayKeeper A boolean indicating whether the keeper should be repaid the unused execution fee
     function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _repayKeeper) internal {
         Position storage _position = positions[positionIndex];
         Route memory _route = route;
@@ -575,12 +616,19 @@ contract Route is Base, IRoute {
         emit BalanceRepaid(_totalAssets);
     }
 
+    /// @notice The ```_resetRoute``` function is used to increment the position index, which is used to track the current position
+    /// @dev This function is called by ```_repayBalance```, only if there's no open interest
     function _resetRoute() internal {
         positionIndex += 1;
 
         emit RouteReset();
     }
 
+    /// @notice The ```_approve``` function is used to approve a spender to spend a token
+    /// @dev This function is called by ```_getTraderAssets``` and ```_requestIncreasePosition```
+    /// @param _spender The address of the spender
+    /// @param _token The address of the token
+    /// @param _amount The amount of the token to approve
     function _approve(address _spender, address _token, uint256 _amount) internal {
         IERC20(_token).safeApprove(_spender, 0);
         IERC20(_token).safeApprove(_spender, _amount);
@@ -590,6 +638,9 @@ contract Route is Base, IRoute {
     // Internal View Functions
     // ============================================================================================
 
+    /// @notice The ```_isOpenInterest``` function is used to indicate whether the Route has open interest
+    /// @dev This function is called by ```liquidate```, ```_getPuppetsAssetsAndAllocateRequestShares``` and ```_repayBalance```
+    /// @return bool A boolean indicating whether the Route has open interest
     function _isOpenInterest() internal view returns (bool) {
         Route memory _route = route;
 
@@ -598,6 +649,11 @@ contract Route is Base, IRoute {
         return _size > 0 && _collateral > 0;
     }
 
+    /// @notice The ```_convertToShares``` function is used to convert an amount of assets to shares, given the total assets and total supply
+    /// @param _totalAssets The total assets
+    /// @param _totalSupply The total supply
+    /// @param _assets The amount of assets to convert
+    /// @return _shares The amount of shares
     function _convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) internal pure returns (uint256 _shares) {
         if (_assets == 0) revert ZeroAmount();
 
@@ -610,6 +666,11 @@ contract Route is Base, IRoute {
         if (_shares == 0) revert ZeroAmount();
     }
 
+    /// @notice The ```_convertToAssets``` function is used to convert an amount of shares to assets, given the total assets and total supply
+    /// @param _totalAssets The total assets
+    /// @param _totalSupply The total supply
+    /// @param _shares The amount of shares to convert
+    /// @return _assets The amount of assets
     function _convertToAssets(uint256 _totalAssets, uint256 _totalSupply, uint256 _shares) internal pure returns (uint256 _assets) {
         if (_shares == 0) revert ZeroAmount();
 

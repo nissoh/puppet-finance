@@ -2,8 +2,6 @@
 pragma solidity 0.8.17;
 
 import {Dictator} from "../../src/Dictator.sol";
-import {RouteFactory} from "../../src/RouteFactory.sol";
-import {Orchestrator} from "../../src/Orchestrator.sol";
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
@@ -34,10 +32,10 @@ contract DeployerUtilities is Script {
 
     // Puppet info
 
-    address internal _keeper = address(0);
-    address internal _dictator = 0xc514680Bc42E57BfCdA5E9c7eaf9eD4234c66977;
-    address internal _routeFactory = 0x5e5B5C1f69cFb1F0a84AD03d242B07C3A8e53B71;
-    address internal orchestrator = 0xA12a6281c1773F267C274c3BE1B71DB2BACE06Cb;
+    address internal _keeperAddr = address(0);
+    address internal _dictatorAddr = 0xA12a6281c1773F267C274c3BE1B71DB2BACE06Cb;
+    address internal _routeFactoryAddr = 0x3fC294C613C920393698d12bD26061fb8300e415;
+    address payable internal _orchestratorAddr = payable(0x82403099D24b2bF9Ee036F05E34da85E30982234);
 
     bytes32 internal _referralCode = bytes32(0);
 
