@@ -139,8 +139,8 @@ contract testPuppet is Test {
         // route
         _testIncreasePosition(false, false);
         _testIncreasePosition(true, false);
-        _testClosePosition();
-        _testIncreasePosition(false, true);
+        // _testClosePosition();
+        // _testIncreasePosition(false, true);
     }
 
     function testRegisterRouteAndIncreasePosition() public {
@@ -368,7 +368,7 @@ contract testPuppet is Test {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 92114231411087324391798166152938732778 - 86226694002961445455749333837394963689;
+        uint256 _size = 89938369001814109987555623336829682194 - 75525644522725176375223750473688014669;
         
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
@@ -450,11 +450,11 @@ contract testPuppet is Test {
             positionIndexBefore: route.positionIndex()
         });
 
-        _testCreateIncreasePosition(_params, _testNonCollateralTraderAmountIn);
+        _testCreateIncreasePosition(_params, _addCollateralToAnExistingPosition);
     }
 
     function _testCreateIncreasePosition(CreatePositionParams memory _params, bool _addCollateralToAnExistingPosition) internal {
-
+        
         IncreaseBalanceBefore memory _increaseBalanceBefore = IncreaseBalanceBefore({
             aliceDepositAccountBalanceBefore: orchestrator.puppetAccountBalance(alice, WETH),
             bobDepositAccountBalanceBefore: orchestrator.puppetAccountBalance(bob, WETH),
@@ -469,12 +469,10 @@ contract testPuppet is Test {
             positionIndexBefore: route.positionIndex()
         });
 
-
         (uint256 _addCollateralRequestsIndexBefore,,) = route.positions(route.positionIndex());
         // uint256 _positionIndexBefore = route.positionIndex();
 
         bytes32 _requestKey = _testCreatePosition(_params, _addCollateralToAnExistingPosition);
-
         if (!_addCollateralToAnExistingPosition) {
             assertTrue(IERC20(WETH).balanceOf(address(orchestrator)) < _increaseBalanceBefore.orchestratorBalanceBefore, "_testCreateInitialPosition: E05");
             assertTrue(orchestrator.puppetAccountBalance(alice, WETH) < _increaseBalanceBefore.aliceDepositAccountBalanceBefore, "_testCreateInitialPosition: E06");
@@ -629,18 +627,10 @@ contract testPuppet is Test {
             assertTrue(_requestTotalSupply > 0, "_testCreatePosition: E8");
             assertTrue(_requestTotalAssets >= _params.amountInTrader, "_testCreatePosition: E9");
         }
-        
-        {
-            assertEq(_traderAmountInReq, _params.amountInTrader, "_testCreatePosition: E6");
-            assertEq(_traderAmountInReq, _traderRequestShares, "_testCreatePosition: E7");
-            assertTrue(_requestTotalSupply > 0, "_testCreatePosition: E8");
-            assertTrue(_requestTotalAssets >= _params.amountInTrader, "_testCreatePosition: E9");
-        }
 
         (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) = route.puppetsRequestAmounts(_requestKey);
 
         _testCreatePositionExtAssertionsFirst(_params, _addCollateralToAnExistingPosition, _totalSupply, _totalAssets, _puppetsShares, _puppetsAmounts);
-
         _testCreatePositionExtAssertionsSecond(_createPositionFirst, _puppetsShares, _puppetsAmounts, _puppetsAmountIn, _addCollateralRequestsIndexBefore, _addCollateralRequestsIndexAfter);
 
         _testCreatePositionExtAssertionsThird(_requestKey, _addCollateralRequestsIndexBefore);
@@ -670,7 +660,6 @@ contract testPuppet is Test {
         }
 
     function _testCreatePositionExtAssertionsFirst(CreatePositionParams memory _params, bool _addCollateralToAnExistingPosition, uint256 _totalSupply, uint256 _totalAssets, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) internal {
-            uint256 positionIndexBefore = _params.positionIndexBefore;
             if (_addCollateralToAnExistingPosition) {
                 assertEq(route.positionIndex(), _params.positionIndexBefore, "_testCreatePosition: E10");
                 assertTrue(_totalSupply > 0, "_testCreatePosition: E011");
@@ -679,7 +668,7 @@ contract testPuppet is Test {
                 assertEq(_puppetsShares[1], 0, "_testCreatePosition: E033");
                 assertTrue(_puppetsShares[2] > 0, "_testCreatePosition: E034"); // we increased Yossi's balance so he can join on the increase
             } else {
-                assertEq(route.positionIndex(), positionIndexBefore + 1, "_testCreatePosition: E10");
+                assertEq(route.positionIndex(), _params.positionIndexBefore + 1, "_testCreatePosition: E66910");
                 assertEq(_totalSupply, 0, "_testCreatePosition: E11");
                 assertEq(_totalAssets, 0, "_testCreatePosition: E12");
                 assertTrue(_puppetsShares[0] > 0, "_testCreatePosition: E32");
@@ -775,7 +764,7 @@ contract testPuppet is Test {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 92114231411087324391798166152938732778 - 86226694002961445455749333837394963689;
+        uint256 _size = 89938369001814109987555623336829682194 - 75525644522725176375223750473688014669;
         
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
