@@ -339,7 +339,7 @@ contract Route is Base, IRoute {
     function _getPuppetsAssetsAndAllocateRequestShares(uint256 _totalSupply, uint256 _totalAssets) internal returns (bytes memory _puppetsRequestData) {
         bool _isOI = _isOpenInterest();
         uint256 _traderAmountIn = _totalAssets;
-        uint256 _increaseRatio = _isOI ? _traderAmountIn * 1e18 / positions[positionIndex].latestAmountIn[route.trader] : 0;
+        uint256 _increaseRatio = _isOI ? _traderAmountIn * 1e18 / positions[positionIndex].latestAmountIn[route.trader] : 0; // TODO - handle decimals
 
         uint256 _puppetsAmountIn = 0;
         address[] memory _puppets = _getRelevantPuppets(_isOI);
@@ -413,13 +413,13 @@ contract Route is Base, IRoute {
         Position storage _position = positions[positionIndex];
 
         uint256 _allowancePercentage = orchestrator.puppetAllowancePercentage(_puppet, address(this));
-        uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / 100;
+        uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / 100; // todo - handle decimals
 
         if (_context.isOI) {
             if (_position.adjustedPuppets[_puppet]) {
                 _additionalAmount = 0;
             } else {
-                uint256 _requiredAdditionalCollateral = _position.latestAmountIn[_puppet] * _context.increaseRatio / 1e18;
+                uint256 _requiredAdditionalCollateral = _position.latestAmountIn[_puppet] * _context.increaseRatio / 1e18; // todo - handle decimals
                 if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
                     _position.adjustedPuppets[_puppet] = true;
                     _additionalAmount = 0;
