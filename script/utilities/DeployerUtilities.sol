@@ -14,9 +14,9 @@ contract DeployerUtilities is Script {
 
     // deployer info
 
-    uint256 internal _deployerPrivateKey = vm.envUint("GBC_DEPLOYER2_PRIVATE_KEY");
+    uint256 internal _deployerPrivateKey = vm.envUint("GBC_DEPLOYER_PRIVATE_KEY");
 
-    address internal _deployer = vm.envAddress("GBC_DEPLOYER2_ADDRESS");
+    address internal _deployer = vm.envAddress("GBC_DEPLOYER_ADDRESS");
 
     // GMX info
 
