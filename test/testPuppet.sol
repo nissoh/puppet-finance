@@ -432,17 +432,22 @@ contract testPuppet is Test {
             // _amountInTrader = 179515372560047 - 25025582036376;
             _acceptablePrice = 1;
         }
+
+        // 4000000000000000 - _amountIn
+        // 5242181987350265 - _adjustPositionParams.sizeDelta
         
         // the USD value of the change in position size
         // _sizeDelta = _sizeDelta / 20;
+        _sizeDelta = _sizeDelta / 1e20;
 
         // the amount of tokenIn to deposit as collateral
-        _amountInTrader = 0.1 ether;
+        // _amountInTrader = 10 ether;
+        _amountInTrader = 0.001 ether;
 
         address[] memory _path = new address[](1);
 
         IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
-            amountIn: _amountInTrader,
+            // amountIn: _amountInTrader,
             collateralDelta: 0,
             sizeDelta: _sizeDelta,
             acceptablePrice: _acceptablePrice,
@@ -759,7 +764,7 @@ contract testPuppet is Test {
         uint256 _executionFee = 180000000000000; // can be set to PositionRouter.minExecutionFee() https://arbiscan.io/address/0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868#readContract#F26
 
         IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
-            amountIn: 0,
+            // amountIn: 0,
             collateralDelta: _collateralDelta,
             sizeDelta: _sizeDelta,
             acceptablePrice: _acceptablePrice,
@@ -845,7 +850,7 @@ contract testPuppet is Test {
         address[] memory _path = new address[](1);
 
         IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
-            amountIn: _amountInTrader,
+            // amountIn: _amountInTrader,
             collateralDelta: 0,
             sizeDelta: _sizeDelta,
             acceptablePrice: _acceptablePrice,

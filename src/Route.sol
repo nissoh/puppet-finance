@@ -27,11 +27,12 @@ import {IGMXVault} from "./interfaces/IGMXVault.sol";
 import {IRoute} from "./interfaces/IRoute.sol";
 
 import "./Base.sol";
-
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
 /// @title Route
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
 /// @notice This contract acts as a container account which a trader can use to manage their position, and puppets can subscribe to
-contract Route is Base, IRoute {
+contract Route is Base, IRoute, Test {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
@@ -465,13 +466,17 @@ contract Route is Base, IRoute {
             address(this)
         );
 
+        console.log("_amountIn", _amountIn);
+        console.log("_adjustPositionParams.sizeDelta", _adjustPositionParams.sizeDelta);
+
+
         positions[positionIndex].requestKeys.push(_requestKey);
 
         if (_amountIn > 0) requestKeyToAddCollateralRequestsIndex[_requestKey] = positions[positionIndex].addCollateralRequestsIndex - 1;
 
         emit CreatedIncreasePositionRequest(
             _requestKey,
-            _adjustPositionParams.amountIn,
+            _amountIn,
             _adjustPositionParams.minOut,
             _adjustPositionParams.sizeDelta,
             _adjustPositionParams.acceptablePrice

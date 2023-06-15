@@ -34,7 +34,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
     }
 
     struct AdjustPositionParams {
-        uint256 amountIn;
         uint256 collateralDelta;
         uint256 sizeDelta;
         uint256 acceptablePrice;
