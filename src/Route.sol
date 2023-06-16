@@ -259,6 +259,8 @@ contract Route is Base, IRoute, Test {
             uint256 _traderAmountIn = _getTraderAssets(_swapParams, _executionFee);
 
             uint256 _traderShares = _convertToShares(0, 0, _traderAmountIn);
+            console.log("TEST: _traderAmountIn: %s", _traderAmountIn);
+            console.log("TEST: _traderShares: %s", _traderShares);
         
             uint256 _totalSupply = _traderShares;
             uint256 _totalAssets = _traderAmountIn;
@@ -341,6 +343,10 @@ contract Route is Base, IRoute, Test {
         bool _isOI = _isOpenInterest();
         uint256 _traderAmountIn = _totalAssets;
         uint256 _increaseRatio = _isOI ? _traderAmountIn * 1e18 / positions[positionIndex].latestAmountIn[route.trader] : 0; // TODO - handle decimals
+        console.log("TEST: increaseRatio: %s", _increaseRatio);
+        console.log("TEST: traderAmountIn: %s", _traderAmountIn);
+        console.log("TEST: latestAmountIn: %s", positions[positionIndex].latestAmountIn[route.trader]);
+
 
         uint256 _puppetsAmountIn = 0;
         address[] memory _puppets = _getRelevantPuppets(_isOI);
@@ -414,26 +420,39 @@ contract Route is Base, IRoute, Test {
         Position storage _position = positions[positionIndex];
 
         uint256 _allowancePercentage = orchestrator.puppetAllowancePercentage(_puppet, address(this));
-        uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / 100; // todo - handle decimals
+        uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / 100; // todo - handle decimals - this should be fine
+        console.log("TEST: allowanceAmount: %s", _allowanceAmount);
+        console.log("TEST: allowancePercentage: %s", _allowancePercentage);
+        console.log("TEST: puppetAccountBalance: %s", orchestrator.puppetAccountBalance(_puppet, route.collateralToken));
 
         if (_context.isOI) {
             if (_position.adjustedPuppets[_puppet]) {
                 _additionalAmount = 0;
             } else {
                 uint256 _requiredAdditionalCollateral = _position.latestAmountIn[_puppet] * _context.increaseRatio / 1e18; // todo - handle decimals
+                console.log("TEST: requiredAdditionalCollateral: %s", _requiredAdditionalCollateral);
+                console.log("TEST: latestAmountIn: %s", _position.latestAmountIn[_puppet]);
+                console.log("TEST: increaseRatio: %s", _context.increaseRatio);
                 if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
                     _position.adjustedPuppets[_puppet] = true;
                     _additionalAmount = 0;
                 } else {
                     _additionalAmount = _requiredAdditionalCollateral;
-                    _additionalShares = _convertToShares(_totalAssets, _totalSupply, _allowanceAmount);
+                    _additionalShares = _convertToShares(_totalAssets, _totalSupply, _additionalAmount);
                 }
             }
         } else {
             if (_allowanceAmount > 0 && orchestrator.isBelowThrottleLimit(_puppet, _routeTypeKey)) {
                 _additionalAmount = _allowanceAmount > _context.traderAmountIn ? _context.traderAmountIn : _allowanceAmount;
-                _additionalShares = _convertToShares(_totalAssets, _totalSupply, _allowanceAmount);
+                _additionalShares = _convertToShares(_totalAssets, _totalSupply, _additionalAmount);
                 orchestrator.updateLastPositionOpenedTimestamp(_puppet, _routeTypeKey);
+                console.log("TEST: _allowanceAmount: %s", _allowanceAmount);
+                console.log("TEST: _context.traderAmountIn: %s", _context.traderAmountIn);
+                console.log("TEST: additionalAmount: %s", _additionalAmount);
+                console.log("TEST: additionalShares: %s", _additionalShares);
+                console.log("TEST: totalAssets: %s", _totalAssets);
+                console.log("TEST: totalSupply: %s", _totalSupply);
+
             } else {
                 _additionalAmount = 0;
             }
@@ -465,10 +484,6 @@ contract Route is Base, IRoute, Test {
             orchestrator.referralCode(),
             address(this)
         );
-
-        console.log("_amountIn", _amountIn);
-        console.log("_adjustPositionParams.sizeDelta", _adjustPositionParams.sizeDelta);
-
 
         positions[positionIndex].requestKeys.push(_requestKey);
 
@@ -659,7 +674,7 @@ contract Route is Base, IRoute, Test {
     /// @param _totalSupply The total supply
     /// @param _assets The amount of assets to convert
     /// @return _shares The amount of shares
-    function _convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) internal pure returns (uint256 _shares) {
+    function _convertToShares(uint256 _totalAssets, uint256 _totalSupply, uint256 _assets) internal view returns (uint256 _shares) { // todo - return to pure
         if (_assets == 0) revert ZeroAmount();
 
         if (_totalAssets == 0) {
@@ -667,6 +682,11 @@ contract Route is Base, IRoute, Test {
         } else {
             _shares = (_assets * _totalSupply) / _totalAssets;
         }
+
+        console.log("TEST: _totalAssets: %s", _totalAssets);
+        console.log("TEST: _totalSupply: %s", _totalSupply);
+        console.log("TEST: _assets: %s", _assets);
+        console.log("TEST: _shares: %s", _shares);
 
         if (_shares == 0) revert ZeroAmount();
     }
