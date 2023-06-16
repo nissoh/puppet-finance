@@ -190,7 +190,7 @@ contract testPuppet is Test {
 
         // route
         _testIncreasePosition(_routeTypeInfo, false, false);
-        // _testIncreasePosition(_routeTypeInfo, true, false);
+        _testIncreasePosition(_routeTypeInfo, true, false);
         // _testClosePosition();
         // _testIncreasePosition(_routeTypeInfo, false, true);
     }
@@ -646,14 +646,14 @@ contract testPuppet is Test {
                 assertApproxEqAbs(address(trader).balance, _increaseBalanceBefore.traderBalanceBeforeEth - _params.executionFee, 1e18, "_testCreateInitialPosition: E20");
                 assertEq(route.participantShares(alice), route.participantShares(bob), "_testCreateInitialPosition: E21");
                 assertTrue(route.participantShares(alice) < route.participantShares(yossi), "_testCreateInitialPosition: E22");
-                assertTrue(route.participantShares(trader) > route.participantShares(yossi), "_testCreateInitialPosition: E23");
+                assertTrue(route.participantShares(trader) >= route.participantShares(yossi), "_testCreateInitialPosition: E23");
                 uint256 _totalParticipantShares = route.participantShares(alice) + route.participantShares(bob) + route.participantShares(yossi) + route.participantShares(trader);
                 assertEq(_totalSupply, _totalParticipantShares, "_testCreateInitialPosition: E24");
                 assertEq(_totalAssets, _totalSupply, "_testCreateInitialPosition: E25");
                 assertTrue(_totalAssets > 0, "_testCreateInitialPosition: E26");
                 assertTrue(IERC20(WETH).balanceOf(address(orchestrator)) - _params.amountInTrader < _increaseBalanceBefore.orchestratorBalanceBefore, "_testCreateInitialPosition: E27"); // using _amountInTrader because that's what we added for yossi
-                assertEq(orchestrator.puppetAccountBalance(alice, _token), _increaseBalanceBefore.aliceDepositAccountBalanceBefore, "_testCreateInitialPosition: E28");
-                assertEq(orchestrator.puppetAccountBalance(bob, _token), _increaseBalanceBefore.bobDepositAccountBalanceBefore, "_testCreateInitialPosition: E29");
+                assertEq(orchestrator.puppetAccountBalance(alice, _token), 0, "_testCreateInitialPosition: E28");
+                assertEq(orchestrator.puppetAccountBalance(bob, _token), 0, "_testCreateInitialPosition: E29");
                 assertTrue(orchestrator.puppetAccountBalance(yossi, _token) - _params.amountInTrader < _increaseBalanceBefore.yossiDepositAccountBalanceBefore, "_testCreateInitialPosition: E30"); // using _amountInTrader because that's what we added for yossi
                 assertEq(route.participantShares(alice), _increaseBalanceBefore.alicePositionSharesBefore, "_testCreateInitialPosition: E0016");
                 assertEq(route.participantShares(bob), _increaseBalanceBefore.bobPositionSharesBefore, "_testCreateInitialPosition: E0017");
@@ -673,9 +673,23 @@ contract testPuppet is Test {
     function _testCreatePosition(CreatePositionParams memory _params, bool _addCollateralToAnExistingPosition) internal returns (bytes32 _requestKey) {
         // add weth to yossi's deposit account so he can join the increase
         if (_addCollateralToAnExistingPosition) {
+            _dealERC20(_params.tokenIn, yossi, _params.amountInTrader);
             vm.startPrank(yossi);
             orchestrator.deposit{ value: _params.amountInTrader }(_params.amountInTrader, WETH, yossi);
             vm.stopPrank();
+
+            // withdraw all of alice's position
+            vm.startPrank(alice);
+            orchestrator.withdraw(orchestrator.puppetAccountBalance(alice, _params.tokenIn), _params.tokenIn, alice, false);
+            vm.stopPrank();
+
+            // withdraw all of bob's position
+            vm.startPrank(bob);
+            orchestrator.withdraw(orchestrator.puppetAccountBalance(bob, _params.tokenIn), _params.tokenIn, bob, false);
+            vm.stopPrank();
+
+            assertEq(orchestrator.puppetAccountBalance(alice, _params.tokenIn), 0, "_testCreatePosition: E0001");
+            assertEq(orchestrator.puppetAccountBalance(bob, _params.tokenIn), 0, "_testCreatePosition: E0002");
         }
 
         (uint256 _addCollateralRequestsIndexBefore,,) = route.positions(route.positionIndex());
