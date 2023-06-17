@@ -94,7 +94,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     // Mutated Functions
     // ============================================================================================
 
-    // Trader
+    // Orchestrator
 
     /// @notice The ```requestPosition``` function creates a new position request
     /// @param _adjustPositionParams The adjusment params for the position
@@ -103,6 +103,16 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @param _isIncrease The boolean indicating if the request is an increase or decrease request
     /// @return _requestKey The request key
     function requestPosition(AdjustPositionParams memory _adjustPositionParams, SwapParams memory _swapParams, uint256 _executionFee, bool _isIncrease) external payable returns (bytes32 _requestKey);
+
+    /// @notice The ```rescueTokens``` is called by the Orchestrator and Authority to rescue tokens
+    /// @param _amount The amount to rescue
+    /// @param _token The token address
+    /// @param _receiver The receiver address
+    function rescueTokens(uint256 _amount, address _token, address _receiver) external;
+
+    /// @notice The ```freeze``` function is called by the Orchestrator and Authority to freeze the Route
+    /// @param _freeze The boolean indicating if the Route should be frozen or unfrozen 
+    function freeze(bool _freeze) external;
 
     /// @notice The ```approvePlugin``` function is used to approve the GMX plugin in case we change the gmxPositionRouter address
     function approvePlugin() external;
@@ -117,18 +127,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     /// @notice The ```liquidate``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
     function liquidate() external;
-
-    // Orchestrator
-
-    /// @notice The ```rescueTokens``` is called by the Orchestrator and Authority to rescue tokens
-    /// @param _amount The amount to rescue
-    /// @param _token The token address
-    /// @param _receiver The receiver address
-    function rescueTokens(uint256 _amount, address _token, address _receiver) external;
-
-    /// @notice The ```freeze``` function is called by the Orchestrator and Authority to freeze the Route
-    /// @param _freeze The boolean indicating if the Route should be frozen or unfrozen 
-    function freeze(bool _freeze) external;
 
     // ============================================================================================
     // Events

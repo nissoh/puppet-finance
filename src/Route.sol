@@ -83,14 +83,6 @@ contract Route is Base, IRoute {
     // Modifiers
     // ============================================================================================
 
-    /// @notice Modifier that ensures the caller is the trader or the orchestrator, and that the route is not frozen or paused
-    modifier onlyTrader() {
-        if (msg.sender != route.trader && msg.sender != address(orchestrator)) revert NotTrader();
-        if (orchestrator.paused()) revert Paused();
-        if (frozen) revert RouteFrozen();
-        _;
-    }
-
     /// @notice Modifier that ensures the caller is the orchestrator
     modifier onlyOrchestrator() {
         if (msg.sender != address(orchestrator)) revert NotOrchestrator();
@@ -106,6 +98,13 @@ contract Route is Base, IRoute {
     /// @notice Modifier that ensures the caller is the callback caller
     modifier onlyCallbackCaller() {
         if (msg.sender != orchestrator.gmxPositionRouter()) revert NotCallbackCaller();
+        _;
+    }
+
+    /// @notice Modifier that ensures the Route is not frozen and the orchestrator is not paused
+    modifier notFrozen() {
+        if (orchestrator.paused()) revert Paused();
+        if (frozen) revert RouteFrozen();
         _;
     }
 
@@ -160,8 +159,10 @@ contract Route is Base, IRoute {
     }
 
     // ============================================================================================
-    // Trader Functions
+    // Orchestrator Functions
     // ============================================================================================
+
+    // callable by Trader
 
     /// @inheritdoc IRoute
     // slither-disable-next-line reentrancy-eth
@@ -170,7 +171,7 @@ contract Route is Base, IRoute {
         SwapParams memory _swapParams,
         uint256 _executionFee,
         bool _isIncrease
-    ) external payable onlyTrader nonReentrant returns (bytes32 _requestKey) {
+    ) external payable onlyOrchestrator notFrozen nonReentrant returns (bytes32 _requestKey) {
 
         _repayBalance(bytes32(0), msg.value, false);
 
@@ -183,10 +184,30 @@ contract Route is Base, IRoute {
     }
 
     /// @inheritdoc IRoute
-    function approvePlugin() external onlyTrader nonReentrant {
+    function approvePlugin() external onlyOrchestrator notFrozen nonReentrant {
         IGMXRouter(orchestrator.gmxRouter()).approvePlugin(orchestrator.gmxPositionRouter());
 
         emit PluginApproval();
+    }
+
+    // callable by Authority
+
+    /// @inheritdoc IRoute
+    function rescueTokens(uint256 _amount, address _token, address _receiver) external onlyOrchestrator {
+        if (_token == address(0)) {
+            payable(_receiver).sendValue(_amount);
+        } else {
+            IERC20(_token).safeTransfer(_receiver, _amount);
+        }
+
+        emit Rescue(_amount, _token, _receiver);
+    }
+
+    /// @inheritdoc IRoute
+    function freeze(bool _freeze) external onlyOrchestrator {
+        frozen = _freeze;
+
+        emit Freeze(_freeze);
     }
 
     // ============================================================================================
@@ -222,28 +243,6 @@ contract Route is Base, IRoute {
         _repayBalance(_requestKey, 0, keeperRequests[_requestKey]);
 
         emit Callback(_requestKey, _isExecuted, _isIncrease);
-    }
-
-    // ============================================================================================
-    // Orchestrator Function
-    // ============================================================================================
-
-    /// @inheritdoc IRoute
-    function rescueTokens(uint256 _amount, address _token, address _receiver) external {
-        if (_token == address(0)) {
-            payable(_receiver).sendValue(_amount);
-        } else {
-            IERC20(_token).safeTransfer(_receiver, _amount);
-        }
-
-        emit Rescue(_amount, _token, _receiver);
-    }
-
-    /// @inheritdoc IRoute
-    function freeze(bool _freeze) external {
-        frozen = _freeze;
-
-        emit Freeze(_freeze);
     }
 
     // ============================================================================================

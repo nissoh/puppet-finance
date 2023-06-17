@@ -143,6 +143,19 @@ interface IOrchestrator {
     /// @param _isLong The boolean value of the position
     function registerRouteAndRequestPosition(IRoute.AdjustPositionParams memory _adjustPositionParams, IRoute.SwapParams memory _swapParams, uint256 _executionFee, address _collateralToken, address _indexToken, bool _isLong) external payable returns (bytes32 _routeKey, bytes32 _requestKey);
 
+    /// @notice The ```requestPosition``` function creates a new position request
+    /// @param _adjustPositionParams The adjusment params for the position
+    /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
+    /// @param _routeTypeKey The RouteType key
+    /// @param _executionFee The total execution fee, paid by the Trader in ETH
+    /// @param _isIncrease The boolean indicating if the request is an increase or decrease request
+    /// @return _requestKey The request key
+    function requestPosition(IRoute.AdjustPositionParams memory _adjustPositionParams, IRoute.SwapParams memory _swapParams, bytes32 _routeTypeKey, uint256 _executionFee, bool _isIncrease) external payable returns (bytes32 _requestKey);
+
+    /// @notice The ```approvePlugin``` function is used to approve the GMX plugin in case we change the gmxPositionRouter address
+    /// @param _routeTypeKey The RouteType key
+    function approvePlugin(bytes32 _routeTypeKey) external;
+
     // Puppet
 
     /// @notice The ```deposit``` function is called by a Puppet to deposit funds into his deposit account
@@ -253,6 +266,8 @@ interface IOrchestrator {
     // ============================================================================================
 
     event Register(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
+    event RequestPositionAdjustment(address indexed caller, bytes32 indexed routeTypeKey, bytes32 indexed requestKey);
+    event PluginApproval(address indexed caller, bytes32 indexed routeTypeKey);
     event Deposit(uint256 indexed amount, address indexed asset, address caller, address indexed puppet);
     event Withdraw(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
     event Subscriptions(address[] traders, uint256[] allowances, address indexed puppet, bytes32 indexed routeTypeKey, bool indexed subscribe);

@@ -258,6 +258,37 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _requestKey = IRoute(_routeInfo[_routeKey].route).requestPosition{value: msg.value}(_adjustPositionParams, _swapParams, _executionFee, true);
     }
 
+    /// @inheritdoc IOrchestrator
+    function requestPosition(
+        IRoute.AdjustPositionParams memory _adjustPositionParams,
+        IRoute.SwapParams memory _swapParams,
+        bytes32 _routeTypeKey,
+        uint256 _executionFee,
+        bool _isIncrease
+    ) external payable nonReentrant returns (bytes32 _requestKey) {
+        address _route = _routeInfo[getRouteKey(msg.sender, _routeTypeKey)].route;
+        if (_route == address(0)) revert RouteNotRegistered();
+
+        _requestKey = IRoute(_route).requestPosition{value: msg.value}(
+            _adjustPositionParams,
+            _swapParams,
+            _executionFee,
+            _isIncrease
+        );
+
+        emit RequestPositionAdjustment(msg.sender, _routeTypeKey, _requestKey);
+    }
+
+    /// @inheritdoc IOrchestrator
+    function approvePlugin(bytes32 _routeTypeKey) external {
+        address _route = _routeInfo[getRouteKey(msg.sender, _routeTypeKey)].route;
+        if (_route == address(0)) revert RouteNotRegistered();
+
+        IRoute(_route).approvePlugin();
+
+        emit PluginApproval(msg.sender, _routeTypeKey);
+    }
+
     // ============================================================================================
     // Puppet Functions
     // ============================================================================================

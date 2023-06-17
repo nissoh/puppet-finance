@@ -73,6 +73,15 @@ contract testPuppet is Test {
         bytes32 routeTypeKey;
     }
 
+    struct ClosePositionBefore {
+        uint256 traderBalanceBefore;
+        uint256 aliceDepositAccountBalanceBefore;
+        uint256 bobDepositAccountBalanceBefore;
+        uint256 yossiDepositAccountBalanceBefore;
+        uint256 orchesratorBalanceBefore;
+        uint256 positionIndexBefore;
+    }
+
     address owner = makeAddr("owner");
     address trader = makeAddr("trader");
     address keeper = makeAddr("keeper");
@@ -160,7 +169,7 @@ contract testPuppet is Test {
         // route
         _testIncreasePosition(_routeTypeInfo, false, false);
         _testIncreasePosition(_routeTypeInfo, true, false);
-        _testClosePosition();
+        _testClosePosition(_routeTypeKey);
         _testIncreasePosition(_routeTypeInfo, false, true);
     }
 
@@ -191,7 +200,7 @@ contract testPuppet is Test {
         // route
         _testIncreasePosition(_routeTypeInfo, false, false);
         _testIncreasePosition(_routeTypeInfo, true, false);
-        _testClosePosition();
+        _testClosePosition(_routeTypeKey);
     }
 
     // ============================================================================================
@@ -431,7 +440,7 @@ contract testPuppet is Test {
             // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
             _sizeDelta = 42618489375654341759425535230363787793 - 37734087910998002155840497249191012773;
             _acceptablePrice = type(uint256).max;
-            _amountInTrader = 10 ether;
+            _amountInTrader = 5 ether;
         } else {
             // TODO: short position
             // Available amount in USD: PositionRouter.maxGlobalShortSizes(indexToken) - Vault.globalShortSizes(indexToken)
@@ -481,20 +490,7 @@ contract testPuppet is Test {
         vm.startPrank(trader);
 
         if (_testNonCollateralTraderAmountIn) {
-            address[] memory _pathNonCollateral = new address[](2);
-            _pathNonCollateral[0] = FRAX;
-            _pathNonCollateral[1] = WETH;
-            IRoute.SwapParams memory _traderSwapDataNonCollateral = IRoute.SwapParams({
-                path: _pathNonCollateral,
-                amount: _amountInTrader,
-                minOut: _minOut
-            });
-            
-            _dealERC20(FRAX, trader , _amountInTrader);
-            uint256 _traderFraxBalanceBefore = IERC20(FRAX).balanceOf(trader);
-            _approve(address(route), FRAX, type(uint256).max);
-            route.requestPosition{ value: _executionFee }(_adjustPositionParams, _traderSwapDataNonCollateral, _executionFee, true);
-            assertTrue(IERC20(FRAX).balanceOf(trader) < _traderFraxBalanceBefore, "_testCreateInitialPosition: E1");
+            _testNonCollatAmountIn(_amountInTrader, _executionFee, _adjustPositionParams, _routeTypeInfo.routeTypeKey);
             return; // just want to test the swap
         }
 
@@ -700,7 +696,7 @@ contract testPuppet is Test {
 
         vm.startPrank(trader);
         _approve(address(route), _params.swapParams.path[0], type(uint256).max);
-        _requestKey = route.requestPosition{ value: _params.executionFee }(_params.adjustPositionParams, _params.swapParams, _params.executionFee, true);
+        _requestKey = orchestrator.requestPosition{ value: _params.executionFee }(_params.adjustPositionParams, _params.swapParams, _params.routeTypeKey, _params.executionFee, true);
         vm.stopPrank();
 
         _testCreatePositionExt(_params, _createPositionFirst, _requestKey, _addCollateralToAnExistingPosition, _addCollateralRequestsIndexBefore);
@@ -768,7 +764,7 @@ contract testPuppet is Test {
             }
         }
 
-    function _testClosePosition() internal {
+    function _testClosePosition(bytes32 _routeTypeKey) internal {
         assertTrue(_isOpenInterest(address(route)), "_testClosePosition: E1");
 
         uint256 _minOut = 0;
@@ -799,19 +795,23 @@ contract testPuppet is Test {
         assertEq(IERC20(collateralToken).balanceOf(address(route)), 0, "_testClosePosition: E2");
         assertEq(address(route).balance, 0, "_testClosePosition: E3");
 
-        uint256 _traderBalanceBefore = IERC20(collateralToken).balanceOf(address(trader));
-        uint256 _aliceDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(alice, collateralToken);
-        uint256 _bobDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(bob, collateralToken);
-        uint256 _yossiDepositAccountBalanceBefore = orchestrator.puppetAccountBalance(yossi, collateralToken);
-        uint256 _orchesratorBalanceBefore = IERC20(collateralToken).balanceOf(address(orchestrator));
-        uint256 _positionIndexBefore = route.positionIndex();
+        ClosePositionBefore memory _closePositionBefore = ClosePositionBefore({
+            traderBalanceBefore: IERC20(collateralToken).balanceOf(address(trader)), 
+            aliceDepositAccountBalanceBefore: orchestrator.puppetAccountBalance(alice, collateralToken),
+            bobDepositAccountBalanceBefore: orchestrator.puppetAccountBalance(bob, collateralToken),
+            yossiDepositAccountBalanceBefore: orchestrator.puppetAccountBalance(yossi, collateralToken),
+            orchesratorBalanceBefore: IERC20(collateralToken).balanceOf(address(orchestrator)),
+            positionIndexBefore: route.positionIndex()
+        });
 
         vm.startPrank(trader);
 
-        vm.expectRevert(); // revert with `InvalidExecutionFee`
-        route.requestPosition{ value: _executionFee - 1 }(_adjustPositionParams, _swapParams, _executionFee, false);
+        {
+            vm.expectRevert(); // revert with `InvalidExecutionFee`
+            orchestrator.requestPosition{ value: _executionFee - 1 }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, false);
+        }
 
-        route.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, _executionFee, false);
+        orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, false);
         vm.stopPrank();
 
         vm.startPrank(GMXPositionRouterKeeper); // keeper
@@ -826,14 +826,14 @@ contract testPuppet is Test {
             revert("decrease call was not executed");
         } else {
             // call was executed
-            assertTrue(_traderBalanceBefore < IERC20(collateralToken).balanceOf(address(trader)), "_testClosePosition: E4");
-            assertTrue(_aliceDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(alice, collateralToken), "_testClosePosition: E5");
-            assertTrue(_bobDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(bob, collateralToken), "_testClosePosition: E6");
-            assertTrue(_yossiDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(yossi, collateralToken), "_testClosePosition: E7");
-            assertTrue(_orchesratorBalanceBefore < IERC20(collateralToken).balanceOf(address(orchestrator)), "_testClosePosition: E8");
-            assertEq(_aliceDepositAccountBalanceBefore, _bobDepositAccountBalanceBefore, "_testClosePosition: E9");
+            assertTrue(_closePositionBefore.traderBalanceBefore < IERC20(collateralToken).balanceOf(address(trader)), "_testClosePosition: E4");
+            assertTrue(_closePositionBefore.aliceDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(alice, collateralToken), "_testClosePosition: E5");
+            assertTrue(_closePositionBefore.bobDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(bob, collateralToken), "_testClosePosition: E6");
+            assertTrue(_closePositionBefore.yossiDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(yossi, collateralToken), "_testClosePosition: E7");
+            assertTrue(_closePositionBefore.orchesratorBalanceBefore < IERC20(collateralToken).balanceOf(address(orchestrator)), "_testClosePosition: E8");
+            assertEq(_closePositionBefore.aliceDepositAccountBalanceBefore, _closePositionBefore.bobDepositAccountBalanceBefore, "_testClosePosition: E9");
             assertApproxEqAbs(orchestrator.puppetAccountBalance(alice, collateralToken), orchestrator.puppetAccountBalance(bob, collateralToken), 1e15, "_testClosePosition: E10");
-            assertEq(_positionIndexBefore + 1, route.positionIndex(), "_testClosePosition: E11");
+            assertEq(_closePositionBefore.positionIndexBefore + 1, route.positionIndex(), "_testClosePosition: E11");
             address[] memory _puppets = route.puppets();
             assertEq(_puppets.length, 0, "_testClosePosition: E12");
             assertEq(route.participantShares(alice), 0, "_testClosePosition: E13");
@@ -849,6 +849,23 @@ contract testPuppet is Test {
             assertEq(route.isPuppetAdjusted(yossi), false, "_testClosePosition: E23");
         }
     }
+
+    function _testNonCollatAmountIn(uint256 _amountInTrader, uint256 _executionFee, IRoute.AdjustPositionParams memory _adjustPositionParams, bytes32 _routeTypeKey) internal {
+        address[] memory _pathNonCollateral = new address[](2);
+        _pathNonCollateral[0] = FRAX;
+        _pathNonCollateral[1] = WETH;
+        IRoute.SwapParams memory _traderSwapDataNonCollateral = IRoute.SwapParams({
+            path: _pathNonCollateral,
+            amount: _amountInTrader,
+            minOut: 0
+        });
+        
+        _dealERC20(FRAX, trader , _amountInTrader);
+        uint256 _traderFraxBalanceBefore = IERC20(FRAX).balanceOf(trader);
+        _approve(address(route), FRAX, type(uint256).max);
+        orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _traderSwapDataNonCollateral, _routeTypeKey, _executionFee, true);
+        assertTrue(IERC20(FRAX).balanceOf(trader) < _traderFraxBalanceBefore, "_testCreateInitialPosition: E1");
+    } // todo - clean requestPosition stuff (reverts etc)
 
     function _testRegisterRouteAndIncreasePosition() internal {
         uint256 _minOut = 0; // _minOut can be zero if no swap is required
