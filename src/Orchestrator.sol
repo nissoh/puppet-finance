@@ -276,7 +276,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             _isIncrease
         );
 
-        emit RequestPositionAdjustment(msg.sender, _routeTypeKey, _requestKey);
+        emit RequestPositionAdjustment(msg.sender, _route, _routeTypeKey, _requestKey);
     }
 
     /// @inheritdoc IOrchestrator
@@ -402,6 +402,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         IERC20(_asset).safeTransfer(_receiver, _amount);
 
         emit Send(_amount, _asset, _receiver, msg.sender);
+    }
+
+    /// @inheritdoc IOrchestrator
+    function emitCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external onlyRoute {
+        emit Callback(msg.sender, _requestKey, _isExecuted, _isIncrease);
     }
 
     // ============================================================================================

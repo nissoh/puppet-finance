@@ -242,6 +242,8 @@ contract Route is Base, IRoute {
 
         _repayBalance(_requestKey, 0, keeperRequests[_requestKey]);
 
+        orchestrator.emitCallback(_requestKey, _isExecuted, _isIncrease);
+
         emit Callback(_requestKey, _isExecuted, _isIncrease);
     }
 
