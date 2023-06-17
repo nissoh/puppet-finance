@@ -134,15 +134,15 @@ interface IRoute is IPositionRouterCallbackReceiver {
     // Events
     // ============================================================================================
 
-    event Liquidated();
-    event CallbackReceived(bytes32 indexed requestKey, bool indexed isExecuted, bool indexed isIncrease);
-    event PluginApproved();
-    event CreatedIncreasePositionRequest(bytes32 indexed requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice);
-    event CreatedDecreasePositionRequest(bytes32 indexed requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice);
-    event BalanceRepaid(uint256 totalAssets);
-    event RouteReset();
-    event TokensRescued(uint256 _amount, address _token, address _receiver);
-    event Frozen(bool indexed _freeze);
+    event Liquidate();
+    event Callback(bytes32 indexed requestKey, bool indexed isExecuted, bool indexed isIncrease);
+    event PluginApproval();
+    event IncreaseRequest(bytes32 indexed requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice);
+    event DecreaseRequest(bytes32 indexed requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice);
+    event Repay(uint256 totalAssets);
+    event Reset();
+    event Rescue(uint256 amount, address token, address receiver);
+    event Freeze(bool indexed freeze);
 
     // ============================================================================================
     // Errors

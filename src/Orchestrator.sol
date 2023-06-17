@@ -242,7 +242,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         isRoute[_routeAddr] = true;
         _routes.push(_routeAddr);
 
-        emit RouteRegistered(msg.sender, _routeAddr, _routeTypeKey);
+        emit Register(msg.sender, _routeAddr, _routeTypeKey);
     }
 
     /// @inheritdoc IOrchestrator
@@ -280,7 +280,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
         }
 
-        emit Deposited(_amount, _asset, msg.sender, _puppet);
+        emit Deposit(_amount, _asset, msg.sender, _puppet);
     }
 
     /// @inheritdoc IOrchestrator
@@ -299,7 +299,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             IERC20(_asset).safeTransfer(_receiver, _amount);
         }
 
-        emit Withdrawn(_amount, _asset, _receiver, msg.sender);
+        emit Withdraw(_amount, _asset, _receiver, msg.sender);
     }
 
     /// @inheritdoc IOrchestrator
@@ -331,14 +331,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             }
         }
 
-        emit RoutesSubscriptionUpdated(_traders, _allowances, _puppet, _routeTypeKey, _subscribe);
+        emit Subscriptions(_traders, _allowances, _puppet, _routeTypeKey, _subscribe);
     }
 
     /// @inheritdoc IOrchestrator
     function setThrottleLimit(uint256 _throttleLimit, bytes32 _routeType) external {
         _puppetInfo[msg.sender].throttleLimits[_routeType] = _throttleLimit;
 
-        emit ThrottleLimitSet(msg.sender, _routeType, _throttleLimit);
+        emit ThrottleLimit(msg.sender, _routeType, _throttleLimit);
     }
 
     // ============================================================================================
@@ -349,28 +349,28 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     function debitPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
         _puppetInfo[_puppet].depositAccount[_asset] -= _amount;
 
-        emit PuppetAccountDebited(_amount, _asset, _puppet, msg.sender);
+        emit Debit(_amount, _asset, _puppet, msg.sender);
     }
 
     /// @inheritdoc IOrchestrator
     function creditPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
         _puppetInfo[_puppet].depositAccount[_asset] += _amount;
 
-        emit PuppetAccountCredited(_amount, _asset, _puppet, msg.sender);
+        emit Credit(_amount, _asset, _puppet, msg.sender);
     }
 
     /// @inheritdoc IOrchestrator
     function updateLastPositionOpenedTimestamp(address _puppet, bytes32 _routeType) external onlyRoute {
         _puppetInfo[_puppet].lastPositionOpenedTimestamp[_routeType] = block.timestamp;
 
-        emit LastPositionOpenedTimestampUpdated(_puppet, _routeType, block.timestamp);
+        emit OpenTimestamp(_puppet, _routeType, block.timestamp);
     }
 
     /// @inheritdoc IOrchestrator
     function sendFunds(uint256 _amount, address _asset, address _receiver) external onlyRoute {
         IERC20(_asset).safeTransfer(_receiver, _amount);
 
-        emit FundsSent(_amount, _asset, _receiver, msg.sender);
+        emit Send(_amount, _asset, _receiver, msg.sender);
     }
 
     // ============================================================================================
@@ -385,14 +385,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             IERC20(_token).safeTransfer(_receiver, _amount);
         }
 
-        emit TokensRescued(_amount, _token, _receiver);
+        emit Rescue(_amount, _token, _receiver);
     }
 
     /// @inheritdoc IOrchestrator
     function rescueRouteTokens(uint256 _amount, address _token, address _receiver, address _route) external requiresAuth nonReentrant {
         IRoute(_route).rescueTokens(_amount, _token, _receiver);
 
-        emit RouteTokensRescued(_amount, _token, _receiver, _route);
+        emit RouteRescue(_amount, _token, _receiver, _route);
     }
 
     /// @inheritdoc IOrchestrator
@@ -405,14 +405,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     ) external payable requiresAuth nonReentrant returns (bytes32 _requestKey) {
         _requestKey = IRoute(_route).requestPosition{value: msg.value}(_adjustPositionParams, _swapParams, _executionFee, _isIncrease);
 
-        emit PositionRequestCreated(_requestKey, _route, _isIncrease);
+        emit Request(_requestKey, _route, _isIncrease);
     }
 
     /// @inheritdoc IOrchestrator
     function freezeRoute(address _route, bool _freeze) external requiresAuth nonReentrant {
         IRoute(_route).freeze(_freeze);
 
-        emit RouteFrozen(_route, _freeze);
+        emit Freeze(_route, _freeze);
     }
 
     /// @inheritdoc IOrchestrator
@@ -420,7 +420,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bytes32 _routeTypeKey = getRouteTypeKey(_collateral, _index, _isLong);
         routeType[_routeTypeKey] = RouteType(_collateral, _index, _isLong, true);
 
-        emit RouteTypeSet(_routeTypeKey, _collateral, _index, _isLong);
+        emit Type(_routeTypeKey, _collateral, _index, _isLong);
     }
 
     /// @inheritdoc IOrchestrator
@@ -431,7 +431,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _gmx.gmxVault = _gmxVault;
         _gmx.gmxPositionRouter = _gmxPositionRouter;
 
-        emit GMXUtilsSet(_gmxRouter, _gmxVault, _gmxPositionRouter);
+        emit GMXUtils(_gmxRouter, _gmxVault, _gmxPositionRouter);
     }
 
     /// @inheritdoc IOrchestrator
@@ -440,7 +440,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         _keeper = _keeperAddr;
 
-        emit KeeperSet(_keeper);
+        emit Keeper(_keeper);
     }
 
     /// @inheritdoc IOrchestrator
@@ -449,14 +449,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         _referralCode = _refCode;
 
-        emit ReferralCodeSet(_refCode);
+        emit ReferralCode(_refCode);
     }
 
     /// @inheritdoc IOrchestrator
     function pause(bool _pause) external requiresAuth nonReentrant {
         _paused = _pause;
 
-        emit Paused(_pause);
+        emit Pause(_pause);
     }
 
     // ============================================================================================

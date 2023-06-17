@@ -186,7 +186,7 @@ contract Route is Base, IRoute {
     function approvePlugin() external onlyTrader nonReentrant {
         IGMXRouter(orchestrator.gmxRouter()).approvePlugin(orchestrator.gmxPositionRouter());
 
-        emit PluginApproved();
+        emit PluginApproval();
     }
 
     // ============================================================================================
@@ -205,7 +205,7 @@ contract Route is Base, IRoute {
 
         _repayBalance(bytes32(0), 0, false);
 
-        emit Liquidated();
+        emit Liquidate();
     }
 
     // ============================================================================================
@@ -221,7 +221,7 @@ contract Route is Base, IRoute {
 
         _repayBalance(_requestKey, 0, keeperRequests[_requestKey]);
 
-        emit CallbackReceived(_requestKey, _isExecuted, _isIncrease);
+        emit Callback(_requestKey, _isExecuted, _isIncrease);
     }
 
     // ============================================================================================
@@ -236,14 +236,14 @@ contract Route is Base, IRoute {
             IERC20(_token).safeTransfer(_receiver, _amount);
         }
 
-        emit TokensRescued(_amount, _token, _receiver);
+        emit Rescue(_amount, _token, _receiver);
     }
 
     /// @inheritdoc IRoute
     function freeze(bool _freeze) external {
         frozen = _freeze;
 
-        emit Frozen(_freeze);
+        emit Freeze(_freeze);
     }
 
     // ============================================================================================
@@ -473,7 +473,7 @@ contract Route is Base, IRoute {
 
         if (_amountIn > 0) requestKeyToAddCollateralRequestsIndex[_requestKey] = positions[positionIndex].addCollateralRequestsIndex - 1;
 
-        emit CreatedIncreasePositionRequest(
+        emit IncreaseRequest(
             _requestKey,
             _amountIn,
             _adjustPositionParams.minOut,
@@ -510,7 +510,7 @@ contract Route is Base, IRoute {
 
         positions[positionIndex].requestKeys.push(_requestKey);
 
-        emit CreatedDecreasePositionRequest(
+        emit DecreaseRequest(
             _requestKey,
             _adjustPositionParams.minOut,
             _adjustPositionParams.collateralDelta,
@@ -617,7 +617,7 @@ contract Route is Base, IRoute {
             payable(_executionFeeReceiver).sendValue(_ethBalance - _traderAmountIn);
         }
 
-        emit BalanceRepaid(_totalAssets);
+        emit Repay(_totalAssets);
     }
 
     /// @notice The ```_resetRoute``` function is used to increment the position index, which is used to track the current position
@@ -625,7 +625,7 @@ contract Route is Base, IRoute {
     function _resetRoute() internal {
         positionIndex += 1;
 
-        emit RouteReset();
+        emit Reset();
     }
 
     /// @notice The ```_approve``` function is used to approve a spender to spend a token
