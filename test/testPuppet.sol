@@ -463,18 +463,6 @@ contract testPuppet is Test {
             minOut: _minOut
         });
 
-        {
-            _path[0] = FRAX;
-            IRoute.SwapParams memory _faultyTraderSwapData = IRoute.SwapParams({
-                path: _path,
-                amount: _amountInTrader,
-                minOut: _minOut
-            });
-
-            vm.expectRevert(); // reverts with InvalidPath()
-            route.requestPosition{ value: _amountInTrader + _executionFee }(_adjustPositionParams, _faultyTraderSwapData, _executionFee, true);
-        }
-
         _path[0] = _routeTypeInfo.collateralToken;
         IRoute.SwapParams memory _swapParams = IRoute.SwapParams({
             path: _path,
@@ -484,10 +472,13 @@ contract testPuppet is Test {
 
         assertEq(orchestrator.paused(), false, "_testCreateInitialPosition: E0");
 
-        vm.expectRevert(); // reverts with NotTrader()
+        vm.expectRevert(); // reverts with NotOrchestrator()
         route.requestPosition{ value: _amountInTrader + _executionFee }(_adjustPositionParams, _swapParams, _executionFee, true);
 
         vm.startPrank(trader);
+
+        vm.expectRevert(); // reverts with NotOrchestrator()
+        route.requestPosition{ value: _amountInTrader + _executionFee }(_adjustPositionParams, _swapParams, _executionFee, true);
 
         if (_testNonCollateralTraderAmountIn) {
             _testNonCollatAmountIn(_amountInTrader, _executionFee, _adjustPositionParams, _routeTypeInfo.routeTypeKey);
@@ -495,7 +486,7 @@ contract testPuppet is Test {
         }
 
         vm.expectRevert(); // reverts with InvalidExecutionFee()
-        route.requestPosition{ value: _amountInTrader + _executionFee + 10 }(_adjustPositionParams, _swapParams, _executionFee, true);
+        orchestrator.requestPosition{ value: _amountInTrader + _executionFee + 10 }(_adjustPositionParams, _swapParams, _routeTypeInfo.routeTypeKey, _executionFee, true);
 
         if (!_addCollateralToAnExistingPosition) {
             assertEq(orchestrator.lastPositionOpenedTimestamp(alice, _routeTypeInfo.routeTypeKey), 0, "_testCreateInitialPosition: E3");
@@ -860,12 +851,29 @@ contract testPuppet is Test {
             minOut: 0
         });
         
+        vm.startPrank(address(trader));
         _dealERC20(FRAX, trader , _amountInTrader);
         uint256 _traderFraxBalanceBefore = IERC20(FRAX).balanceOf(trader);
         _approve(address(route), FRAX, type(uint256).max);
+        
+        {
+            address[] memory _path = new address[](1);
+
+            _path[0] = FRAX;
+            IRoute.SwapParams memory _faultyTraderSwapData = IRoute.SwapParams({
+                path: _path,
+                amount: _amountInTrader,
+                minOut: 0
+            });
+
+            vm.expectRevert(); // reverts with InvalidPath()
+            orchestrator.requestPosition{ value: _amountInTrader + _executionFee }(_adjustPositionParams, _faultyTraderSwapData, _routeTypeKey, _executionFee, true);
+        }
+        
         orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _traderSwapDataNonCollateral, _routeTypeKey, _executionFee, true);
         assertTrue(IERC20(FRAX).balanceOf(trader) < _traderFraxBalanceBefore, "_testCreateInitialPosition: E1");
-    } // todo - clean requestPosition stuff (reverts etc)
+        vm.stopPrank();
+    }
 
     function _testRegisterRouteAndIncreasePosition() internal {
         uint256 _minOut = 0; // _minOut can be zero if no swap is required
