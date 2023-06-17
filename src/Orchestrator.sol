@@ -168,6 +168,17 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // puppet
 
     /// @inheritdoc IOrchestrator
+    function puppetSubscriptions(address _puppet) external view returns (address[] memory _subscriptions) {
+        EnumerableMap.AddressToUintMap storage _allowances = _puppetInfo[_puppet].allowances;
+
+        uint256 _subscriptionCount = EnumerableMap.length(_allowances);
+        _subscriptions = new address[](_subscriptionCount);
+        for (uint256 i = 0; i < _subscriptionCount; i++) {
+            (_subscriptions[i], ) = EnumerableMap.at(_allowances, i);
+        }
+    }
+
+    /// @inheritdoc IOrchestrator
     function puppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance) {
         return EnumerableMap.get(_puppetInfo[_puppet].allowances, _route);
     }

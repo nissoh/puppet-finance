@@ -322,11 +322,30 @@ contract testPuppet is Test {
         vm.expectRevert(); // reverts with RouteNotRegistered()
         orchestrator.updateRoutesSubscription(_traders, _allowances, _faultyRouteTypeKey, true);
 
+        {
+            address[] memory _subscriptions = orchestrator.puppetSubscriptions(alice);
+            assertEq(_subscriptions.length, 0, "_testUpdateRoutesSubscription: E00");
+        }
+        {
+            address[] memory _subscriptions = orchestrator.puppetSubscriptions(bob);
+            assertEq(_subscriptions.length, 0, "_testUpdateRoutesSubscription: E01");
+        }
+        {
+            address[] memory _subscriptions = orchestrator.puppetSubscriptions(yossi);
+            assertEq(_subscriptions.length, 0, "_testUpdateRoutesSubscription: E02");
+        }
+
         orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
         assertEq(orchestrator.puppetAllowancePercentage(alice, _route), _allowances[0], "_testUpdateRoutesSubscription: E0");
         assertEq(orchestrator.subscribedPuppets(_routeKey)[0], alice, "_testUpdateRoutesSubscription: E1");
         assertEq(orchestrator.subscribedPuppets(_routeKey).length, 1, "_testUpdateRoutesSubscription: E2");
         vm.stopPrank();
+
+        {
+            address[] memory _subscriptions = orchestrator.puppetSubscriptions(alice);
+            assertEq(_subscriptions.length, 1, "_testUpdateRoutesSubscription: E00");
+            assertEq(_subscriptions[0], _route, "_testUpdateRoutesSubscription: E01");
+        }
 
         vm.startPrank(bob);
         orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
@@ -340,12 +359,24 @@ contract testPuppet is Test {
         assertEq(orchestrator.subscribedPuppets(_routeKey).length, 2, "_testUpdateRoutesSubscription: E05");
         vm.stopPrank();
 
+        {
+            address[] memory _subscriptions = orchestrator.puppetSubscriptions(bob);
+            assertEq(_subscriptions.length, 1, "_testUpdateRoutesSubscription: E005");
+            assertEq(_subscriptions[0], _route, "_testUpdateRoutesSubscription: E006");
+        }
+
         vm.startPrank(yossi);
         orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
         assertEq(orchestrator.puppetAllowancePercentage(yossi, _route), _allowances[0], "_testUpdateRoutesSubscription: E6");
         assertEq(orchestrator.subscribedPuppets(_routeKey)[2], yossi, "_testUpdateRoutesSubscription: E7");
         assertEq(orchestrator.subscribedPuppets(_routeKey).length, 3, "_testUpdateRoutesSubscription: E8");
         vm.stopPrank();
+
+        {
+            address[] memory _subscriptions = orchestrator.puppetSubscriptions(yossi);
+            assertEq(_subscriptions.length, 1, "_testUpdateRoutesSubscription: E007");
+            assertEq(_subscriptions[0], _route, "_testUpdateRoutesSubscription: E008");
+        }
 
         assertTrue(orchestrator.puppetAllowancePercentage(alice, _route) > 0, "_testUpdateRoutesSubscription: E9");
         assertTrue(orchestrator.puppetAllowancePercentage(bob, _route) > 0, "_testUpdateRoutesSubscription: E10");

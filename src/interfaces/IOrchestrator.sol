@@ -77,6 +77,11 @@ interface IOrchestrator {
 
     // puppet
 
+    /// @notice The ```puppetSubscriptions``` function returns all the subscriptions for a given Puppet
+    /// @param _puppet The address of the Puppet
+    /// @return _subscriptions The address array of all the routes that the Puppet is subscribed to
+    function puppetSubscriptions(address _puppet) external view returns (address[] memory _subscriptions);
+
     /// @notice The ```puppetAllowancePercentage``` function returns the allowance percentage for a given Puppet and Route
     /// @param _puppet The address of the Puppet
     /// @param _route The address of the Route
