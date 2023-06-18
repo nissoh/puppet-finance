@@ -266,7 +266,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bool _isLong
     ) external payable returns (bytes32 _routeKey, bytes32 _requestKey) {
         _routeKey = registerRoute(_collateralToken, _indexToken, _isLong);
-        // _requestKey = IRoute(_routeInfo[_routeKey].route).requestPosition{value: msg.value}(_adjustPositionParams, _swapParams, _executionFee, true);
         _requestKey = requestPosition(_adjustPositionParams, _swapParams, getRouteTypeKey(_collateralToken, _indexToken, _isLong), _executionFee, true);
     }
 
