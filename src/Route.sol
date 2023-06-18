@@ -53,7 +53,6 @@ contract Route is Base, IRoute {
     Route public route;
 
     uint256 private constant _PRECISION = 1e18;
-    uint256 private constant _ALLOWANCE_GRANULARITY = 100;
 
 
     // ============================================================================================
@@ -425,7 +424,7 @@ contract Route is Base, IRoute {
         Position storage _position = positions[positionIndex];
 
         uint256 _allowancePercentage = orchestrator.puppetAllowancePercentage(_puppet, address(this));
-        uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / _ALLOWANCE_GRANULARITY;
+        uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / _BASIS_POINTS_DIVISOR;
 
         if (_context.isOI) {
             if (_position.adjustedPuppets[_puppet]) {

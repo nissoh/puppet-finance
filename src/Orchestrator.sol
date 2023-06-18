@@ -357,7 +357,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             if (IRoute(_route.route).isWaitingForCallback()) revert RouteWaitingForCallback();
 
             if (_subscribe) {
-                if (_allowances[i] > 100 || _allowances[i] == 0) revert InvalidAllowancePercentage();
+                if (_allowances[i] > _BASIS_POINTS_DIVISOR || _allowances[i] == 0) revert InvalidAllowancePercentage();
 
                 EnumerableMap.set(_puppetInfo[_puppet].allowances, _route.route, _allowances[i]);
 

@@ -298,13 +298,13 @@ contract testPuppet is Test {
         uint256[] memory _allowances = new uint256[](1);
         address[] memory _traders = new address[](1);
         _traders[0] = trader;
-        _allowances[0] = 10; // 10% of the puppet's deposit account
+        _allowances[0] = 1000; // 10% of the puppet's deposit account
 
         bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(_collateralToken, _indexToken, _isLong);
         address _route = orchestrator.getRoute(_routeKey);
 
         uint256[] memory _faultyAllowance = new uint256[](1);
-        _faultyAllowance[0] = 101;
+        _faultyAllowance[0] = 10001;
         address[] memory _faultyTraders = new address[](2);
         _faultyTraders[0] = alice;
         _faultyTraders[1] = bob;

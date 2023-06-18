@@ -32,4 +32,6 @@ import {IOrchestrator, IRoute} from "./interfaces/IOrchestrator.sol";
 abstract contract Base is ReentrancyGuard {
 
     address internal constant _WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
+
+    uint256 internal constant _BASIS_POINTS_DIVISOR = 10000;
 }
