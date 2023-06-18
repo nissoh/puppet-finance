@@ -872,6 +872,7 @@ contract testPuppet is Test {
     }
 
     function _testNonCollatAmountIn(uint256 _amountInTrader, uint256 _executionFee, IRoute.AdjustPositionParams memory _adjustPositionParams, bytes32 _routeTypeKey) internal {
+        _amountInTrader = _amountInTrader / 5;
         address[] memory _pathNonCollateral = new address[](2);
         _pathNonCollateral[0] = FRAX;
         _pathNonCollateral[1] = WETH;

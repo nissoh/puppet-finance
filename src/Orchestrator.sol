@@ -373,7 +373,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             }
         }
 
-        emit Subscriptions(_traders, _allowances, _puppet, _routeTypeKey, _subscribe);
+        emit Subscribe(_traders, _allowances, _puppet, _routeTypeKey, _subscribe);
     }
 
     /// @inheritdoc IOrchestrator
@@ -405,7 +405,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     function updateLastPositionOpenedTimestamp(address _puppet, bytes32 _routeType) external onlyRoute {
         _puppetInfo[_puppet].lastPositionOpenedTimestamp[_routeType] = block.timestamp;
 
-        emit OpenTimestamp(_puppet, _routeType, block.timestamp);
+        emit UpdateOpenTimestamp(_puppet, _routeType, block.timestamp);
     }
 
     /// @inheritdoc IOrchestrator

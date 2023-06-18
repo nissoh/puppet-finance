@@ -281,11 +281,11 @@ interface IOrchestrator {
     event ApprovePlugin(address indexed caller, bytes32 indexed routeTypeKey);
     event Deposit(uint256 indexed amount, address indexed asset, address caller, address indexed puppet);
     event Withdraw(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
-    event Subscriptions(address[] traders, uint256[] allowances, address indexed puppet, bytes32 indexed routeTypeKey, bool indexed subscribe);
+    event Subscribe(address[] traders, uint256[] allowances, address indexed puppet, bytes32 indexed routeTypeKey, bool indexed subscribe);
     event SetThrottleLimit(address indexed puppet, bytes32 indexed routeType, uint256 throttleLimit);
     event DebitPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
     event CreditPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
-    event OpenTimestamp(address indexed puppet, bytes32 indexed routeType, uint256 timestamp);
+    event UpdateOpenTimestamp(address indexed puppet, bytes32 indexed routeType, uint256 timestamp);
     event Send(uint256 amount, address indexed asset, address indexed receiver, address indexed caller);
     event Callback(address indexed route, bytes32 indexed requestKey, bool indexed isExecuted, bool isIncrease);
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
