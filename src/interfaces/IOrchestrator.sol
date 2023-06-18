@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL
 pragma solidity 0.8.17;
 
 import {IRoute} from "./IRoute.sol";
