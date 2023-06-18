@@ -54,7 +54,6 @@ contract Route is Base, IRoute {
 
     uint256 private constant _PRECISION = 1e18;
 
-
     // ============================================================================================
     // Constructor
     // ============================================================================================
@@ -168,7 +167,7 @@ contract Route is Base, IRoute {
     // Orchestrator Functions
     // ============================================================================================
 
-    // callable by Trader
+    // called by Trader
 
     /// @inheritdoc IRoute
     // slither-disable-next-line reentrancy-eth
@@ -196,7 +195,24 @@ contract Route is Base, IRoute {
         emit PluginApproval();
     }
 
-    // callable by Authority
+    // called by Keepers
+
+    /// @inheritdoc IRoute
+    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external onlyOrchestrator nonReentrant returns (bytes32 _requestKey) {
+        _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
+        keeperRequests[_requestKey] = true;
+    }
+
+    /// @inheritdoc IRoute
+    function liquidate() external onlyOrchestrator nonReentrant {
+        if (_isOpenInterest()) revert PositionStillAlive();
+
+        _repayBalance(bytes32(0), 0, false);
+
+        emit Liquidate();
+    }
+
+    // called by Authority
 
     /// @inheritdoc IRoute
     function rescueTokens(uint256 _amount, address _token, address _receiver) external onlyOrchestrator {
@@ -214,25 +230,6 @@ contract Route is Base, IRoute {
         frozen = _freeze;
 
         emit Freeze(_freeze);
-    }
-
-    // ============================================================================================
-    // Keeper Functions
-    // ============================================================================================
-
-    /// @inheritdoc IRoute
-    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external onlyKeeper nonReentrant returns (bytes32 _requestKey) {
-        keeperRequests[_requestKey] = true;
-        _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
-    }
-
-    /// @inheritdoc IRoute
-    function liquidate() external onlyKeeper nonReentrant {
-        if (_isOpenInterest()) revert PositionStillAlive();
-
-        _repayBalance(bytes32(0), 0, false);
-
-        emit Liquidate();
     }
 
     // ============================================================================================

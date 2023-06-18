@@ -102,6 +102,8 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     // Orchestrator
 
+    // called by trader
+
     /// @notice The ```requestPosition``` function creates a new position request
     /// @param _adjustPositionParams The adjusment params for the position
     /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
@@ -109,6 +111,22 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @param _isIncrease The boolean indicating if the request is an increase or decrease request
     /// @return _requestKey The request key
     function requestPosition(AdjustPositionParams memory _adjustPositionParams, SwapParams memory _swapParams, uint256 _executionFee, bool _isIncrease) external payable returns (bytes32 _requestKey);
+
+    /// @notice The ```approvePlugin``` function is used to approve the GMX plugin in case we change the gmxPositionRouter address
+    function approvePlugin() external;
+
+    // called by keeper
+
+    /// @notice The ```decreaseSize``` function is called by Puppet keepers to decrease the position size in case there are Puppets to adjust
+    /// @param _adjustPositionParams The adjusment params for the position
+    /// @param _executionFee The total execution fee, paid by the Keeper in ETH
+    /// @return _requestKey The request key
+    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external returns (bytes32 _requestKey);
+
+    /// @notice The ```liquidate``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
+    function liquidate() external;
+
+    // called by authority
 
     /// @notice The ```rescueTokens``` is called by the Orchestrator and Authority to rescue tokens
     /// @param _amount The amount to rescue
@@ -119,20 +137,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @notice The ```freeze``` function is called by the Orchestrator and Authority to freeze the Route
     /// @param _freeze The boolean indicating if the Route should be frozen or unfrozen 
     function freeze(bool _freeze) external;
-
-    /// @notice The ```approvePlugin``` function is used to approve the GMX plugin in case we change the gmxPositionRouter address
-    function approvePlugin() external;
-
-    // Keeper
-
-    /// @notice The ```decreaseSize``` function is called by Puppet keepers to decrease the position size in case there are Puppets to adjust
-    /// @param _adjustPositionParams The adjusment params for the position
-    /// @param _executionFee The total execution fee, paid by the Keeper in ETH
-    /// @return _requestKey The request key 
-    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external returns (bytes32 _requestKey);
-
-    /// @notice The ```liquidate``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
-    function liquidate() external;
 
     // ============================================================================================
     // Events

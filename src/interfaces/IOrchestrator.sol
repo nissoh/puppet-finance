@@ -221,6 +221,17 @@ interface IOrchestrator {
 
     // Authority
 
+    /// @notice The ```decreaseSize``` function is called by Puppet keepers to decrease the position size in case there are Puppets to adjust
+    /// @param _adjustPositionParams The adjusment params for the position
+    /// @param _executionFee The total execution fee, paid by the Keeper in ETH
+    /// @param _routeKey The Route key
+    /// @return _requestKey The request key
+    function decreaseSize(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external returns (bytes32 _requestKey);
+
+    /// @notice The ```liquidate``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
+    /// @param _routeKey The Route key
+    function liquidate(bytes32 _routeKey) external;
+
     /// @notice The ```rescueTokens``` function is called by the Authority to rescue tokens from this contract
     /// @param _amount The amount to rescue
     /// @param _token The address of the Token
@@ -288,6 +299,8 @@ interface IOrchestrator {
     event UpdateOpenTimestamp(address indexed puppet, bytes32 indexed routeType, uint256 timestamp);
     event Send(uint256 amount, address indexed asset, address indexed receiver, address indexed caller);
     event Callback(address indexed route, bytes32 indexed requestKey, bool indexed isExecuted, bool isIncrease);
+    event DecreaseSize(bytes32 indexed requestKey, bytes32 indexed routeKey);
+    event Liquidate(bytes32 indexed routeKey);
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
     event SetGMXUtils(address gmxRouter, address gmxVault, address gmxPositionRouter);
     event Pause(bool paused);
