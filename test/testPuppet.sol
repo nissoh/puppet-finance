@@ -150,7 +150,6 @@ contract testPuppet is Test {
         collateralToken = WETH;
         indexToken = WETH;
         isLong = true;
-        
 
         // trader
         bytes32 _routeKey = _testRegisterRoute(WETH, WETH, true);

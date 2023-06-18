@@ -112,6 +112,13 @@ contract Route is Base, IRoute {
     // View Functions
     // ============================================================================================
 
+    // Route Info
+
+    /// @inheritdoc IRoute
+    function trader() external view returns (address _trader) {
+        _trader = route.trader;
+    }
+
     // Position Info
 
     /// @inheritdoc IRoute

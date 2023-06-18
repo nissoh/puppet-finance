@@ -56,6 +56,12 @@ interface IRoute is IPositionRouterCallbackReceiver {
     // View Functions
     // ============================================================================================
 
+    // Route Info
+
+    /// @notice The ```trader``` function returns the trader address of the current route
+    /// @return _trader The trader address
+    function trader() external view returns (address _trader);
+
     // Position Info
 
     /// @notice The ```puppets``` function returns the puppets that are subscribed to the current position
