@@ -253,7 +253,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         isRoute[_routeAddr] = true;
         _routes.push(_routeAddr);
 
-        emit Register(msg.sender, _routeAddr, _routeTypeKey);
+        emit RegisterRoute(msg.sender, _routeAddr, _routeTypeKey);
     }
 
     /// @inheritdoc IOrchestrator
@@ -266,7 +266,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bool _isLong
     ) external payable returns (bytes32 _routeKey, bytes32 _requestKey) {
         _routeKey = registerRoute(_collateralToken, _indexToken, _isLong);
-        _requestKey = IRoute(_routeInfo[_routeKey].route).requestPosition{value: msg.value}(_adjustPositionParams, _swapParams, _executionFee, true);
+        // _requestKey = IRoute(_routeInfo[_routeKey].route).requestPosition{value: msg.value}(_adjustPositionParams, _swapParams, _executionFee, true);
+        _requestKey = requestPosition(_adjustPositionParams, _swapParams, getRouteTypeKey(_collateralToken, _indexToken, _isLong), _executionFee, true);
     }
 
     /// @inheritdoc IOrchestrator
@@ -276,7 +277,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bytes32 _routeTypeKey,
         uint256 _executionFee,
         bool _isIncrease
-    ) external payable nonReentrant returns (bytes32 _requestKey) {
+    ) public payable nonReentrant returns (bytes32 _requestKey) {
         address _route = _routeInfo[getRouteKey(msg.sender, _routeTypeKey)].route;
         if (_route == address(0)) revert RouteNotRegistered();
 
@@ -297,7 +298,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         IRoute(_route).approvePlugin();
 
-        emit PluginApproval(msg.sender, _routeTypeKey);
+        emit ApprovePlugin(msg.sender, _routeTypeKey);
     }
 
     // ============================================================================================
@@ -380,7 +381,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     function setThrottleLimit(uint256 _throttleLimit, bytes32 _routeType) external {
         _puppetInfo[msg.sender].throttleLimits[_routeType] = _throttleLimit;
 
-        emit ThrottleLimit(msg.sender, _routeType, _throttleLimit);
+        emit SetThrottleLimit(msg.sender, _routeType, _throttleLimit);
     }
 
     // ============================================================================================
@@ -391,14 +392,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     function debitPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
         _puppetInfo[_puppet].depositAccount[_asset] -= _amount;
 
-        emit Debit(_amount, _asset, _puppet, msg.sender);
+        emit DebitPuppet(_amount, _asset, _puppet, msg.sender);
     }
 
     /// @inheritdoc IOrchestrator
     function creditPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
         _puppetInfo[_puppet].depositAccount[_asset] += _amount;
 
-        emit Credit(_amount, _asset, _puppet, msg.sender);
+        emit CreditPuppet(_amount, _asset, _puppet, msg.sender);
     }
 
     /// @inheritdoc IOrchestrator
@@ -459,7 +460,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     function freezeRoute(address _route, bool _freeze) external requiresAuth nonReentrant {
         IRoute(_route).freeze(_freeze);
 
-        emit Freeze(_route, _freeze);
+        emit FreezeRoute(_route, _freeze);
     }
 
     /// @inheritdoc IOrchestrator
@@ -467,7 +468,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bytes32 _routeTypeKey = getRouteTypeKey(_collateral, _index, _isLong);
         routeType[_routeTypeKey] = RouteType(_collateral, _index, _isLong, true);
 
-        emit Type(_routeTypeKey, _collateral, _index, _isLong);
+        emit SetRouteType(_routeTypeKey, _collateral, _index, _isLong);
     }
 
     /// @inheritdoc IOrchestrator
@@ -478,7 +479,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _gmx.gmxVault = _gmxVault;
         _gmx.gmxPositionRouter = _gmxPositionRouter;
 
-        emit GMXUtils(_gmxRouter, _gmxVault, _gmxPositionRouter);
+        emit SetGMXUtils(_gmxRouter, _gmxVault, _gmxPositionRouter);
     }
 
     /// @inheritdoc IOrchestrator
@@ -496,7 +497,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         _referralCode = _refCode;
 
-        emit ReferralCode(_refCode);
+        emit SetReferralCode(_refCode);
     }
 
     /// @inheritdoc IOrchestrator

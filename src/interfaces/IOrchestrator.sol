@@ -276,27 +276,27 @@ interface IOrchestrator {
     // Events
     // ============================================================================================
 
-    event Register(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
+    event RegisterRoute(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
     event RequestPositionAdjustment(address indexed caller, address indexed route, bytes32 indexed requestKey, bytes32 routeTypeKey);
-    event PluginApproval(address indexed caller, bytes32 indexed routeTypeKey);
+    event ApprovePlugin(address indexed caller, bytes32 indexed routeTypeKey);
     event Deposit(uint256 indexed amount, address indexed asset, address caller, address indexed puppet);
     event Withdraw(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
     event Subscriptions(address[] traders, uint256[] allowances, address indexed puppet, bytes32 indexed routeTypeKey, bool indexed subscribe);
-    event ThrottleLimit(address indexed puppet, bytes32 indexed routeType, uint256 throttleLimit);
-    event Debit(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
-    event Credit(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
+    event SetThrottleLimit(address indexed puppet, bytes32 indexed routeType, uint256 throttleLimit);
+    event DebitPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
+    event CreditPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
     event OpenTimestamp(address indexed puppet, bytes32 indexed routeType, uint256 timestamp);
     event Send(uint256 amount, address indexed asset, address indexed receiver, address indexed caller);
     event Callback(address indexed route, bytes32 indexed requestKey, bool indexed isExecuted, bool isIncrease);
-    event Type(bytes32 routeTypeKey, address collateral, address index, bool isLong);
-    event GMXUtils(address gmxRouter, address gmxVault, address gmxPositionRouter);
+    event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
+    event SetGMXUtils(address gmxRouter, address gmxVault, address gmxPositionRouter);
     event Pause(bool paused);
-    event ReferralCode(bytes32 indexed referralCode);
+    event SetReferralCode(bytes32 indexed referralCode);
     event Keeper(address indexed keeper);
     event Request(bytes32 indexed requestKey, address indexed route, bool indexed isIncrease);
     event RouteRescue(uint256 amount, address indexed token, address indexed receiver, address indexed route);
     event Rescue(uint256 amount, address indexed token, address indexed receiver);
-    event Freeze(address indexed route, bool indexed freeze);
+    event FreezeRoute(address indexed route, bool indexed freeze);
 
     // ============================================================================================
     // Errors
