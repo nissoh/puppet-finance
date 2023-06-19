@@ -134,10 +134,16 @@ contract testPuppet is Test {
         orchestrator = new Orchestrator(_dictator, address(_routeFactory), address(0), bytes32(0), _gmxInfo);
 
         bytes4 functionSig = orchestrator.setRouteType.selector;
+        bytes4 functionSig2 = orchestrator.decreaseSize.selector;
+        bytes4 functionSig3 = orchestrator.liquidate.selector;
 
         vm.startPrank(owner);
         _setRoleCapability(_dictator, 0, address(orchestrator), functionSig, true);
+        _setRoleCapability(_dictator, 1, address(orchestrator), functionSig2, true);
+        _setRoleCapability(_dictator, 1, address(orchestrator), functionSig3, true);
+
         _setUserRole(_dictator, owner, 0, true);
+        _setUserRole(_dictator, keeper, 1, true);
 
         orchestrator.setRouteType(WETH, WETH, true);
         orchestrator.setRouteType(USDC, WETH, false);
@@ -146,7 +152,6 @@ contract testPuppet is Test {
 
     function testCorrectFlow() public {
         uint256 _assets = 1 ether;
-
 
         collateralToken = WETH;
         indexToken = WETH;
@@ -169,8 +174,35 @@ contract testPuppet is Test {
         // route
         _testIncreasePosition(_routeTypeInfo, false, false);
         _testIncreasePosition(_routeTypeInfo, true, false);
-        _testClosePosition(_routeTypeKey);
+        _testClosePosition(_routeTypeKey, false);
         _testIncreasePosition(_routeTypeInfo, false, true);
+    }
+
+    function testAuthFunctions() public {
+        uint256 _assets = 1 ether;
+
+        collateralToken = WETH;
+        indexToken = WETH;
+        isLong = true;
+
+        // trader
+        bytes32 _routeKey = _testRegisterRoute(WETH, WETH, true);
+        bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(WETH, WETH, true);
+
+        route = Route(payable(orchestrator.getRoute(_routeKey)));
+
+        // puppet
+        _testPuppetDeposit(_assets, WETH);
+        _testUpdateRoutesSubscription(WETH, WETH, _routeKey, true);
+
+        RouteTypeInfo memory _routeTypeInfo = RouteTypeInfo(WETH, WETH, true, _routeTypeKey);
+
+        // route
+        _testIncreasePosition(_routeTypeInfo, false, false);
+
+        // auth
+        _testClosePosition(_routeTypeKey, true);
+        _testAuthLiquidate(_routeKey);
     }
 
     function testRegisterRouteAndIncreasePosition() public {
@@ -200,7 +232,7 @@ contract testPuppet is Test {
         // route
         _testIncreasePosition(_routeTypeInfo, false, false);
         _testIncreasePosition(_routeTypeInfo, true, false);
-        _testClosePosition(_routeTypeKey);
+        _testClosePosition(_routeTypeKey, false);
     }
 
     // ============================================================================================
@@ -468,7 +500,7 @@ contract testPuppet is Test {
         if (_routeTypeInfo.isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  44746651219079533574200880371219816157 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  42561617854888140285378929051641905540 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 20;
             _acceptablePrice = type(uint256).max;
             _amountInTrader = 10 ether;
@@ -786,7 +818,7 @@ contract testPuppet is Test {
             }
         }
 
-    function _testClosePosition(bytes32 _routeTypeKey) internal {
+    function _testClosePosition(bytes32 _routeTypeKey, bool _isAuth) internal {
         assertTrue(_isOpenInterest(address(route)), "_testClosePosition: E1");
 
         uint256 _minOut = 0;
@@ -826,49 +858,55 @@ contract testPuppet is Test {
             positionIndexBefore: route.positionIndex()
         });
 
-        vm.startPrank(trader);
+        if (!_isAuth) {
+            vm.startPrank(trader);
 
-        {
-            vm.expectRevert(); // revert with `InvalidExecutionFee`
-            orchestrator.requestPosition{ value: _executionFee - 1 }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, false);
-        }
+            {
+                vm.expectRevert(); // revert with `InvalidExecutionFee`
+                orchestrator.requestPosition{ value: _executionFee - 1 }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, false);
+            }
 
-        orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, false);
-        vm.stopPrank();
+            orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, false);
+            vm.stopPrank();
 
-        vm.startPrank(GMXPositionRouterKeeper); // keeper
-        IGMXPositionRouter(gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
-        vm.stopPrank();
+            vm.startPrank(GMXPositionRouterKeeper); // keeper
+            IGMXPositionRouter(gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
+            vm.stopPrank();
 
-        assertEq(IERC20(collateralToken).balanceOf(address(route)), 0, "_testClosePosition: E02");
-        assertEq(address(route).balance, 0, "_testClosePosition: E03");
+            assertEq(IERC20(collateralToken).balanceOf(address(route)), 0, "_testClosePosition: E02");
+            assertEq(address(route).balance, 0, "_testClosePosition: E03");
 
-        if (_isOpenInterest(address(route))) {
-            // call was not executed
-            revert("decrease call was not executed");
+            if (_isOpenInterest(address(route))) {
+                // call was not executed
+                revert("decrease call was not executed");
+            } else {
+                // call was executed
+                assertTrue(_closePositionBefore.traderBalanceBefore < IERC20(collateralToken).balanceOf(address(trader)), "_testClosePosition: E4");
+                assertTrue(_closePositionBefore.aliceDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(alice, collateralToken), "_testClosePosition: E5");
+                assertTrue(_closePositionBefore.bobDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(bob, collateralToken), "_testClosePosition: E6");
+                assertTrue(_closePositionBefore.yossiDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(yossi, collateralToken), "_testClosePosition: E7");
+                assertTrue(_closePositionBefore.orchesratorBalanceBefore < IERC20(collateralToken).balanceOf(address(orchestrator)), "_testClosePosition: E8");
+                assertEq(_closePositionBefore.aliceDepositAccountBalanceBefore, _closePositionBefore.bobDepositAccountBalanceBefore, "_testClosePosition: E9");
+                assertApproxEqAbs(orchestrator.puppetAccountBalance(alice, collateralToken), orchestrator.puppetAccountBalance(bob, collateralToken), 1e15, "_testClosePosition: E10");
+                assertEq(_closePositionBefore.positionIndexBefore + 1, route.positionIndex(), "_testClosePosition: E11");
+                address[] memory _puppets = route.puppets();
+                assertEq(_puppets.length, 0, "_testClosePosition: E12");
+                assertEq(route.participantShares(alice), 0, "_testClosePosition: E13");
+                assertEq(route.participantShares(bob), 0, "_testClosePosition: E14");
+                assertEq(route.participantShares(yossi), 0, "_testClosePosition: E15");
+                assertEq(route.participantShares(trader), 0, "_testClosePosition: E16");
+                assertEq(route.latestAmountIn(alice), 0, "_testClosePosition: E17");
+                assertEq(route.latestAmountIn(bob), 0, "_testClosePosition: E18");
+                assertEq(route.latestAmountIn(yossi), 0, "_testClosePosition: E19");
+                assertEq(route.latestAmountIn(trader), 0, "_testClosePosition: E20");
+                assertEq(route.isPuppetAdjusted(alice), false, "_testClosePosition: E21");
+                assertEq(route.isPuppetAdjusted(bob), false, "_testClosePosition: E22");
+                assertEq(route.isPuppetAdjusted(yossi), false, "_testClosePosition: E23");
+            }
         } else {
-            // call was executed
-            assertTrue(_closePositionBefore.traderBalanceBefore < IERC20(collateralToken).balanceOf(address(trader)), "_testClosePosition: E4");
-            assertTrue(_closePositionBefore.aliceDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(alice, collateralToken), "_testClosePosition: E5");
-            assertTrue(_closePositionBefore.bobDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(bob, collateralToken), "_testClosePosition: E6");
-            assertTrue(_closePositionBefore.yossiDepositAccountBalanceBefore < orchestrator.puppetAccountBalance(yossi, collateralToken), "_testClosePosition: E7");
-            assertTrue(_closePositionBefore.orchesratorBalanceBefore < IERC20(collateralToken).balanceOf(address(orchestrator)), "_testClosePosition: E8");
-            assertEq(_closePositionBefore.aliceDepositAccountBalanceBefore, _closePositionBefore.bobDepositAccountBalanceBefore, "_testClosePosition: E9");
-            assertApproxEqAbs(orchestrator.puppetAccountBalance(alice, collateralToken), orchestrator.puppetAccountBalance(bob, collateralToken), 1e15, "_testClosePosition: E10");
-            assertEq(_closePositionBefore.positionIndexBefore + 1, route.positionIndex(), "_testClosePosition: E11");
-            address[] memory _puppets = route.puppets();
-            assertEq(_puppets.length, 0, "_testClosePosition: E12");
-            assertEq(route.participantShares(alice), 0, "_testClosePosition: E13");
-            assertEq(route.participantShares(bob), 0, "_testClosePosition: E14");
-            assertEq(route.participantShares(yossi), 0, "_testClosePosition: E15");
-            assertEq(route.participantShares(trader), 0, "_testClosePosition: E16");
-            assertEq(route.latestAmountIn(alice), 0, "_testClosePosition: E17");
-            assertEq(route.latestAmountIn(bob), 0, "_testClosePosition: E18");
-            assertEq(route.latestAmountIn(yossi), 0, "_testClosePosition: E19");
-            assertEq(route.latestAmountIn(trader), 0, "_testClosePosition: E20");
-            assertEq(route.isPuppetAdjusted(alice), false, "_testClosePosition: E21");
-            assertEq(route.isPuppetAdjusted(bob), false, "_testClosePosition: E22");
-            assertEq(route.isPuppetAdjusted(yossi), false, "_testClosePosition: E23");
+            // revert("Asd");
+            bytes32 _routeKey = orchestrator.getRouteKey(trader, _routeTypeKey);
+            _testAuthDecreaseSize(_adjustPositionParams, _executionFee, _routeKey);
         }
     }
 
@@ -916,8 +954,8 @@ contract testPuppet is Test {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 44746651219079533574200880371219816157 - 32518637679390173802308490791400943605;
-        
+        uint256 _size = 42561617854888140285378929051641905540 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
 
@@ -947,6 +985,28 @@ contract testPuppet is Test {
 
         assertTrue(_routeKey != bytes32(0), "_testRegisterRouteAndIncreasePosition: E01");
         assertTrue(_requestKey != bytes32(0), "_testRegisterRouteAndIncreasePosition: E02");
+    }
+
+    function _testAuthDecreaseSize(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) internal {
+        vm.expectRevert(); // reverts with Unauthorized()
+        orchestrator.decreaseSize(_adjustPositionParams, _executionFee, _routeKey);
+
+        vm.startPrank(keeper);
+        orchestrator.decreaseSize(_adjustPositionParams, _executionFee, _routeKey);
+        vm.stopPrank();
+    }
+
+    function _testAuthLiquidate(bytes32 _routeKey) internal {
+        vm.expectRevert(); // reverts with Unauthorized()
+        orchestrator.liquidate(_routeKey);
+
+        uint256 _positionIndexBefore = route.positionIndex();
+
+        vm.startPrank(keeper);
+        orchestrator.liquidate(_routeKey);
+        vm.stopPrank();
+
+        assertEq(_positionIndexBefore + 1, route.positionIndex(), "_testAuthLiquidate: E01");
     }
 
     // ============================================================================================
