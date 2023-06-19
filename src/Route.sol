@@ -48,7 +48,7 @@ contract Route is Base, IRoute {
     mapping(uint256 => AddCollateralRequest) public addCollateralRequests; // addCollateralIndex => AddCollateralRequest
     mapping(uint256 => Position) public positions; // positionIndex => Position
 
-    IOrchestrator public orchestrator;
+    IOrchestrator public immutable orchestrator;
 
     Route public route;
 
@@ -334,6 +334,7 @@ contract Route is Base, IRoute {
     /// @param _totalSupply The current total supply of shares in the request
     /// @param _totalAssets The current total assets in the request
     /// @return _puppetsRequestData The request data of the Puppets, encoded as bytes
+    // slither-disable-next-line reentrancy-no-eth
     function _getPuppetsAssetsAndAllocateRequestShares(uint256 _totalSupply, uint256 _totalAssets) internal returns (bytes memory _puppetsRequestData) {
         bool _isOI = _isOpenInterest();
         uint256 _traderAmountIn = _totalAssets;

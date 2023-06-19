@@ -511,6 +511,15 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
+    function setRouteFactory(address _factory) external requiresAuth nonReentrant {
+        if (_factory == address(0)) revert ZeroAddress();
+
+        routeFactory = _factory;
+
+        emit SetRouteFactory(_factory);
+    }
+
+    /// @inheritdoc IOrchestrator
     function pause(bool _pause) external requiresAuth nonReentrant {
         _paused = _pause;
 

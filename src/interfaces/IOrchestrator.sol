@@ -1,6 +1,25 @@
 // SPDX-License-Identifier: AGPL
 pragma solidity 0.8.17;
 
+// ==============================================================
+//  _____                 _      _____ _                        |
+// |  _  |_ _ ___ ___ ___| |_   |   __|_|___ ___ ___ ___ ___    |
+// |   __| | | . | . | -_|  _|  |   __| |   | .'|   |  _| -_|   |
+// |__|  |___|  _|  _|___|_|    |__|  |_|_|_|__,|_|_|___|___|   |
+//           |_| |_|                                            |
+// ==============================================================
+// ======================== IOrchestrator =======================
+// ==============================================================
+// Puppet Finance: https://github.com/GMX-Blueberry-Club/Puppet
+
+// Primary Author
+// johnnyonline: https://github.com/johnnyonline
+
+// Reviewers
+// itburnz: https://github.com/nissoh
+
+// ==============================================================
+
 import {IRoute} from "./IRoute.sol";
 
 interface IOrchestrator {
@@ -267,12 +286,16 @@ interface IOrchestrator {
     function setGMXInfo(address _gmxRouter, address _gmxVault, address _gmxPositionRouter) external;
 
     /// @notice The ```setKeeper``` function is called by the Authority to set the Keeper address
-    /// @param _keeperAddr The address of the Keeper
+    /// @param _keeperAddr The address of the new Keeper
     function setKeeper(address _keeperAddr) external;
 
     /// @notice The ```setReferralCode``` function is called by the Authority to set the referral code
-    /// @param _refCode The referral code
+    /// @param _refCode The new referral code
     function setReferralCode(bytes32 _refCode) external;
+
+    /// @notice The ```setRouteFactory``` function is called by the Authority to set the Route Factory address
+    /// @param _factory The address of the new Route Factory
+    function setRouteFactory(address _factory) external;
 
     /// @notice The ```setFeeDivisors``` function is called by the Authority to pause all Routes
     /// @param _pause The new pause state
@@ -300,6 +323,7 @@ interface IOrchestrator {
     event SetGMXUtils(address gmxRouter, address gmxVault, address gmxPositionRouter);
     event Pause(bool paused);
     event SetReferralCode(bytes32 indexed referralCode);
+    event SetRouteFactory(address indexed factory);
     event Keeper(address indexed keeper);
     event RouteRescue(uint256 amount, address indexed token, address indexed receiver, address indexed route);
     event Rescue(uint256 amount, address indexed token, address indexed receiver);
