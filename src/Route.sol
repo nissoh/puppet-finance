@@ -87,18 +87,6 @@ contract Route is Base, IRoute {
         _;
     }
 
-    /// @notice Modifier that ensures the caller is the keeper
-    modifier onlyKeeper() {
-        if (msg.sender != orchestrator.keeper()) revert NotKeeper();
-        _;
-    }
-
-    /// @notice Modifier that ensures the caller is the callback caller
-    modifier onlyCallbackCaller() {
-        if (msg.sender != orchestrator.gmxPositionRouter()) revert NotCallbackCaller();
-        _;
-    }
-
     /// @notice Modifier that ensures the Route is not frozen and the orchestrator is not paused
     modifier notFrozen() {
         if (orchestrator.paused()) revert Paused();
@@ -167,7 +155,7 @@ contract Route is Base, IRoute {
     // Orchestrator Functions
     // ============================================================================================
 
-    // called by Trader
+    // called by trader
 
     /// @inheritdoc IRoute
     // slither-disable-next-line reentrancy-eth
@@ -195,7 +183,7 @@ contract Route is Base, IRoute {
         emit PluginApproval();
     }
 
-    // called by Keepers
+    // called by keeper
 
     /// @inheritdoc IRoute
     function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external onlyOrchestrator nonReentrant returns (bytes32 _requestKey) {
@@ -212,7 +200,7 @@ contract Route is Base, IRoute {
         emit Liquidate();
     }
 
-    // called by Authority
+    // called by owner
 
     /// @inheritdoc IRoute
     function rescueTokens(uint256 _amount, address _token, address _receiver) external onlyOrchestrator {
@@ -237,7 +225,9 @@ contract Route is Base, IRoute {
     // ============================================================================================
 
     // @inheritdoc IPositionRouterCallbackReceiver
-    function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external onlyCallbackCaller nonReentrant {
+    function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant {
+        if (msg.sender != orchestrator.gmxPositionRouter()) revert NotCallbackCaller();
+
         if (_isExecuted) {
             if (_isIncrease) _allocateShares(_requestKey);
             _requestKey = bytes32(0);

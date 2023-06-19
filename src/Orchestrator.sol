@@ -424,6 +424,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // Authority Functions
     // ============================================================================================
 
+    // called by keeper
+
     /// @inheritdoc IOrchestrator
     function decreaseSize(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external requiresAuth nonReentrant returns (bytes32 _requestKey) {
         address _route = _routeInfo[_routeKey].route;
@@ -444,6 +446,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit Liquidate(_routeKey);
     }
 
+    // called by owner
+
     /// @inheritdoc IOrchestrator
     function rescueTokens(uint256 _amount, address _token, address _receiver) external requiresAuth nonReentrant {
         if (_token == address(0)) {
@@ -460,19 +464,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         IRoute(_route).rescueTokens(_amount, _token, _receiver);
 
         emit RouteRescue(_amount, _token, _receiver, _route);
-    }
-
-    /// @inheritdoc IOrchestrator
-    function requestRoutePosition(
-        IRoute.AdjustPositionParams memory _adjustPositionParams,
-        IRoute.SwapParams memory _swapParams,
-        uint256 _executionFee,
-        address _route,
-        bool _isIncrease
-    ) external payable requiresAuth nonReentrant returns (bytes32 _requestKey) {
-        _requestKey = IRoute(_route).requestPosition{value: msg.value}(_adjustPositionParams, _swapParams, _executionFee, _isIncrease);
-
-        emit Request(_requestKey, _route, _isIncrease);
     }
 
     /// @inheritdoc IOrchestrator

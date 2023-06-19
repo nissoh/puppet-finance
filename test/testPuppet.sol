@@ -20,6 +20,7 @@ import {IOrchestrator} from "src/interfaces/IOrchestrator.sol";
 import {IGMXVault} from "src/interfaces/IGMXVault.sol";
 import {IGMXReader} from "src/interfaces/IGMXReader.sol";
 import {IGMXPositionRouter} from "src/interfaces/IGMXPositionRouter.sol";
+import {IVault} from "src/interfaces/IVault.sol";
 
 contract testPuppet is Test {
 
@@ -467,21 +468,21 @@ contract testPuppet is Test {
         if (_routeTypeInfo.isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-            _sizeDelta = 42618489375654341759425535230363787793 - 37734087910998002155840497249191012773;
+            _sizeDelta =  44746651219079533574200880371219816157 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta = _sizeDelta / 20;
             _acceptablePrice = type(uint256).max;
-            _amountInTrader = 5 ether;
+            _amountInTrader = 10 ether;
         } else {
             // TODO: short position
             // Available amount in USD: PositionRouter.maxGlobalShortSizes(indexToken) - Vault.globalShortSizes(indexToken)
-            // _sizeDelta = 28450325520479593674495358948865175474 - IVault().globalShortSizes(indexToken);
-            _sizeDelta = 28450325520479593674495358948865175474 - 28283814900256575441978611902741561945;
+            _sizeDelta = (35050325520479593674495358948865175474 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken));
+            _sizeDelta = _sizeDelta / 50;
             _acceptablePrice = type(uint256).min;
-            _amountInTrader = 200000000;
+            _amountInTrader = _sizeDelta / 5 / 1e24;
         }
 
         // the USD value of the change in position size
-        _sizeDelta = _sizeDelta / 10;
+        // _sizeDelta = _sizeDelta / 50;
 
         address[] memory _path = new address[](1);
 
@@ -872,7 +873,8 @@ contract testPuppet is Test {
     }
 
     function _testNonCollatAmountIn(uint256 _amountInTrader, uint256 _executionFee, IRoute.AdjustPositionParams memory _adjustPositionParams, bytes32 _routeTypeKey) internal {
-        _amountInTrader = _amountInTrader / 5;
+        // TODO
+        _amountInTrader = _amountInTrader / 20;
         address[] memory _pathNonCollateral = new address[](2);
         _pathNonCollateral[0] = FRAX;
         _pathNonCollateral[1] = WETH;
@@ -914,7 +916,7 @@ contract testPuppet is Test {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 42618489375654341759425535230363787793 - 37734087910998002155840497249191012773;
+        uint256 _size = 44746651219079533574200880371219816157 - 32518637679390173802308490791400943605;
         
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;

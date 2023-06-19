@@ -221,6 +221,8 @@ interface IOrchestrator {
 
     // Authority
 
+    // called by keeper
+
     /// @notice The ```decreaseSize``` function is called by Puppet keepers to decrease the position size in case there are Puppets to adjust
     /// @param _adjustPositionParams The adjusment params for the position
     /// @param _executionFee The total execution fee, paid by the Keeper in ETH
@@ -231,6 +233,8 @@ interface IOrchestrator {
     /// @notice The ```liquidate``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
     /// @param _routeKey The Route key
     function liquidate(bytes32 _routeKey) external;
+
+    // called by owner
 
     /// @notice The ```rescueTokens``` function is called by the Authority to rescue tokens from this contract
     /// @param _amount The amount to rescue
@@ -244,15 +248,6 @@ interface IOrchestrator {
     /// @param _receiver The address of the receiver
     /// @param _route The address of the Route
     function rescueRouteTokens(uint256 _amount, address _token, address _receiver, address _route) external;
-
-    /// @notice The ```requestRoutePosition``` function is called by the Authority to create a new position request for a Route
-    /// @param _adjustPositionParams The adjusment params for the position
-    /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
-    /// @param _executionFee The total execution fee, paid by the Trader in ETH
-    /// @param _route The address of the Route
-    /// @param _isIncrease Whether to increase or decrease the position
-    /// @return _requestKey The Request key
-    function requestRoutePosition(IRoute.AdjustPositionParams memory _adjustPositionParams, IRoute.SwapParams memory _swapParams, uint256 _executionFee, address _route, bool _isIncrease) external payable returns (bytes32 _requestKey);
 
     /// @notice The ```freezeRoute``` function is called by the Authority to freeze or unfreeze a Route
     /// @param _route The address of the Route
@@ -306,7 +301,6 @@ interface IOrchestrator {
     event Pause(bool paused);
     event SetReferralCode(bytes32 indexed referralCode);
     event Keeper(address indexed keeper);
-    event Request(bytes32 indexed requestKey, address indexed route, bool indexed isIncrease);
     event RouteRescue(uint256 amount, address indexed token, address indexed receiver, address indexed route);
     event Rescue(uint256 amount, address indexed token, address indexed receiver);
     event FreezeRoute(address indexed route, bool indexed freeze);

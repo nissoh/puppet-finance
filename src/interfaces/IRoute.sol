@@ -126,7 +126,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @notice The ```liquidate``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
     function liquidate() external;
 
-    // called by authority
+    // called by owner
 
     /// @notice The ```rescueTokens``` is called by the Orchestrator and Authority to rescue tokens
     /// @param _amount The amount to rescue
