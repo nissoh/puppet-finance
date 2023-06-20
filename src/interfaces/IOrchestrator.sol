@@ -182,6 +182,20 @@ interface IOrchestrator {
 
     // Puppet
 
+    /// @notice The ```updateRouteSubscription``` function is called by a Puppet to update his subscription to a Route
+    /// @param _allowance The allowance percentage
+    /// @param _trader The address of the Trader
+    /// @param _routeTypeKey The RouteType key
+    /// @param _subscribe Whether to subscribe or unsubscribe
+    function updateRouteSubscription(uint256 _allowance, address _trader, bytes32 _routeTypeKey, bool _subscribe) external;
+
+    /// @notice The ```updateRoutesSubscriptions``` function is called by a Puppet to update his subscription to a list of Routes
+    /// @param _allowances The allowance percentage array
+    /// @param _traders The address array of Traders
+    /// @param _routeTypeKeys The RouteType key array
+    /// @param _subscribe Whether to subscribe or unsubscribe
+    function updateRoutesSubscriptions(uint256[] memory _allowances, address[] memory _traders, bytes32[] memory _routeTypeKeys, bool[] memory _subscribe) external;
+
     /// @notice The ```deposit``` function is called by a Puppet to deposit funds into his deposit account
     /// @param _amount The amount to deposit
     /// @param _asset The address of the Asset
@@ -194,13 +208,6 @@ interface IOrchestrator {
     /// @param _receiver The address of the receiver of withdrawn funds
     /// @param _isETH Whether to withdraw ETH or not. Available only for WETH deposits
     function withdraw(uint256 _amount, address _asset, address _receiver, bool _isETH) external;
-
-    /// @notice The ```updateRoutesSubscription``` function is called by a Puppet to update his subscription to a list of Routes
-    /// @param _traders The address array of Traders
-    /// @param _allowances The corresponding allowance percentage array
-    /// @param _routeTypeKey The RouteType key
-    /// @param _subscribe Whether to subscribe or unsubscribe
-    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _subscribe) external;
 
     /// @notice The ```setThrottleLimit``` function is called by a Puppet to set his throttle limit for a given RouteType
     /// @param _throttleLimit The throttle limit
@@ -308,9 +315,9 @@ interface IOrchestrator {
     event RegisterRoute(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
     event RequestPositionAdjustment(address indexed caller, address indexed route, bytes32 indexed requestKey, bytes32 routeTypeKey);
     event ApprovePlugin(address indexed caller, bytes32 indexed routeTypeKey);
+    event Subscribe(uint256 allowance, address indexed trader, address indexed puppet, bytes32 _routeTypeKey, bool indexed subscribe);
     event Deposit(uint256 indexed amount, address indexed asset, address caller, address indexed puppet);
     event Withdraw(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
-    event Subscribe(address[] traders, uint256[] allowances, address indexed puppet, bytes32 indexed routeTypeKey, bool indexed subscribe);
     event SetThrottleLimit(address indexed puppet, bytes32 indexed routeType, uint256 throttleLimit);
     event DebitPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
     event CreditPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);

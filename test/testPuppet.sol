@@ -176,6 +176,9 @@ contract testPuppet is Test {
         _testIncreasePosition(_routeTypeInfo, true, false);
         _testClosePosition(_routeTypeKey, false);
         _testIncreasePosition(_routeTypeInfo, false, true);
+
+        // puppet
+        _testRemoveRouteSubscription(WETH, WETH, true);
     }
 
     function testAuthFunctions() public {
@@ -233,6 +236,9 @@ contract testPuppet is Test {
         _testIncreasePosition(_routeTypeInfo, false, false);
         _testIncreasePosition(_routeTypeInfo, true, false);
         _testClosePosition(_routeTypeKey, false);
+
+        // puppet
+        _testRemoveRouteSubscription(USDC, WETH, false);
     }
 
     // ============================================================================================
@@ -330,29 +336,35 @@ contract testPuppet is Test {
     function _testUpdateRoutesSubscription(address _collateralToken, address _indexToken, bytes32 _routeKey, bool _isLong) internal {
         uint256[] memory _allowances = new uint256[](1);
         address[] memory _traders = new address[](1);
-        _traders[0] = trader;
-        _allowances[0] = 1000; // 10% of the puppet's deposit account
+        bytes32[] memory _routeTypeKeys = new bytes32[](1);
+        bool[] memory _subscribe = new bool[](1);
 
         bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(_collateralToken, _indexToken, _isLong);
         address _route = orchestrator.getRoute(_routeKey);
+
+        _traders[0] = trader;
+        _allowances[0] = 1000; // 10% of the puppet's deposit account
+        _routeTypeKeys[0] = _routeTypeKey;
+        _subscribe[0] = true;
 
         uint256[] memory _faultyAllowance = new uint256[](1);
         _faultyAllowance[0] = 10001;
         address[] memory _faultyTraders = new address[](2);
         _faultyTraders[0] = alice;
         _faultyTraders[1] = bob;
-        bytes32 _faultyRouteTypeKey = orchestrator.getRouteTypeKey(FRAX, WETH, true);
+        bytes32[] memory _faultyRouteTypeKeys = new bytes32[](2);
+        _faultyRouteTypeKeys[0] = orchestrator.getRouteTypeKey(FRAX, WETH, true);
 
         vm.startPrank(alice);
 
         vm.expectRevert(); // reverts with MismatchedInputArrays()
-        orchestrator.updateRoutesSubscription(_faultyTraders, _allowances, _routeTypeKey, true);
+        orchestrator.updateRoutesSubscriptions(_allowances, _faultyTraders, _routeTypeKeys, _subscribe);
 
         vm.expectRevert(); // reverts with InvalidAllowancePercentage()
-        orchestrator.updateRoutesSubscription(_traders, _faultyAllowance, _routeTypeKey, true);
+        orchestrator.updateRoutesSubscriptions(_faultyAllowance, _traders, _routeTypeKeys, _subscribe);
 
         vm.expectRevert(); // reverts with RouteNotRegistered()
-        orchestrator.updateRoutesSubscription(_traders, _allowances, _faultyRouteTypeKey, true);
+        orchestrator.updateRoutesSubscriptions(_allowances, _traders, _faultyRouteTypeKeys, _subscribe);
 
         {
             address[] memory _subscriptions = orchestrator.puppetSubscriptions(alice);
@@ -367,7 +379,7 @@ contract testPuppet is Test {
             assertEq(_subscriptions.length, 0, "_testUpdateRoutesSubscription: E02");
         }
 
-        orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
+        orchestrator.updateRoutesSubscriptions(_allowances, _traders, _routeTypeKeys, _subscribe);
         assertEq(orchestrator.puppetAllowancePercentage(alice, _route), _allowances[0], "_testUpdateRoutesSubscription: E0");
         assertEq(orchestrator.subscribedPuppets(_routeKey)[0], alice, "_testUpdateRoutesSubscription: E1");
         assertEq(orchestrator.subscribedPuppets(_routeKey).length, 1, "_testUpdateRoutesSubscription: E2");
@@ -380,12 +392,12 @@ contract testPuppet is Test {
         }
 
         vm.startPrank(bob);
-        orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
+        orchestrator.updateRoutesSubscriptions(_allowances, _traders, _routeTypeKeys, _subscribe);
         assertEq(orchestrator.puppetAllowancePercentage(bob, _route), _allowances[0], "_testUpdateRoutesSubscription: E3");
         assertEq(orchestrator.subscribedPuppets(_routeKey)[1], bob, "_testUpdateRoutesSubscription: E4");
         assertEq(orchestrator.subscribedPuppets(_routeKey).length, 2, "_testUpdateRoutesSubscription: E5");
         // again
-        orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
+        orchestrator.updateRoutesSubscriptions(_allowances, _traders, _routeTypeKeys, _subscribe);
         assertEq(orchestrator.puppetAllowancePercentage(bob, _route), _allowances[0], "_testUpdateRoutesSubscription: E03");
         assertEq(orchestrator.subscribedPuppets(_routeKey)[1], bob, "_testUpdateRoutesSubscription: E04");
         assertEq(orchestrator.subscribedPuppets(_routeKey).length, 2, "_testUpdateRoutesSubscription: E05");
@@ -398,7 +410,7 @@ contract testPuppet is Test {
         }
 
         vm.startPrank(yossi);
-        orchestrator.updateRoutesSubscription(_traders, _allowances, _routeTypeKey, true);
+        orchestrator.updateRoutesSubscriptions(_allowances, _traders, _routeTypeKeys, _subscribe);
         assertEq(orchestrator.puppetAllowancePercentage(yossi, _route), _allowances[0], "_testUpdateRoutesSubscription: E6");
         assertEq(orchestrator.subscribedPuppets(_routeKey)[2], yossi, "_testUpdateRoutesSubscription: E7");
         assertEq(orchestrator.subscribedPuppets(_routeKey).length, 3, "_testUpdateRoutesSubscription: E8");
@@ -413,6 +425,50 @@ contract testPuppet is Test {
         assertTrue(orchestrator.puppetAllowancePercentage(alice, _route) > 0, "_testUpdateRoutesSubscription: E9");
         assertTrue(orchestrator.puppetAllowancePercentage(bob, _route) > 0, "_testUpdateRoutesSubscription: E10");
         assertTrue(orchestrator.puppetAllowancePercentage(yossi, _route) > 0, "_testUpdateRoutesSubscription: E11");
+    }
+
+    function _testRemoveRouteSubscription(address _collateralToken, address _indexToken, bool _isLong) internal {
+        uint256[] memory _allowances = new uint256[](1);
+        address[] memory _traders = new address[](1);
+        bytes32[] memory _routeTypeKeys = new bytes32[](1);
+        bool[] memory _subscribe = new bool[](1);
+
+        bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(_collateralToken, _indexToken, _isLong);
+
+        _traders[0] = trader;
+        _allowances[0] = 1000; // 10% of the puppet's deposit account
+        _routeTypeKeys[0] = _routeTypeKey;
+        _subscribe[0] = false;
+
+        address[] memory _aliceSubscriptionsBefore = orchestrator.puppetSubscriptions(alice);
+        address[] memory _bobSubscriptionsBefore = orchestrator.puppetSubscriptions(bob);
+        address[] memory _yossiSubscriptionsBefore = orchestrator.puppetSubscriptions(yossi);
+
+        assertTrue(_aliceSubscriptionsBefore.length > 0, "_testRemoveRouteSubscription: E0");
+        assertTrue(_bobSubscriptionsBefore.length > 0, "_testRemoveRouteSubscription: E1");
+        assertTrue(_yossiSubscriptionsBefore.length > 0, "_testRemoveRouteSubscription: E2");
+
+        vm.startPrank(alice);
+        orchestrator.updateRoutesSubscriptions(_allowances, _traders, _routeTypeKeys, _subscribe);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        orchestrator.updateRoutesSubscriptions(_allowances, _traders, _routeTypeKeys, _subscribe);
+        vm.stopPrank();
+
+        vm.startPrank(yossi);
+        orchestrator.updateRoutesSubscriptions(_allowances, _traders, _routeTypeKeys, _subscribe);
+        vm.stopPrank();
+
+        {
+            address[] memory _aliceSubscriptionsAfter = orchestrator.puppetSubscriptions(alice);
+            address[] memory _bobSubscriptionsAfter = orchestrator.puppetSubscriptions(bob);
+            address[] memory _yossiSubscriptionsAfter = orchestrator.puppetSubscriptions(yossi);
+
+            assertEq(_aliceSubscriptionsAfter.length, _aliceSubscriptionsBefore.length - 1, "_testRemoveRouteSubscription: E3");
+            assertEq(_bobSubscriptionsAfter.length, _bobSubscriptionsBefore.length - 1, "_testRemoveRouteSubscription: E4");
+            assertEq(_yossiSubscriptionsAfter.length, _yossiSubscriptionsBefore.length - 1, "_testRemoveRouteSubscription: E5");
+        }
     }
 
     function _testSetThrottleLimit(bytes32 _routeTypeKey) internal {
@@ -500,14 +556,14 @@ contract testPuppet is Test {
         if (_routeTypeInfo.isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  43761617854888140285378929051641905540 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  44261617854888140285378929051641905540 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 20;
             _acceptablePrice = type(uint256).max;
             _amountInTrader = 10 ether;
         } else {
             // TODO: short position
             // Available amount in USD: PositionRouter.maxGlobalShortSizes(indexToken) - Vault.globalShortSizes(indexToken)
-            _sizeDelta = (35050325520479593674495358948865175474 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken));
+            _sizeDelta = (37150325520479593674495358948865175474 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken));
             _sizeDelta = _sizeDelta / 50;
             _acceptablePrice = type(uint256).min;
             _amountInTrader = _sizeDelta / 5 / 1e24;
@@ -612,9 +668,15 @@ contract testPuppet is Test {
         _allowances[0] = 10; // 10% of the puppet's deposit account
 
         {
+            bytes32[] memory _routeTypeKeys = new bytes32[](1);
+            _routeTypeKeys[0] = _params.routeTypeKey;
+
+            bool[] memory _subscribe = new bool[](1);
+            _subscribe[0] = true;
+
             vm.startPrank(alice);
             vm.expectRevert(); // reverts with RouteWaitingForCallback()
-            orchestrator.updateRoutesSubscription(_traders, _allowances, _params.routeTypeKey, false);
+            orchestrator.updateRoutesSubscriptions(_allowances, _traders, _routeTypeKeys, _subscribe);
             vm.stopPrank();
         }
 
@@ -911,7 +973,7 @@ contract testPuppet is Test {
 
     function _testNonCollatAmountIn(uint256 _amountInTrader, uint256 _executionFee, IRoute.AdjustPositionParams memory _adjustPositionParams, bytes32 _routeTypeKey) internal {
         // TODO
-        _amountInTrader = _amountInTrader / 20;
+        _amountInTrader = _amountInTrader / 50;
         address[] memory _pathNonCollateral = new address[](2);
         _pathNonCollateral[0] = FRAX;
         _pathNonCollateral[1] = WETH;
@@ -922,7 +984,7 @@ contract testPuppet is Test {
         });
         
         vm.startPrank(address(trader));
-        _dealERC20(FRAX, trader , _amountInTrader);
+        _dealERC20(FRAX, trader, _amountInTrader);
         uint256 _traderFraxBalanceBefore = IERC20(FRAX).balanceOf(trader);
         _approve(address(route), FRAX, type(uint256).max);
         
@@ -953,7 +1015,7 @@ contract testPuppet is Test {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 43761617854888140285378929051641905540 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 44261617854888140285378929051641905540 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;

@@ -130,7 +130,9 @@ contract Route is Base, IRoute {
     // Request Info
 
     /// @inheritdoc IRoute
-    function puppetsRequestAmounts(bytes32 _requestKey) external view returns (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) {
+    function puppetsRequestAmounts(
+        bytes32 _requestKey
+    ) external view returns (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) {
         uint256 _index = requestKeyToAddCollateralRequestsIndex[_requestKey];
         _puppetsShares = addCollateralRequests[_index].puppetsShares;
         _puppetsAmounts = addCollateralRequests[_index].puppetsAmounts;
@@ -186,7 +188,10 @@ contract Route is Base, IRoute {
     // called by keeper
 
     /// @inheritdoc IRoute
-    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external payable onlyOrchestrator nonReentrant returns (bytes32 _requestKey) {
+    function decreaseSize(
+        AdjustPositionParams memory _adjustPositionParams,
+        uint256 _executionFee
+    ) external payable onlyOrchestrator nonReentrant returns (bytes32 _requestKey) {
         _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
         keeperRequests[_requestKey] = true;
     }
@@ -335,7 +340,10 @@ contract Route is Base, IRoute {
     /// @param _totalAssets The current total assets in the request
     /// @return _puppetsRequestData The request data of the Puppets, encoded as bytes
     // slither-disable-next-line reentrancy-no-eth
-    function _getPuppetsAssetsAndAllocateRequestShares(uint256 _totalSupply, uint256 _totalAssets) internal returns (bytes memory _puppetsRequestData) {
+    function _getPuppetsAssetsAndAllocateRequestShares(
+        uint256 _totalSupply,
+        uint256 _totalAssets
+    ) internal returns (bytes memory _puppetsRequestData) {
         bool _isOI = _isOpenInterest();
         uint256 _traderAmountIn = _totalAssets;
         uint256 _increaseRatio = _isOI ? _traderAmountIn * _PRECISION / positions[positionIndex].latestAmountIn[route.trader] : 0;
@@ -444,7 +452,11 @@ contract Route is Base, IRoute {
     /// @param _amountIn The total amount of collateral to increase the position by
     /// @param _executionFee The total execution fee, paid by the Trader in ETH
     /// @return _requestKey The request key of the request
-    function _requestIncreasePosition(AdjustPositionParams memory _adjustPositionParams, uint256 _amountIn, uint256 _executionFee) internal returns (bytes32 _requestKey) {
+    function _requestIncreasePosition(
+        AdjustPositionParams memory _adjustPositionParams,
+        uint256 _amountIn,
+        uint256 _executionFee
+    ) internal returns (bytes32 _requestKey) {
         address[] memory _path = new address[](1);
         _path[0] = route.collateralToken;
 
@@ -482,7 +494,10 @@ contract Route is Base, IRoute {
     /// @param _adjustPositionParams The adjusment params for the position
     /// @param _executionFee The total execution fee, paid by the Trader in ETH
     /// @return _requestKey The request key of the request
-    function _requestDecreasePosition(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) internal returns (bytes32 _requestKey) {
+    function _requestDecreasePosition(
+        AdjustPositionParams memory _adjustPositionParams,
+        uint256 _executionFee
+    ) internal returns (bytes32 _requestKey) {
         if (msg.value != _executionFee) revert InvalidExecutionFee();
 
         address[] memory _path = new address[](1);

@@ -81,7 +81,13 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @param _keeperAddr The address of the keeper
     /// @param _refCode The GMX referral code
     /// @param _gmx The GMX contract addresses
-    constructor(Authority _authority, address _routeFactory, address _keeperAddr, bytes32 _refCode, bytes memory _gmx) Auth(address(0), _authority) {
+    constructor(
+        Authority _authority,
+        address _routeFactory,
+        address _keeperAddr,
+        bytes32 _refCode,
+        bytes memory _gmx
+    ) Auth(address(0), _authority) {
         routeFactory = _routeFactory;
         _keeper = _keeperAddr;
 
@@ -174,7 +180,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         uint256 _subscriptionCount = EnumerableMap.length(_allowances);
         _subscriptions = new address[](_subscriptionCount);
         for (uint256 i = 0; i < _subscriptionCount; i++) {
-            (_subscriptions[i], ) = EnumerableMap.at(_allowances, i);
+            (_subscriptions[i],) = EnumerableMap.at(_allowances, i);
         }
     }
 
@@ -266,7 +272,13 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bool _isLong
     ) external payable returns (bytes32 _routeKey, bytes32 _requestKey) {
         _routeKey = registerRoute(_collateralToken, _indexToken, _isLong);
-        _requestKey = requestPosition(_adjustPositionParams, _swapParams, getRouteTypeKey(_collateralToken, _indexToken, _isLong), _executionFee, true);
+        _requestKey = requestPosition(
+            _adjustPositionParams,
+            _swapParams,
+            getRouteTypeKey(_collateralToken, _indexToken, _isLong),
+            _executionFee,
+            true
+        );
     }
 
     /// @inheritdoc IOrchestrator
@@ -303,6 +315,44 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // ============================================================================================
     // Puppet Functions
     // ============================================================================================
+
+    /// @inheritdoc IOrchestrator
+    function updateRouteSubscription(uint256 _allowance, address _trader, bytes32 _routeTypeKey, bool _subscribe) public nonReentrant {
+        bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
+        RouteInfo storage _route = _routeInfo[_routeKey];
+        PuppetInfo storage _puppet = _puppetInfo[msg.sender];
+
+        if (!_route.isRegistered) revert RouteNotRegistered();
+        if (IRoute(_route.route).isWaitingForCallback()) revert RouteWaitingForCallback();
+
+        if (_subscribe) {
+            if (_allowance > _BASIS_POINTS_DIVISOR || _allowance == 0) revert InvalidAllowancePercentage();
+
+            EnumerableMap.set(_puppet.allowances, _route.route, _allowance);
+            EnumerableSet.add(_route.puppets, msg.sender);
+        } else {
+            EnumerableMap.remove(_puppet.allowances, _route.route);
+            EnumerableSet.remove(_route.puppets, msg.sender);
+        }
+
+        emit Subscribe(_allowance, _trader, msg.sender, _routeTypeKey, _subscribe);
+    }
+
+    /// @inheritdoc IOrchestrator
+    function updateRoutesSubscriptions(
+        uint256[] memory _allowances,
+        address[] memory _traders,
+        bytes32[] memory _routeTypeKeys,
+        bool[] memory _subscribe
+    ) external {
+        if (_traders.length != _allowances.length) revert MismatchedInputArrays();
+        if (_traders.length != _subscribe.length) revert MismatchedInputArrays();
+        if (_traders.length != _routeTypeKeys.length) revert MismatchedInputArrays();
+
+        for (uint256 i = 0; i < _traders.length; i++) {
+            updateRouteSubscription(_allowances[i], _traders[i], _routeTypeKeys[i], _subscribe[i]);
+        }
+    }
 
     /// @inheritdoc IOrchestrator
     function deposit(uint256 _amount, address _asset, address _puppet) external payable nonReentrant {
@@ -344,37 +394,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit Withdraw(_amount, _asset, _receiver, msg.sender);
     }
 
-    /// @inheritdoc IOrchestrator
-    function updateRoutesSubscription(address[] memory _traders, uint256[] memory _allowances, bytes32 _routeTypeKey, bool _subscribe) external nonReentrant {
-        if (_traders.length != _allowances.length) revert MismatchedInputArrays();
-
-        address _puppet = msg.sender;
-        for (uint256 i = 0; i < _traders.length; i++) {
-            bytes32 _routeKey = getRouteKey(_traders[i], _routeTypeKey);
-            RouteInfo storage _route = _routeInfo[_routeKey];
-
-            if (!_route.isRegistered) revert RouteNotRegistered();
-            if (IRoute(_route.route).isWaitingForCallback()) revert RouteWaitingForCallback();
-
-            if (_subscribe) {
-                if (_allowances[i] > _BASIS_POINTS_DIVISOR || _allowances[i] == 0) revert InvalidAllowancePercentage();
-
-                EnumerableMap.set(_puppetInfo[_puppet].allowances, _route.route, _allowances[i]);
-
-                if (!EnumerableSet.contains(_route.puppets, _puppet)) {
-                    EnumerableSet.add(_route.puppets, _puppet);
-                }
-            } else {
-                EnumerableMap.set(_puppetInfo[_puppet].allowances, _route.route, 0);
-
-                if (EnumerableSet.contains(_route.puppets, _puppet)) {
-                    EnumerableSet.remove(_route.puppets, _puppet);
-                }
-            }
-        }
-
-        emit Subscribe(_traders, _allowances, _puppet, _routeTypeKey, _subscribe);
-    }
 
     /// @inheritdoc IOrchestrator
     function setThrottleLimit(uint256 _throttleLimit, bytes32 _routeType) external {
@@ -427,7 +446,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // called by keeper
 
     /// @inheritdoc IOrchestrator
-    function decreaseSize(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external payable requiresAuth nonReentrant returns (bytes32 _requestKey) {
+    function decreaseSize(
+        IRoute.AdjustPositionParams memory _adjustPositionParams,
+        uint256 _executionFee,
+        bytes32 _routeKey
+    ) external payable requiresAuth nonReentrant returns (bytes32 _requestKey) {
         address _route = _routeInfo[_routeKey].route;
         if (_route == address(0)) revert RouteNotRegistered();
 
