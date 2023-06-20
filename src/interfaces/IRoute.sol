@@ -140,7 +140,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @param _adjustPositionParams The adjusment params for the position
     /// @param _executionFee The total execution fee, paid by the Keeper in ETH
     /// @return _requestKey The request key
-    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external returns (bytes32 _requestKey);
+    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external payable returns (bytes32 _requestKey);
 
     /// @notice The ```liquidate``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
     function liquidate() external;

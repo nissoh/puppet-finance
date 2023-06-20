@@ -280,7 +280,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         address _route = _routeInfo[getRouteKey(msg.sender, _routeTypeKey)].route;
         if (_route == address(0)) revert RouteNotRegistered();
 
-        _requestKey = IRoute(_route).requestPosition{value: msg.value}(
+        _requestKey = IRoute(_route).requestPosition{ value: msg.value }(
             _adjustPositionParams,
             _swapParams,
             _executionFee,
@@ -427,11 +427,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // called by keeper
 
     /// @inheritdoc IOrchestrator
-    function decreaseSize(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external requiresAuth nonReentrant returns (bytes32 _requestKey) {
+    function decreaseSize(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external payable requiresAuth nonReentrant returns (bytes32 _requestKey) {
         address _route = _routeInfo[_routeKey].route;
         if (_route == address(0)) revert RouteNotRegistered();
 
-        _requestKey = IRoute(_route).decreaseSize(_adjustPositionParams, _executionFee);
+        _requestKey = IRoute(_route).decreaseSize{ value: msg.value }(_adjustPositionParams, _executionFee);
 
         emit DecreaseSize(_requestKey, _routeKey);
     }

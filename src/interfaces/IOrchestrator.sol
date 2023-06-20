@@ -247,7 +247,7 @@ interface IOrchestrator {
     /// @param _executionFee The total execution fee, paid by the Keeper in ETH
     /// @param _routeKey The Route key
     /// @return _requestKey The request key
-    function decreaseSize(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external returns (bytes32 _requestKey);
+    function decreaseSize(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external payable returns (bytes32 _requestKey);
 
     /// @notice The ```liquidate``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
     /// @param _routeKey The Route key

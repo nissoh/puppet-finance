@@ -500,7 +500,7 @@ contract testPuppet is Test {
         if (_routeTypeInfo.isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  42561617854888140285378929051641905540 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  43761617854888140285378929051641905540 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 20;
             _acceptablePrice = type(uint256).max;
             _amountInTrader = 10 ether;
@@ -904,7 +904,6 @@ contract testPuppet is Test {
                 assertEq(route.isPuppetAdjusted(yossi), false, "_testClosePosition: E23");
             }
         } else {
-            // revert("Asd");
             bytes32 _routeKey = orchestrator.getRouteKey(trader, _routeTypeKey);
             _testAuthDecreaseSize(_adjustPositionParams, _executionFee, _routeKey);
         }
@@ -954,7 +953,7 @@ contract testPuppet is Test {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 42561617854888140285378929051641905540 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 43761617854888140285378929051641905540 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
@@ -992,7 +991,11 @@ contract testPuppet is Test {
         orchestrator.decreaseSize(_adjustPositionParams, _executionFee, _routeKey);
 
         vm.startPrank(keeper);
-        orchestrator.decreaseSize(_adjustPositionParams, _executionFee, _routeKey);
+        orchestrator.decreaseSize{ value: _executionFee }(_adjustPositionParams, _executionFee, _routeKey);
+        vm.stopPrank();
+
+        vm.startPrank(GMXPositionRouterKeeper); // keeper
+        IGMXPositionRouter(gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
         vm.stopPrank();
     }
 

@@ -186,7 +186,7 @@ contract Route is Base, IRoute {
     // called by keeper
 
     /// @inheritdoc IRoute
-    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external onlyOrchestrator nonReentrant returns (bytes32 _requestKey) {
+    function decreaseSize(AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee) external payable onlyOrchestrator nonReentrant returns (bytes32 _requestKey) {
         _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
         keeperRequests[_requestKey] = true;
     }
