@@ -10,7 +10,6 @@ import "./utilities/DeployerUtilities.sol";
 // forge script script/DeployPuppet.s.sol:DeployPuppet --rpc-url $RPC_URL --broadcast
 // forge verify-contract --constructor-args $ARGS --watch --chain-id 42161 --compiler-version v0.8.17+commit.8df45f5f --verifier-url https://api.arbiscan.io/api $CONTRACT_ADDRESS src/Orchestrator.sol:Orchestrator
 // --constructor-args $(cast abi-encode "constructor(address)" 0xBF73FEBB672CC5B8707C2D75cB49B0ee2e2C9DaA)
-// address _orchestrator, address _trader, address _collateralToken, address _indexToken, bool _isLong
 // $(cast abi-encode "constructor(address,address,address,address,bool)" 0x82403099D24b2bF9Ee036F05E34da85E30982234 0xF6F08BEe1b2B9059a5132d171943Fa7a078C77e1 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1 true)
 
 contract DeployPuppet is DeployerUtilities {
@@ -23,7 +22,8 @@ contract DeployPuppet is DeployerUtilities {
         Dictator _dictator = Dictator(_dictatorAddr);
         RouteFactory _routeFactory = RouteFactory(_routeFactoryAddr);
 
-        Orchestrator _orchestrator = Orchestrator(_orchestratorAddr);
+        Orchestrator _orchestrator = new Orchestrator(_dictator, address(_routeFactory), _keeperAddr, _referralCode, _gmxInfo);
+        // Orchestrator _orchestrator = Orchestrator(_orchestratorAddr);
 
         bytes4 functionSig = _orchestrator.setRouteType.selector;
 
