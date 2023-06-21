@@ -95,6 +95,12 @@ contract Route is Base, IRoute {
         _;
     }
 
+    /// @notice Modifier that ensures the Route waits for a keeper adjustment, when one is pending
+    modifier waitForAdjustment() {
+        if (waitForKeeperAdjustment) revert WaitingForKeeperAdjustment();
+        _;
+    }
+
     // ============================================================================================
     // View Functions
     // ============================================================================================
@@ -162,8 +168,7 @@ contract Route is Base, IRoute {
         SwapParams memory _swapParams,
         uint256 _executionFee,
         bool _isIncrease
-    ) external payable onlyOrchestrator notFrozen nonReentrant returns (bytes32 _requestKey) {
-        if (waitForKeeperAdjustment) revert WaitingForKeeperAdjustment();
+    ) external payable onlyOrchestrator notFrozen waitForAdjustment nonReentrant returns (bytes32 _requestKey) {
 
         _repayBalance(bytes32(0), msg.value, false);
 
@@ -176,7 +181,7 @@ contract Route is Base, IRoute {
     }
 
     /// @inheritdoc IRoute
-    function approvePlugin() external onlyOrchestrator notFrozen nonReentrant {
+    function approvePlugin() external onlyOrchestrator notFrozen waitForAdjustment nonReentrant {
         IGMXRouter(orchestrator.gmxRouter()).approvePlugin(orchestrator.gmxPositionRouter());
 
         emit PluginApproval();
