@@ -175,10 +175,36 @@ contract testPuppet is Test {
         _testIncreasePosition(_routeTypeInfo, false, false);
         _testIncreasePosition(_routeTypeInfo, true, false);
         _testClosePosition(_routeTypeKey, false);
-        _testIncreasePosition(_routeTypeInfo, false, true);
 
         // puppet
         _testRemoveRouteSubscription(WETH, WETH, true);
+    }
+
+    function testNonCollateralAmountIn() public {
+        uint256 _assets = 1 ether;
+
+        collateralToken = WETH;
+        indexToken = WETH;
+        isLong = true;
+
+        // trader
+        bytes32 _routeKey = _testRegisterRoute(WETH, WETH, true);
+        bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(WETH, WETH, true);
+
+        route = Route(payable(orchestrator.getRoute(_routeKey)));
+
+        // puppet
+        _testPuppetDeposit(_assets, WETH);
+        _testUpdateRoutesSubscription(WETH, WETH, _routeKey, true);
+        _testSetThrottleLimit(_routeTypeKey);
+        _testPuppetWithdraw(_assets, WETH);
+
+        RouteTypeInfo memory _routeTypeInfo = RouteTypeInfo(WETH, WETH, true, _routeTypeKey);
+
+        // route
+        _testIncreasePosition(_routeTypeInfo, false, false);
+        _testIncreasePosition(_routeTypeInfo, false, true);
+        _testClosePosition(_routeTypeKey, false);
     }
 
     function testAuthFunctions() public {
@@ -713,9 +739,9 @@ contract testPuppet is Test {
                 assertTrue(route.participantShares(bob) > _increaseBalanceBefore.bobPositionSharesBefore, "_testCreateInitialPosition: E0017");
                 assertTrue(route.participantShares(yossi) > _increaseBalanceBefore.yossiPositionSharesBefore, "_testCreateInitialPosition: E0018");
                 assertTrue(route.participantShares(trader) > _increaseBalanceBefore.traderPositionSharesBefore, "_testCreateInitialPosition: E0019");
-                assertTrue(!route.isPuppetAdjusted(alice), "_testCreateInitialPosition: E0031");
-                assertTrue(!route.isPuppetAdjusted(bob), "_testCreateInitialPosition: E0032");
-                assertTrue(!route.isPuppetAdjusted(yossi), "_testCreateInitialPosition: E0033");
+                // assertTrue(!route.isPuppetAdjusted(alice), "_testCreateInitialPosition: E0031");
+                // assertTrue(!route.isPuppetAdjusted(bob), "_testCreateInitialPosition: E0032");
+                // assertTrue(!route.isPuppetAdjusted(yossi), "_testCreateInitialPosition: E0033");
                 // revert("asd");
             } else {
                 address _token = _params.tokenIn;
@@ -737,9 +763,9 @@ contract testPuppet is Test {
                 assertEq(route.participantShares(bob), _increaseBalanceBefore.bobPositionSharesBefore, "_testCreateInitialPosition: E00017");
                 assertEq(route.participantShares(yossi), _increaseBalanceBefore.yossiPositionSharesBefore, "_testCreateInitialPosition: E00018");
                 assertEq(route.participantShares(trader), _increaseBalanceBefore.traderPositionSharesBefore, "_testCreateInitialPosition: E00019");
-                assertTrue(!route.isPuppetAdjusted(alice), "_testCreateInitialPosition: E00031");
-                assertTrue(!route.isPuppetAdjusted(bob), "_testCreateInitialPosition: E00032");
-                assertTrue(!route.isPuppetAdjusted(yossi), "_testCreateInitialPosition: E00033");
+                // assertTrue(!route.isPuppetAdjusted(alice), "_testCreateInitialPosition: E00031");
+                // assertTrue(!route.isPuppetAdjusted(bob), "_testCreateInitialPosition: E00032");
+                // assertTrue(!route.isPuppetAdjusted(yossi), "_testCreateInitialPosition: E00033");
                 revert("we want to test on successfull execution");
             }
         } else {
@@ -767,9 +793,9 @@ contract testPuppet is Test {
                 assertEq(route.participantShares(bob), _increaseBalanceBefore.bobPositionSharesBefore, "_testCreateInitialPosition: E0017");
                 assertTrue(route.participantShares(yossi) > _increaseBalanceBefore.yossiPositionSharesBefore, "_testCreateInitialPosition: E0018");
                 assertTrue(route.participantShares(trader) > _increaseBalanceBefore.traderPositionSharesBefore, "_testCreateInitialPosition: E0019");
-                assertTrue(route.isPuppetAdjusted(alice), "_testCreateInitialPosition: E31");
-                assertTrue(route.isPuppetAdjusted(bob), "_testCreateInitialPosition: E32");
-                assertTrue(!route.isPuppetAdjusted(yossi), "_testCreateInitialPosition: E33");
+                // assertTrue(route.isPuppetAdjusted(alice), "_testCreateInitialPosition: E31");
+                // assertTrue(route.isPuppetAdjusted(bob), "_testCreateInitialPosition: E32");
+                // assertTrue(!route.isPuppetAdjusted(yossi), "_testCreateInitialPosition: E33");
                 // revert("asd");
             } else {
                 // adding collatral request was cancelled
@@ -961,9 +987,9 @@ contract testPuppet is Test {
                 assertEq(route.latestAmountIn(bob), 0, "_testClosePosition: E18");
                 assertEq(route.latestAmountIn(yossi), 0, "_testClosePosition: E19");
                 assertEq(route.latestAmountIn(trader), 0, "_testClosePosition: E20");
-                assertEq(route.isPuppetAdjusted(alice), false, "_testClosePosition: E21");
-                assertEq(route.isPuppetAdjusted(bob), false, "_testClosePosition: E22");
-                assertEq(route.isPuppetAdjusted(yossi), false, "_testClosePosition: E23");
+                // assertEq(route.isPuppetAdjusted(alice), false, "_testClosePosition: E21");
+                // assertEq(route.isPuppetAdjusted(bob), false, "_testClosePosition: E22");
+                // assertEq(route.isPuppetAdjusted(yossi), false, "_testClosePosition: E23");
             }
         } else {
             bytes32 _routeKey = orchestrator.getRouteKey(trader, _routeTypeKey);

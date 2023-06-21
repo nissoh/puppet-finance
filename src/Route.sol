@@ -122,11 +122,6 @@ contract Route is Base, IRoute {
         _amountIn = positions[positionIndex].latestAmountIn[_participant];
     }
 
-    /// @inheritdoc IRoute
-    function isPuppetAdjusted(address _puppet) external view returns (bool _isAdjusted) {
-        _isAdjusted = positions[positionIndex].adjustedPuppets[_puppet];
-    }
-
     // Request Info
 
     /// @inheritdoc IRoute
@@ -423,18 +418,14 @@ contract Route is Base, IRoute {
         uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / _BASIS_POINTS_DIVISOR;
 
         if (_context.isOI) {
-            if (_position.adjustedPuppets[_puppet]) {
-                _additionalAmount = 0;
+            uint256 _requiredAdditionalCollateral = _position.latestAmountIn[_puppet] * _context.increaseRatio / _PRECISION;
+            if (_requiredAdditionalCollateral == 0 || _allowanceAmount == 0) return (0, 0);
+            if (_requiredAdditionalCollateral > _allowanceAmount) {
+                _additionalAmount = _allowanceAmount;
             } else {
-                uint256 _requiredAdditionalCollateral = _position.latestAmountIn[_puppet] * _context.increaseRatio / _PRECISION;
-                if (_requiredAdditionalCollateral > _allowanceAmount || _requiredAdditionalCollateral == 0) {
-                    _position.adjustedPuppets[_puppet] = true;
-                    _additionalAmount = 0;
-                } else {
-                    _additionalAmount = _requiredAdditionalCollateral;
-                    _additionalShares = _convertToShares(_totalAssets, _totalSupply, _additionalAmount);
-                }
+                _additionalAmount = _requiredAdditionalCollateral;
             }
+            _additionalShares = _convertToShares(_totalAssets, _totalSupply, _additionalAmount);
         } else {
             if (_allowanceAmount > 0 && orchestrator.isBelowThrottleLimit(_puppet, _routeTypeKey)) {
                 _additionalAmount = _allowanceAmount > _context.traderAmountIn ? _context.traderAmountIn : _allowanceAmount;

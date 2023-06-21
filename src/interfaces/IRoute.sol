@@ -38,7 +38,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
         bytes32[] requestKeys;
         address[] puppets;
         mapping(address => uint256) participantShares; // participant => shares
-        mapping(address => bool) adjustedPuppets; // puppet => isAdjusted
         mapping(address => uint256) latestAmountIn; // puppet => latestAmountIn
     }
 
@@ -96,12 +95,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @param _participant The participant address
     /// @return _amountIn The latest collateral amount added by the participant
     function latestAmountIn(address _participant) external view returns (uint256 _amountIn);
-
-    /// @notice The ```isPuppetAdjusted``` function indicates if a puppet has been adjusted in the current position
-    /// @notice Adjusted means that the puppet wasn't able to add collateral to an existing position and so we had to decrease his position size in order to maintain the correct ratio
-    /// @param _puppet The puppet address
-    /// @return _isAdjusted The boolean indicating if the puppet has been adjusted
-    function isPuppetAdjusted(address _puppet) external view returns (bool _isAdjusted);
 
     // Request Info
 
