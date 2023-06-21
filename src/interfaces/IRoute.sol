@@ -42,6 +42,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     }
 
     struct AddCollateralRequest{
+        bool isAdjustmentRequired;
         uint256 puppetsAmountIn;
         uint256 traderAmountIn;
         uint256 traderShares;
@@ -68,6 +69,12 @@ interface IRoute is IPositionRouterCallbackReceiver {
         bool isOI;
         uint256 increaseRatio;
         uint256 traderAmountIn;
+    }
+
+    struct PuppetRequestInfo {
+        bool isAdjustmentRequired;
+        uint256 additionalAmount;
+        uint256 additionalShares;
     }
 
     // ============================================================================================
@@ -168,6 +175,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     // Errors
     // ============================================================================================
 
+    error WaitingForKeeperAdjustment();
     error NotKeeper();
     error NotTrader();
     error InvalidExecutionFee();

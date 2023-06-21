@@ -37,8 +37,11 @@ contract Route is Base, IRoute {
     using Address for address payable;
 
     bool public frozen;
+    bool public waitForKeeperAdjustment; // todo - test that
 
     uint256 public positionIndex;
+
+    uint256 private constant _PRECISION = 1e18;
 
     bytes32 private immutable _routeTypeKey;
 
@@ -51,8 +54,6 @@ contract Route is Base, IRoute {
     IOrchestrator public immutable orchestrator;
 
     Route public route;
-
-    uint256 private constant _PRECISION = 1e18;
 
     // ============================================================================================
     // Constructor
@@ -162,6 +163,7 @@ contract Route is Base, IRoute {
         uint256 _executionFee,
         bool _isIncrease
     ) external payable onlyOrchestrator notFrozen nonReentrant returns (bytes32 _requestKey) {
+        if (waitForKeeperAdjustment) revert WaitingForKeeperAdjustment();
 
         _repayBalance(bytes32(0), msg.value, false);
 
@@ -261,7 +263,7 @@ contract Route is Base, IRoute {
             uint256 _totalAssets = _traderAmountIn;
 
             // 2. get puppets assets and allocate request shares
-            bytes memory _puppetsRequestData = _getPuppetsAssetsAndAllocateRequestShares(_totalSupply, _totalAssets);
+            (bytes memory _puppetsRequestData, bool _isAdjustmentRequired) = _getPuppetsAssetsAndAllocateRequestShares(_totalSupply, _totalAssets);
 
             uint256 _puppetsAmountIn;
             uint256[] memory _puppetsShares;
@@ -276,6 +278,7 @@ contract Route is Base, IRoute {
 
             // 3. store request data
             AddCollateralRequest memory _request = AddCollateralRequest({
+                isAdjustmentRequired: _isAdjustmentRequired,
                 puppetsAmountIn: _puppetsAmountIn,
                 traderAmountIn: _traderAmountIn,
                 traderShares: _traderShares,
@@ -334,11 +337,12 @@ contract Route is Base, IRoute {
     /// @param _totalSupply The current total supply of shares in the request
     /// @param _totalAssets The current total assets in the request
     /// @return _puppetsRequestData The request data of the Puppets, encoded as bytes
+    /// @return _isAdjustmentRequired A boolean indicating whether an adjusted has to be made if the request is executed
     // slither-disable-next-line reentrancy-no-eth
     function _getPuppetsAssetsAndAllocateRequestShares(
         uint256 _totalSupply,
         uint256 _totalAssets
-    ) internal returns (bytes memory _puppetsRequestData) {
+    ) internal returns (bytes memory _puppetsRequestData, bool _isAdjustmentRequired) {
         bool _isOI = _isOpenInterest();
         uint256 _traderAmountIn = _totalAssets;
         uint256 _increaseRatio = _isOI ? _traderAmountIn * _PRECISION / positions[positionIndex].latestAmountIn[route.trader] : 0;
@@ -355,24 +359,26 @@ contract Route is Base, IRoute {
         });
 
         for (uint256 i = 0; i < _puppets.length; i++) {
-            (uint256 _additionalAmount, uint256 _additionalShares) = _getPuppetAmounts(
+            PuppetRequestInfo memory _puppetRequestInfo = _getPuppetAmounts(
                 _context,
                 _totalSupply,
                 _totalAssets,
                 _puppets[i]
             );
 
-            if (_additionalAmount > 0) {
-                orchestrator.debitPuppetAccount(_additionalAmount, route.collateralToken, _puppets[i]);
+            if (_puppetRequestInfo.isAdjustmentRequired) _isAdjustmentRequired = true;
 
-                _puppetsAmountIn = _puppetsAmountIn + _additionalAmount;
+            if (_puppetRequestInfo.additionalAmount > 0) {
+                orchestrator.debitPuppetAccount(_puppetRequestInfo.additionalAmount, route.collateralToken, _puppets[i]);
 
-                _totalSupply = _totalSupply + _additionalShares;
-                _totalAssets = _totalAssets + _additionalAmount;
+                _puppetsAmountIn += _puppetRequestInfo.additionalAmount;
+
+                _totalSupply += _puppetRequestInfo.additionalShares;
+                _totalAssets += _puppetRequestInfo.additionalAmount;
             }
 
-            _puppetsShares[i] = _additionalShares;
-            _puppetsAmounts[i] = _additionalAmount;
+            _puppetsShares[i] = _puppetRequestInfo.additionalShares;
+            _puppetsAmounts[i] = _puppetRequestInfo.additionalAmount;
         }
 
         _puppetsRequestData = abi.encode(
@@ -404,14 +410,13 @@ contract Route is Base, IRoute {
     /// @param _totalSupply The current total supply of shares in the request
     /// @param _totalAssets The current total assets in the request
     /// @param _puppet The Puppet address
-    /// @return _additionalAmount The additional amount the Puppet has to deposit
-    /// @return _additionalShares The additional shares for the deposit
+    /// @return _puppetRequestInfo A struct containing the additional amount, additional shares and a boolean indicating if the Puppet needs to be adjusted
     function _getPuppetAmounts(
         GetPuppetAdditionalAmountContext memory _context,
         uint256 _totalSupply,
         uint256 _totalAssets,
         address _puppet
-    ) internal returns (uint256 _additionalAmount, uint256 _additionalShares) {
+    ) internal returns (PuppetRequestInfo memory _puppetRequestInfo) {
         Position storage _position = positions[positionIndex];
 
         uint256 _allowancePercentage = orchestrator.puppetAllowancePercentage(_puppet, address(this));
@@ -419,20 +424,23 @@ contract Route is Base, IRoute {
 
         if (_context.isOI) {
             uint256 _requiredAdditionalCollateral = _position.latestAmountIn[_puppet] * _context.increaseRatio / _PRECISION;
-            if (_requiredAdditionalCollateral == 0 || _allowanceAmount == 0) return (0, 0);
-            if (_requiredAdditionalCollateral > _allowanceAmount) {
-                _additionalAmount = _allowanceAmount;
+            if (_allowanceAmount == 0 || _requiredAdditionalCollateral > _allowanceAmount) {
+                waitForKeeperAdjustment = true;
+                _puppetRequestInfo.isAdjustmentRequired = true;
+                if(_allowanceAmount == 0) return _puppetRequestInfo;
+                _puppetRequestInfo.additionalAmount = _allowanceAmount;
             } else {
-                _additionalAmount = _requiredAdditionalCollateral;
+                _puppetRequestInfo.additionalAmount = _requiredAdditionalCollateral;
             }
-            _additionalShares = _convertToShares(_totalAssets, _totalSupply, _additionalAmount);
+
+            _puppetRequestInfo.additionalShares = _convertToShares(_totalAssets, _totalSupply, _puppetRequestInfo.additionalAmount);
         } else {
             if (_allowanceAmount > 0 && orchestrator.isBelowThrottleLimit(_puppet, _routeTypeKey)) {
-                _additionalAmount = _allowanceAmount > _context.traderAmountIn ? _context.traderAmountIn : _allowanceAmount;
-                _additionalShares = _convertToShares(_totalAssets, _totalSupply, _additionalAmount);
+                _puppetRequestInfo.additionalAmount = _allowanceAmount > _context.traderAmountIn ? _context.traderAmountIn : _allowanceAmount;
+                _puppetRequestInfo.additionalShares = _convertToShares(_totalAssets, _totalSupply, _puppetRequestInfo.additionalAmount);
                 orchestrator.updateLastPositionOpenedTimestamp(_puppet, _routeTypeKey);
             } else {
-                _additionalAmount = 0;
+                _puppetRequestInfo.additionalAmount = 0;
             }
         }
     }
@@ -565,8 +573,8 @@ contract Route is Base, IRoute {
     /// @dev This function is called by ```requestPosition```, ```liquidate``` and ```gmxPositionCallback```
     /// @param _requestKey The request key of the request, expected to be `bytes32(0)` if called on a successful request
     /// @param _traderAmountIn The amount ETH paid by the trader before this function is called
-    /// @param _repayKeeper A boolean indicating whether the keeper should be repaid the unused execution fee
-    function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _repayKeeper) internal {
+    /// @param _isKeeperRequest A boolean indicating whether the keeper should be repaid the unused execution fee
+    function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _isKeeperRequest) internal {
         Position storage _position = positions[positionIndex];
         Route memory _route = route;
 
@@ -574,14 +582,18 @@ contract Route is Base, IRoute {
             _resetRoute();
         }
 
+        bool _isFailedRequest = _requestKey != bytes32(0);
+        AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
+        if ((_isFailedRequest && _request.isAdjustmentRequired) || (!_isFailedRequest && _isKeeperRequest)) {
+            waitForKeeperAdjustment = false;
+        }
+
         uint256 _totalAssets = IERC20(_route.collateralToken).balanceOf(address(this));
         if (_totalAssets > 0) {
             uint256 _puppetsAssets = 0;
             uint256 _totalSupply = 0;
             uint256 _balance = _totalAssets;
-            bool _isFailedRequest = _requestKey != bytes32(0);
             address[] memory _puppets = _position.puppets;
-            AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
             for (uint256 i = 0; i < _puppets.length; i++) {
                 uint256 _shares;
                 address _puppet = _puppets[i];
@@ -614,7 +626,7 @@ contract Route is Base, IRoute {
 
         uint256 _ethBalance = address(this).balance;
         if ((_ethBalance - _traderAmountIn) > 0) {
-            address _executionFeeReceiver = _repayKeeper ? orchestrator.keeper() : _route.trader;
+            address _executionFeeReceiver = _isKeeperRequest ? orchestrator.keeper() : _route.trader;
             payable(_executionFeeReceiver).sendValue(_ethBalance - _traderAmountIn);
         }
 
