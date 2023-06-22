@@ -185,5 +185,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
     error NotOrchestrator();
     error RouteFrozen();
     error NotCallbackCaller();
+    error NotWaitingForKeeperAdjustment();
     error ZeroAmount();
 }

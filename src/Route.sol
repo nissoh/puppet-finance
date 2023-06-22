@@ -189,11 +189,15 @@ contract Route is Base, IRoute {
 
     // called by keeper
 
+    // todo - make functions fail when conditions are not met
+
     /// @inheritdoc IRoute
     function decreaseSize(
         AdjustPositionParams memory _adjustPositionParams,
         uint256 _executionFee
     ) external payable onlyOrchestrator nonReentrant returns (bytes32 _requestKey) {
+        if (!waitForKeeperAdjustment) revert NotWaitingForKeeperAdjustment();
+
         _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
         keeperRequests[_requestKey] = true;
     }
