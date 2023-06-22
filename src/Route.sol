@@ -37,7 +37,7 @@ contract Route is Base, IRoute {
     using Address for address payable;
 
     bool public frozen;
-    bool public waitForKeeperAdjustment; // todo - test that
+    bool public waitForKeeperAdjustment;
 
     uint256 public positionIndex;
 
