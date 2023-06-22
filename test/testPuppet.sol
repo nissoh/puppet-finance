@@ -228,7 +228,7 @@ contract testPuppet is Test {
 
         // route
         _testIncreasePosition(_routeTypeInfo, false, false);
-        _testIncreasePosition(_routeTypeInfo, true, false); // todo
+        _testIncreasePosition(_routeTypeInfo, true, false);
 
         // auth
         _testClosePosition(_routeTypeKey, true);

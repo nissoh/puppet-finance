@@ -38,6 +38,7 @@ contract Route is Base, IRoute {
 
     bool public frozen;
     bool public waitForKeeperAdjustment;
+    bool public enableKeeperAdjustment;
 
     uint256 public positionIndex;
 
@@ -170,7 +171,7 @@ contract Route is Base, IRoute {
         bool _isIncrease
     ) external payable onlyOrchestrator notFrozen waitForAdjustment nonReentrant returns (bytes32 _requestKey) {
 
-        _repayBalance(bytes32(0), msg.value, false);
+        _repayBalance(bytes32(0), msg.value, true, false);
 
         if (_isIncrease) {
             uint256 _amountIn = _getAssets(_swapParams, _executionFee);
@@ -189,14 +190,13 @@ contract Route is Base, IRoute {
 
     // called by keeper
 
-    // todo - make functions fail when conditions are not met
-
     /// @inheritdoc IRoute
     function decreaseSize(
         AdjustPositionParams memory _adjustPositionParams,
         uint256 _executionFee
     ) external payable onlyOrchestrator nonReentrant returns (bytes32 _requestKey) {
         if (!waitForKeeperAdjustment) revert NotWaitingForKeeperAdjustment();
+        if (!enableKeeperAdjustment) revert KeeperAdjustmentDisabled();
 
         _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
         keeperRequests[_requestKey] = true;
@@ -205,8 +205,11 @@ contract Route is Base, IRoute {
     /// @inheritdoc IRoute
     function liquidate() external onlyOrchestrator nonReentrant {
         if (_isOpenInterest()) revert PositionStillAlive();
+        // https://github.com/gmx-io/gmx-contracts/blob/master/contracts/core/Vault.sol#L757
+        // validate liquidation
+        // todo - make functions fail when conditions are not met
 
-        _repayBalance(bytes32(0), 0, false);
+        _repayBalance(bytes32(0), 0, true, false);
 
         emit Liquidate();
     }
@@ -241,10 +244,9 @@ contract Route is Base, IRoute {
 
         if (_isExecuted) {
             if (_isIncrease) _allocateShares(_requestKey);
-            _requestKey = bytes32(0);
         }
 
-        _repayBalance(_requestKey, 0, keeperRequests[_requestKey]);
+        _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey]);
 
         orchestrator.emitCallback(_requestKey, _isExecuted, _isIncrease);
 
@@ -582,8 +584,9 @@ contract Route is Base, IRoute {
     /// @dev This function is called by ```requestPosition```, ```liquidate``` and ```gmxPositionCallback```
     /// @param _requestKey The request key of the request, expected to be `bytes32(0)` if called on a successful request
     /// @param _traderAmountIn The amount ETH paid by the trader before this function is called
+    /// @param _isExecuted A boolean indicating whether the request was executed
     /// @param _isKeeperRequest A boolean indicating whether the keeper should be repaid the unused execution fee
-    function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _isKeeperRequest) internal {
+    function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _isExecuted, bool _isKeeperRequest) internal {
         Position storage _position = positions[positionIndex];
         Route memory _route = route;
 
@@ -591,10 +594,11 @@ contract Route is Base, IRoute {
             _resetRoute();
         }
 
-        bool _isFailedRequest = _requestKey != bytes32(0);
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
-        if ((_isFailedRequest && _request.isAdjustmentRequired) || (!_isFailedRequest && _isKeeperRequest)) {
+        if ((!_isExecuted && _request.isAdjustmentRequired) || (_isExecuted && _isKeeperRequest)) {
             waitForKeeperAdjustment = false;
+        } else if (_isExecuted && _request.isAdjustmentRequired) {
+            enableKeeperAdjustment = true;
         }
 
         uint256 _totalAssets = IERC20(_route.collateralToken).balanceOf(address(this));
@@ -606,7 +610,7 @@ contract Route is Base, IRoute {
             for (uint256 i = 0; i < _puppets.length; i++) {
                 uint256 _shares;
                 address _puppet = _puppets[i];
-                if (_isFailedRequest) {
+                if (!_isExecuted) {
                     if (i == 0) _totalSupply = _request.totalSupply;
                     _shares = _request.puppetsShares[i];
                 } else {
@@ -626,7 +630,7 @@ contract Route is Base, IRoute {
                 }
             }
 
-            uint256 _traderShares = _isFailedRequest ? _request.traderShares : _position.participantShares[_route.trader];
+            uint256 _traderShares = _isExecuted ? _position.participantShares[_route.trader] : _request.traderShares;
             uint256 _traderAssets = _convertToAssets(_balance, _totalSupply, _traderShares);
 
             IERC20(_route.collateralToken).safeTransfer(address(orchestrator), _puppetsAssets);

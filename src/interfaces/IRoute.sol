@@ -187,4 +187,5 @@ interface IRoute is IPositionRouterCallbackReceiver {
     error NotCallbackCaller();
     error NotWaitingForKeeperAdjustment();
     error ZeroAmount();
+    error KeeperAdjustmentDisabled();
 }
