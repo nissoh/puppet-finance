@@ -87,6 +87,18 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @return _trader The trader address
     function trader() external view returns (address _trader);
 
+    /// @notice The ```collateralToken``` function returns the collateral token address of the current route
+    /// @return _collateralToken The collateral token address
+    function collateralToken() external view returns (address _collateralToken);
+
+    /// @notice The ```indexToken``` function returns the index token address of the current route
+    /// @return _indexToken The index token address
+    function indexToken() external view returns (address _indexToken);
+
+    /// @notice The ```isLong``` function returns the direction of the current route
+    /// @return _isLong The direction of the current route
+    function isLong() external view returns (bool _isLong);
+
     /// @notice The ```routeKey``` function returns the route key of the current route
     /// @return _routeKey The route key 
     function routeKey() external view returns (bytes32 _routeKey);

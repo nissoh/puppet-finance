@@ -114,6 +114,21 @@ contract Route is Base, IRoute {
     }
 
     /// @inheritdoc IRoute
+    function collateralToken() external view returns (address _collateralToken) {
+        _collateralToken = route.collateralToken;
+    }
+
+    /// @inheritdoc IRoute
+    function indexToken() external view returns (address _indexToken) {
+        _indexToken = route.indexToken;
+    }
+
+    /// @inheritdoc IRoute
+    function isLong() external view returns (bool _isLong) {
+        _isLong = route.isLong;
+    }
+
+    /// @inheritdoc IRoute
     function routeKey() external view returns (bytes32 _routeKey) { // todo - test
         _routeKey = orchestrator.getRouteKey(route.trader, _routeTypeKey);
     }
