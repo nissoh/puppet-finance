@@ -87,6 +87,10 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @return _trader The trader address
     function trader() external view returns (address _trader);
 
+    /// @notice The ```routeKey``` function returns the route key of the current route
+    /// @return _routeKey The route key 
+    function routeKey() external view returns (bytes32 _routeKey);
+
     // Position Info
 
     /// @notice The ```puppets``` function returns the puppets that are subscribed to the current position
@@ -102,6 +106,15 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @param _participant The participant address
     /// @return _amountIn The latest collateral amount added by the participant
     function latestAmountIn(address _participant) external view returns (uint256 _amountIn);
+
+    /// @notice The ```isAdjustmentEnabled``` function indicates if the route is enabled for keeper adjustment
+    /// @return _isEnabled Indicating if the route is enabled for keeper adjustment
+    function isAdjustmentEnabled() external view returns (bool _isEnabled);
+
+    /// @notice The ```requiredAdjustmentSize``` function returns the required adjustment size for the route
+    /// @notice If Puppets cannot pay the required amount when Trader adds collateral to an existing position, we need to decrease their size so the position's size/collateral ratio is as expected
+    /// @return _requiredSize The required adjustment size for the route 
+    function requiredAdjustmentSize() external view returns (uint256 _requiredSize);
 
     // Request Info
 

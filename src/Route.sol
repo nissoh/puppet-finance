@@ -113,6 +113,11 @@ contract Route is Base, IRoute {
         _trader = route.trader;
     }
 
+    /// @inheritdoc IRoute
+    function routeKey() external view returns (bytes32 _routeKey) { // todo - test
+        _routeKey = orchestrator.getRouteKey(route.trader, _routeTypeKey);
+    }
+
     // Position Info
 
     /// @inheritdoc IRoute
@@ -128,6 +133,16 @@ contract Route is Base, IRoute {
     /// @inheritdoc IRoute
     function latestAmountIn(address _participant) external view returns (uint256 _amountIn) {
         _amountIn = positions[positionIndex].latestAmountIn[_participant];
+    }
+
+    /// @inheritdoc IRoute
+    function isAdjustmentEnabled() external view returns (bool _isEnabled) { // todo - test
+        _isEnabled = enableKeeperAdjustment;
+    }
+
+    /// @inheritdoc IRoute
+    function requiredAdjustmentSize() external view returns (uint256 _requiredSize) {
+        // todo
     }
 
     // Request Info
