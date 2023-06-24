@@ -10,7 +10,7 @@ pragma solidity 0.8.17;
 // ==============================================================
 // ========================== Dictator ==========================
 // ==============================================================
-// Puppet Finance: https://github.com/GMX-Blueberry-Club/Puppet
+// Puppet Finance: https://github.com/GMX-Blueberry-Club/puppet-contracts
 
 // Primary Author
 // johnnyonline: https://github.com/johnnyonline
