@@ -212,6 +212,15 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // gmx
 
     /// @inheritdoc IOrchestrator
+    function getPrice(address _token) external view returns (uint256) {
+        return _gmxInfo.gmxVaultPriceFeed).getPrice(_token, maximise, includeAmmPrice, false);
+    }
+
+    function getGMXVaultPriceFeed() external view returns (address) {
+        return _gmxInfo.gmxVaultPriceFeed;
+    }
+
+    /// @inheritdoc IOrchestrator
     function gmxRouter() external view returns (address) {
         return _gmxInfo.gmxRouter;
     }

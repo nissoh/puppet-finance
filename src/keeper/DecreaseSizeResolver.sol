@@ -27,7 +27,7 @@ import {IGMXVaultPriceFeed} from "../interfaces/IGMXVaultPriceFeed.sol";
 
 import {IOrchestrator} from "../interfaces/IOrchestrator.sol";
 import {IRoute} from "../interfaces/IRoute.sol";
-
+// todo - test
 contract DecreaseSizeResolver is Auth {
 
     bool public includeAmmPrice;
@@ -52,10 +52,6 @@ contract DecreaseSizeResolver is Auth {
     // View Functions
     // ============================================================================================
 
-    function acceptablePrice(address _token) public view returns (uint256) {
-        return gmxVaultPriceFeed.getPrice(_token, maximise, includeAmmPrice, false);
-    }
-
     function checker() external view returns (bool _canExec, bytes memory _execPayload) {
         address[] memory _routes = orchestrator.routes();
         for (uint256 i = 0; i < _routes.length; i++) {
@@ -65,7 +61,7 @@ contract DecreaseSizeResolver is Auth {
                 IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
                     collateralDelta: 0, // we don't remove collateral
                     sizeDelta: _route.requiredAdjustmentSize(),
-                    acceptablePrice: acceptablePrice(_route.indexToken()) * priceFeedSlippage / _BASIS_POINTS_DIVISOR,
+                    acceptablePrice: orchestrator.getPrice(_route.indexToken()) * priceFeedSlippage / _BASIS_POINTS_DIVISOR,
                     minOut: 0 // minOut can be zero if no swap is required
                 });
 

@@ -158,6 +158,11 @@ contract Route is Base, IRoute {
     /// @inheritdoc IRoute
     function requiredAdjustmentSize() external view returns (uint256 _requiredSize) {
         // todo
+
+        // 1. get trader current ratio (share of size / share of collateral)
+        // 2. get trader target ratio (share of new size (assuming all puppets have req collat) / share of new collateral)
+        // 3. get difference between current and target ratio
+        // 4. multiply difference by current size to get required adjustment size
     }
 
     // Request Info
@@ -204,8 +209,9 @@ contract Route is Base, IRoute {
         _repayBalance(bytes32(0), msg.value, true, false);
 
         if (_isIncrease) {
-            uint256 _amountIn = _getAssets(_swapParams, _executionFee);
-            _requestKey = _requestIncreasePosition(_adjustPositionParams, _amountIn, _executionFee);
+            (uint256 _puppetsAmountIn, uint256 _traderAmountIn) = _getAssets(_swapParams, _executionFee);
+            _setTargetRatio(_adjustPositionParams.sizeDelta, _traderAmountIn);
+            _requestKey = _requestIncreasePosition(_adjustPositionParams, _puppetsAmountIn + _traderAmountIn, _executionFee);
         } else {
             _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
         }
@@ -291,9 +297,13 @@ contract Route is Base, IRoute {
     /// @dev This function is called by ```requestPosition```
     /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
     /// @param _executionFee The execution fee paid by the Trader, in ETH
-    /// @return _amountIn The total amount of collateral Puppets and Traders are requesting to add to the position
+    /// @return _puppetsAmountIn The amount of collateral the Puppets will add to the position
+    /// @return _traderAmountIn The amount of collateral the Trader will add to the position
     // slither-disable-next-line reentrancy-eth
-    function _getAssets(SwapParams memory _swapParams, uint256 _executionFee) internal returns (uint256 _amountIn) {
+    function _getAssets(
+        SwapParams memory _swapParams,
+        uint256 _executionFee
+    ) internal returns (uint256 _puppetsAmountIn, uint256 _traderAmountIn) {
         if (_swapParams.amount > 0) {
             // 1. get trader assets and allocate request shares. pull funds too, if needed
             uint256 _traderAmountIn = _getTraderAssets(_swapParams, _executionFee);
@@ -336,7 +346,7 @@ contract Route is Base, IRoute {
             // 4. pull funds from Orchestrator
             orchestrator.sendFunds(_puppetsAmountIn, route.collateralToken, address(this));
 
-            return (_puppetsAmountIn + _traderAmountIn);
+            return _puppetsAmountIn, _traderAmountIn;
         }
     }
 
@@ -569,6 +579,31 @@ contract Route is Base, IRoute {
         );
     }
 
+    /// @notice The ```_setTargetRatio``` function is used to set the target ratio of the trader when adding collateral to an existing position
+    /// @param _sizeIncrease The USD amount of size to increase the position by. With 1e30 precision
+    /// @param _traderCollateralIncrease The amount of collateral the trader is adding to the position
+    function _setTargetRatio(uint256 _sizeIncrease, uint256 _traderCollateralIncrease) internal { // todo
+        address _collateralToken = route.collateralToken;
+        (uint256 _currentSize, uint256 _currentCollateral,,,,,,) = IGMXVault(orchestrator.gmxVault()).getPosition(
+            address(this),
+            _collateralToken,
+            _route.indexToken,
+            _route.isLong
+        );
+
+        if (_currentSize > 0 && _currentCollateral > 0 && _traderCollateralIncrease > 0) {
+            // get the trader's share of the position
+            _currentSize = _convertToAssets(_currentSize, totalSupply, traderShares);
+            _currentCollateral = _convertToAssets(_currentCollateral, totalSupply, traderShares);
+            _sizeIncrease = _convertToAssets(_sizeIncrease, totalSupply, traderShares);
+
+            // convert to USD denomination with 30 decimals, to match the value from GMX  
+            _traderCollateralIncrease = orchestrator.getPrice(_collateralToken) * _traderCollateralIncrease / IERC20(_collateralToken).decimals();
+            
+            targetRatio = (_currentSize + _sizeIncrease) * _BASIS_POINTS_DIVISOR / (_currentCollateral + _traderCollateralIncrease);
+        }
+    }
+
     /// @notice The ```_allocateShares``` function is used to update the position accounting with the request data
     /// @dev This function is called by ```gmxPositionCallback```
     /// @param _requestKey The request key of the request
@@ -704,7 +739,12 @@ contract Route is Base, IRoute {
     function _isOpenInterest() internal view returns (bool) {
         Route memory _route = route;
 
-        (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(orchestrator.gmxVault()).getPosition(address(this), _route.collateralToken, _route.indexToken, _route.isLong);
+        (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(orchestrator.gmxVault()).getPosition(
+            address(this),
+            _route.collateralToken,
+            _route.indexToken,
+            _route.isLong
+        );
 
         return _size > 0 && _collateral > 0;
     }
