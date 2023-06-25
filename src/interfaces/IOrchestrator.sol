@@ -32,10 +32,10 @@ interface IOrchestrator {
     }
 
     struct GMXInfo {
-        address gmxRouter;
-        address gmxVault;
-        address gmxPositionRouter;
-        address gmxReferralRebatesSender;
+        address vaultPriceFeed;
+        address router;
+        address vault;
+        address positionRouter;
     }
 
     // ============================================================================================
@@ -132,6 +132,12 @@ interface IOrchestrator {
     function isBelowThrottleLimit(address _puppet, bytes32 _routeType) external view returns (bool);
 
     // gmx
+
+    /// @notice The ```getPrice``` function returns the price for a given Token from the GMX vaultPriceFeed
+    /// @notice prices are USD denominated with 30 decimals
+    /// @param _token The address of the Token
+    /// @return uint256 The price
+    function getPrice(address _token) external view returns (uint256);
 
     /// @notice The ```gmxInfo``` function returns the GMX Router address
     /// @return address The GMX Router address
@@ -287,10 +293,11 @@ interface IOrchestrator {
     function setRouteType(address _collateral, address _index, bool _isLong) external;
 
     /// @notice The ```setGMXInfo``` function is called by the Authority to set the GMX contract addresses
+    /// @param _vaultPriceFeed The address of the GMX Vault Price Feed
     /// @param _gmxRouter The address of the GMX Router
     /// @param _gmxVault The address of the GMX Vault
     /// @param _gmxPositionRouter The address of the GMX Position Router
-    function setGMXInfo(address _gmxRouter, address _gmxVault, address _gmxPositionRouter) external;
+    function setGMXInfo(address _vaultPriceFeed, address _gmxRouter, address _gmxVault, address _gmxPositionRouter) external;
 
     /// @notice The ```setKeeper``` function is called by the Authority to set the Keeper address
     /// @param _keeperAddr The address of the new Keeper
@@ -327,7 +334,7 @@ interface IOrchestrator {
     event DecreaseSize(bytes32 indexed requestKey, bytes32 indexed routeKey);
     event Liquidate(bytes32 indexed routeKey);
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
-    event SetGMXUtils(address gmxRouter, address gmxVault, address gmxPositionRouter);
+    event SetGMXUtils(address vaultPriceFeed, address router, address vault, address positionRouter);
     event Pause(bool paused);
     event SetReferralCode(bytes32 indexed referralCode);
     event SetRouteFactory(address indexed factory);

@@ -346,7 +346,7 @@ contract Route is Base, IRoute {
             // 4. pull funds from Orchestrator
             orchestrator.sendFunds(_puppetsAmountIn, route.collateralToken, address(this));
 
-            return _puppetsAmountIn, _traderAmountIn;
+            return (_puppetsAmountIn, _traderAmountIn);
         }
     }
 

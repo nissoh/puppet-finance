@@ -24,6 +24,8 @@ import {Auth, Authority} from "@solmate/auth/Auth.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
+import {IGMXVaultPriceFeed} from "./interfaces/IGMXVaultPriceFeed.sol";
+
 import {IRouteFactory} from "./interfaces/IRouteFactory.sol";
 
 import "./Base.sol";
@@ -91,7 +93,12 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         routeFactory = _routeFactory;
         _keeper = _keeperAddr;
 
-        (_gmxInfo.gmxRouter, _gmxInfo.gmxVault, _gmxInfo.gmxPositionRouter) = abi.decode(_gmx, (address, address, address));
+        (
+            _gmxInfo.vaultPriceFeed,
+            _gmxInfo.router,
+            _gmxInfo.vault,
+            _gmxInfo.positionRouter
+        ) = abi.decode(_gmx, (address, address, address, address));
 
         _referralCode = _refCode;
     }
@@ -213,26 +220,26 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     /// @inheritdoc IOrchestrator
     function getPrice(address _token) external view returns (uint256) {
-        return _gmxInfo.gmxVaultPriceFeed).getPrice(_token, maximise, includeAmmPrice, false);
+        return IGMXVaultPriceFeed(_gmxInfo.vaultPriceFeed).getPrice(_token, maximise, includeAmmPrice, false);
     }
 
     function getGMXVaultPriceFeed() external view returns (address) {
-        return _gmxInfo.gmxVaultPriceFeed;
+        return _gmxInfo.vaultPriceFeed;
     }
 
     /// @inheritdoc IOrchestrator
     function gmxRouter() external view returns (address) {
-        return _gmxInfo.gmxRouter;
+        return _gmxInfo.router;
     }
 
     /// @inheritdoc IOrchestrator
     function gmxPositionRouter() external view returns (address) {
-        return _gmxInfo.gmxPositionRouter;
+        return _gmxInfo.positionRouter;
     }
 
     /// @inheritdoc IOrchestrator
     function gmxVault() external view returns (address) {
-        return _gmxInfo.gmxVault;
+        return _gmxInfo.vault;
     }
 
     // ============================================================================================
@@ -514,14 +521,15 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function setGMXInfo(address _gmxRouter, address _gmxVault, address _gmxPositionRouter) external requiresAuth nonReentrant {
+    function setGMXInfo(address _vaultPriceFeed, address _router, address _vault, address _positionRouter) external requiresAuth nonReentrant {
         GMXInfo storage _gmx = _gmxInfo;
 
-        _gmx.gmxRouter = _gmxRouter;
-        _gmx.gmxVault = _gmxVault;
-        _gmx.gmxPositionRouter = _gmxPositionRouter;
+        _gmx.vaultPriceFeed = _vaultPriceFeed;
+        _gmx.gmxRouter = _router;
+        _gmx.gmxVault = _vault;
+        _gmx.gmxPositionRouter = _positionRouter;
 
-        emit SetGMXUtils(_gmxRouter, _gmxVault, _gmxPositionRouter);
+        emit SetGMXUtils(_vaultPriceFeed, _router, _vault, _positionRouter);
     }
 
     /// @inheritdoc IOrchestrator
