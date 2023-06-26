@@ -36,6 +36,8 @@ interface IOrchestrator {
         address router;
         address vault;
         address positionRouter;
+        bool priceFeedMaximise;
+        bool priceFeedIncludeAmmPrice;
     }
 
     // ============================================================================================
@@ -297,7 +299,9 @@ interface IOrchestrator {
     /// @param _gmxRouter The address of the GMX Router
     /// @param _gmxVault The address of the GMX Vault
     /// @param _gmxPositionRouter The address of the GMX Position Router
-    function setGMXInfo(address _vaultPriceFeed, address _gmxRouter, address _gmxVault, address _gmxPositionRouter) external;
+    /// @param _priceFeedMaximise The boolean for the GMX Vault Price Feed `maximise` parameter
+    /// @param _priceFeedIncludeAmmPrice The boolean for the GMX Vault Price Feed `includeAmmPrice` parameter
+    function setGMXInfo(address _vaultPriceFeed, address _gmxRouter, address _gmxVault, address _gmxPositionRouter, bool _priceFeedMaximise, bool _priceFeedIncludeAmmPrice) external;
 
     /// @notice The ```setKeeper``` function is called by the Authority to set the Keeper address
     /// @param _keeperAddr The address of the new Keeper
@@ -335,6 +339,7 @@ interface IOrchestrator {
     event Liquidate(bytes32 indexed routeKey);
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
     event SetGMXUtils(address vaultPriceFeed, address router, address vault, address positionRouter);
+    event SetGMXUtils(address vaultPriceFeed, address router, address vault, address positionRouter, bool priceFeedMaximise, bool priceFeedIncludeAmmPrice);
     event Pause(bool paused);
     event SetReferralCode(bytes32 indexed referralCode);
     event SetRouteFactory(address indexed factory);

@@ -42,6 +42,8 @@ contract Route is Base, IRoute {
 
     uint256 public positionIndex;
 
+    uint256 private targetRatio; // used when Puppet's cannot add the required collateral amount and we need to adjust the position
+
     uint256 private constant _PRECISION = 1e18;
 
     bytes32 private immutable _routeTypeKey;
@@ -306,7 +308,7 @@ contract Route is Base, IRoute {
     ) internal returns (uint256 _puppetsAmountIn, uint256 _traderAmountIn) {
         if (_swapParams.amount > 0) {
             // 1. get trader assets and allocate request shares. pull funds too, if needed
-            uint256 _traderAmountIn = _getTraderAssets(_swapParams, _executionFee);
+            _traderAmountIn = _getTraderAssets(_swapParams, _executionFee);
 
             uint256 _traderShares = _convertToShares(0, 0, _traderAmountIn);
 
@@ -316,7 +318,6 @@ contract Route is Base, IRoute {
             // 2. get puppets assets and allocate request shares
             (bytes memory _puppetsRequestData, bool _isAdjustmentRequired) = _getPuppetsAssetsAndAllocateRequestShares(_totalSupply, _totalAssets);
 
-            uint256 _puppetsAmountIn;
             uint256[] memory _puppetsShares;
             uint256[] memory _puppetsAmounts;
             (
@@ -475,23 +476,22 @@ contract Route is Base, IRoute {
 
         if (_context.isOI) {
             uint256 _requiredAdditionalCollateral = _position.latestAmountIn[_puppet] * _context.increaseRatio / _PRECISION;
-            if (_allowanceAmount == 0 || _requiredAdditionalCollateral > _allowanceAmount) {
-                waitForKeeperAdjustment = true;
-                _puppetRequestInfo.isAdjustmentRequired = true;
-                if(_allowanceAmount == 0) return _puppetRequestInfo;
-                _puppetRequestInfo.additionalAmount = _allowanceAmount;
-            } else {
-                _puppetRequestInfo.additionalAmount = _requiredAdditionalCollateral;
+            if (_requiredAdditionalCollateral != 0) {
+                if (_requiredAdditionalCollateral > _allowanceAmount || _allowanceAmount == 0) {
+                    waitForKeeperAdjustment = true;
+                    _puppetRequestInfo.isAdjustmentRequired = true;
+                    if(_allowanceAmount == 0) return _puppetRequestInfo;
+                    _puppetRequestInfo.additionalAmount = _allowanceAmount;
+                } else {
+                    _puppetRequestInfo.additionalAmount = _requiredAdditionalCollateral;
+                }
+                _puppetRequestInfo.additionalShares = _convertToShares(_totalAssets, _totalSupply, _puppetRequestInfo.additionalAmount);
             }
-
-            _puppetRequestInfo.additionalShares = _convertToShares(_totalAssets, _totalSupply, _puppetRequestInfo.additionalAmount);
         } else {
             if (_allowanceAmount > 0 && orchestrator.isBelowThrottleLimit(_puppet, _routeTypeKey)) {
                 _puppetRequestInfo.additionalAmount = _allowanceAmount > _context.traderAmountIn ? _context.traderAmountIn : _allowanceAmount;
                 _puppetRequestInfo.additionalShares = _convertToShares(_totalAssets, _totalSupply, _puppetRequestInfo.additionalAmount);
                 orchestrator.updateLastPositionOpenedTimestamp(_puppet, _routeTypeKey);
-            } else {
-                _puppetRequestInfo.additionalAmount = 0;
             }
         }
     }
@@ -583,23 +583,25 @@ contract Route is Base, IRoute {
     /// @param _sizeIncrease The USD amount of size to increase the position by. With 1e30 precision
     /// @param _traderCollateralIncrease The amount of collateral the trader is adding to the position
     function _setTargetRatio(uint256 _sizeIncrease, uint256 _traderCollateralIncrease) internal { // todo
-        address _collateralToken = route.collateralToken;
-        (uint256 _currentSize, uint256 _currentCollateral,,,,,,) = IGMXVault(orchestrator.gmxVault()).getPosition(
-            address(this),
-            _collateralToken,
-            _route.indexToken,
-            _route.isLong
-        );
+        if (waitForKeeperAdjustment) {
+            Route memory _route = route;
+            (uint256 _currentSize, uint256 _currentCollateral,,,,,,) = IGMXVault(orchestrator.gmxVault()).getPosition(
+                address(this),
+                _route.collateralToken,
+                _route.indexToken,
+                _route.isLong
+            );
 
-        if (_currentSize > 0 && _currentCollateral > 0 && _traderCollateralIncrease > 0) {
+            uint256 _totalSupply = positions[positionIndex].totalSupply;
+            uint256 _traderShares = positions[positionIndex].participantShares[route.trader];
             // get the trader's share of the position
-            _currentSize = _convertToAssets(_currentSize, totalSupply, traderShares);
-            _currentCollateral = _convertToAssets(_currentCollateral, totalSupply, traderShares);
-            _sizeIncrease = _convertToAssets(_sizeIncrease, totalSupply, traderShares);
+            _currentSize = _convertToAssets(_currentSize, _totalSupply, _traderShares);
+            _currentCollateral = _convertToAssets(_currentCollateral, _totalSupply, _traderShares);
+            _sizeIncrease = _convertToAssets(_sizeIncrease, _totalSupply, _traderShares);
 
             // convert to USD denomination with 30 decimals, to match the value from GMX  
-            _traderCollateralIncrease = orchestrator.getPrice(_collateralToken) * _traderCollateralIncrease / IERC20(_collateralToken).decimals();
-            
+            _traderCollateralIncrease = orchestrator.getPrice(_route.collateralToken) * _traderCollateralIncrease / uint256(IERC20(_route.collateralToken).decimals());
+
             targetRatio = (_currentSize + _sizeIncrease) * _BASIS_POINTS_DIVISOR / (_currentCollateral + _traderCollateralIncrease);
         }
     }
@@ -662,6 +664,7 @@ contract Route is Base, IRoute {
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         if ((!_isExecuted && _request.isAdjustmentRequired) || (_isExecuted && _isKeeperRequest)) {
             waitForKeeperAdjustment = false;
+            targetRatio = 0;
         } else if (_isExecuted && _request.isAdjustmentRequired) {
             enableKeeperAdjustment = true;
         }

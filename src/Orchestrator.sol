@@ -220,7 +220,12 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     /// @inheritdoc IOrchestrator
     function getPrice(address _token) external view returns (uint256) {
-        return IGMXVaultPriceFeed(_gmxInfo.vaultPriceFeed).getPrice(_token, maximise, includeAmmPrice, false);
+        return IGMXVaultPriceFeed(_gmxInfo.vaultPriceFeed).getPrice(
+            _token,
+            _gmxInfo.priceFeedMaximise,
+            _gmxInfo.priceFeedIncludeAmmPrice,
+            false
+        );
     }
 
     function getGMXVaultPriceFeed() external view returns (address) {
@@ -521,15 +526,24 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function setGMXInfo(address _vaultPriceFeed, address _router, address _vault, address _positionRouter) external requiresAuth nonReentrant {
+    function setGMXInfo(
+        address _vaultPriceFeed,
+        address _router,
+        address _vault,
+        address _positionRouter,
+        bool _priceFeedMaximise,
+        bool _priceFeedIncludeAmmPrice
+    ) external requiresAuth nonReentrant {
         GMXInfo storage _gmx = _gmxInfo;
 
         _gmx.vaultPriceFeed = _vaultPriceFeed;
-        _gmx.gmxRouter = _router;
-        _gmx.gmxVault = _vault;
-        _gmx.gmxPositionRouter = _positionRouter;
+        _gmx.router = _router;
+        _gmx.vault = _vault;
+        _gmx.positionRouter = _positionRouter;
+        _gmx.priceFeedMaximise = _priceFeedMaximise;
+        _gmx.priceFeedIncludeAmmPrice = _priceFeedIncludeAmmPrice;
 
-        emit SetGMXUtils(_vaultPriceFeed, _router, _vault, _positionRouter);
+        emit SetGMXUtils(_vaultPriceFeed, _router, _vault, _positionRouter, _priceFeedMaximise, _priceFeedIncludeAmmPrice);
     }
 
     /// @inheritdoc IOrchestrator
