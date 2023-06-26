@@ -19,7 +19,7 @@ pragma solidity 0.8.17;
 // itburnz: https://github.com/nissoh
 
 // ==============================================================
-
+// todo - remove return vars when not needed 
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IGMXVault} from "./interfaces/IGMXVault.sol";
@@ -160,11 +160,18 @@ contract Route is Base, IRoute {
     /// @inheritdoc IRoute
     function requiredAdjustmentSize() external view returns (uint256 _requiredSize) {
         // todo
-
-        // 1. get trader current ratio (share of size / share of collateral)
-        // 2. get trader target ratio (share of new size (assuming all puppets have req collat) / share of new collateral)
-        // 3. get difference between current and target ratio
-        // 4. multiply difference by current size to get required adjustment size
+        // requiredAdjustmentSize = Actual position size - Target position size
+        //
+        // Target position size:
+        // the position size needed to maintain targetRatio, with actual collateral amount that was added by participants
+        // (Target position size = actual collateral amount added * targetRatio)
+        //
+        //
+        // Actual position size:
+        // the position size that maintains targetRatio if all participants add the required collateral amount
+        // (Actual position size = collateral amount added if all participants could pay * targetRatio)
+        // (it's expected from Trader to imput sizeAmount considering all Puppets adding the required collateral amount)
+        // (i.e. if Trader wants to have 10x leverage, he needs to input a sizeAmount that takes into account the collateral that will be added by any Puppets following him)
     }
 
     // Request Info
@@ -583,6 +590,7 @@ contract Route is Base, IRoute {
     /// @param _sizeIncrease The USD amount of size to increase the position by. With 1e30 precision
     /// @param _traderCollateralIncrease The amount of collateral the trader is adding to the position
     function _setTargetRatio(uint256 _sizeIncrease, uint256 _traderCollateralIncrease) internal { // todo
+        // `waitForKeeperAdjustment` is true when the Trader adds collateral and Puppets cannot add the required amount
         if (waitForKeeperAdjustment) {
             Route memory _route = route;
             (uint256 _currentSize, uint256 _currentCollateral,,,,,,) = IGMXVault(orchestrator.gmxVault()).getPosition(
@@ -592,15 +600,17 @@ contract Route is Base, IRoute {
                 _route.isLong
             );
 
-            uint256 _totalSupply = positions[positionIndex].totalSupply;
-            uint256 _traderShares = positions[positionIndex].participantShares[route.trader];
+            Position storage _position = positions[positionIndex];
+            uint256 _totalSupply = _position.totalSupply;
+            uint256 _traderShares = _position.participantShares[_route.trader];
+
             // get the trader's share of the position
             _currentSize = _convertToAssets(_currentSize, _totalSupply, _traderShares);
             _currentCollateral = _convertToAssets(_currentCollateral, _totalSupply, _traderShares);
             _sizeIncrease = _convertToAssets(_sizeIncrease, _totalSupply, _traderShares);
 
-            // convert to USD denomination with 30 decimals, to match the value from GMX  
-            _traderCollateralIncrease = orchestrator.getPrice(_route.collateralToken) * _traderCollateralIncrease / uint256(IERC20(_route.collateralToken).decimals());
+            uint256 _decimals = uint256(IERC20(_route.collateralToken).decimals());
+            _traderCollateralIncrease = orchestrator.getPrice(_route.collateralToken) * _traderCollateralIncrease / _decimals;
 
             targetRatio = (_currentSize + _sizeIncrease) * _BASIS_POINTS_DIVISOR / (_currentCollateral + _traderCollateralIncrease);
         }
