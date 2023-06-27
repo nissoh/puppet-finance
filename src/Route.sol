@@ -208,8 +208,14 @@ contract Route is Base, IRoute {
         _repayBalance(bytes32(0), msg.value, true, false);
 
         if (_isIncrease) {
-            (uint256 _puppetsAmountIn, uint256 _traderAmountIn) = _getAssets(_swapParams, _executionFee);
-            _setTargetRatio(_adjustPositionParams.sizeDelta, _traderAmountIn);
+            (
+                uint256 _puppetsAmountIn,
+                uint256 _traderAmountIn,
+                uint256 _traderShares,
+                uint256 _totalSupply
+            ) = _getAssets(_swapParams, _executionFee);
+
+            _setTargetRatio(_adjustPositionParams.sizeDelta, _traderAmountIn, _traderShares, _totalSupply);
             _requestKey = _requestIncreasePosition(_adjustPositionParams, _puppetsAmountIn + _traderAmountIn, _executionFee);
         } else {
             _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
@@ -298,19 +304,21 @@ contract Route is Base, IRoute {
     /// @param _executionFee The execution fee paid by the Trader, in ETH
     /// @return _puppetsAmountIn The amount of collateral the Puppets will add to the position
     /// @return _traderAmountIn The amount of collateral the Trader will add to the position
+    /// @return _traderShares The amount of shares the Trader will receive
+    /// @return _totalSupply The total amount of shares for the request
     // slither-disable-next-line reentrancy-eth
     function _getAssets(
         SwapParams memory _swapParams,
         uint256 _executionFee
-    ) internal returns (uint256 _puppetsAmountIn, uint256 _traderAmountIn) {
+    ) internal returns (uint256 _puppetsAmountIn, uint256 _traderAmountIn, uint256 _traderShares, uint256 _totalSupply) {
         if (_swapParams.amount > 0) {
             // 1. get trader assets and allocate request shares. pull funds too, if needed
             _traderAmountIn = _getTraderAssets(_swapParams, _executionFee);
 
-            uint256 _traderShares = _convertToShares(0, 0, _traderAmountIn);
+            _traderShares = _convertToShares(0, 0, _traderAmountIn);
 
-            uint256 _totalSupply = _traderShares;
             uint256 _totalAssets = _traderAmountIn;
+            _totalSupply = _traderShares;
 
             // 2. get puppets assets and allocate request shares
             (bytes memory _puppetsRequestData, bool _isAdjustmentRequired) = _getPuppetsAssetsAndAllocateRequestShares(_totalSupply, _totalAssets);
@@ -344,7 +352,7 @@ contract Route is Base, IRoute {
             // 4. pull funds from Orchestrator
             orchestrator.sendFunds(_puppetsAmountIn, route.collateralToken, address(this));
 
-            return (_puppetsAmountIn, _traderAmountIn);
+            return (_puppetsAmountIn, _traderAmountIn, _traderShares, _totalSupply);
         }
     }
 
@@ -579,25 +587,36 @@ contract Route is Base, IRoute {
     /// @notice The ```_setTargetRatio``` function is used to set the target ratio of the trader when adding collateral to an existing position
     /// @param _sizeIncrease The USD amount of size to increase the position by. With 1e30 precision
     /// @param _traderCollateralIncrease The amount of collateral the trader is adding to the position
-    function _setTargetRatio(uint256 _sizeIncrease, uint256 _traderCollateralIncrease) internal { // todo: add tests
+    /// @param _traderSharesIncrease The amount of shares the trader will get once the request is executed
+    /// @param _totalSupplyIncrease The total shares of the request
+    function _setTargetRatio(
+        uint256 _sizeIncrease,
+        uint256 _traderCollateralIncrease,
+        uint256 _traderSharesIncrease,
+        uint256 _totalSupplyIncrease
+    ) internal { // todo: add tests
         if (waitForKeeperAdjustment) {
-            (uint256 _currentSize, uint256 _currentCollateral) = _getPositionAmounts();
+            (uint256 _positionSize, uint256 _positionCollateral) = _getPositionAmounts();
 
             Position storage _position = positions[positionIndex];
             Route memory _route = route;
 
-            uint256 _totalSupply = _position.totalSupply;
-            uint256 _traderShares = _position.participantShares[_route.trader];
+            // get the trader's share of the current position
+            uint256 _traderPositionSize = _convertToAssets(_positionSize, _position.totalSupply, _position.participantShares[_route.trader]);
+            uint256 _traderPositionCollateral = _convertToAssets(_positionCollateral, _position.totalSupply, _position.participantShares[_route.trader]);
 
-            // get the trader's share of the position
-            _currentSize = _convertToAssets(_currentSize, _totalSupply, _traderShares);
-            _currentCollateral = _convertToAssets(_currentCollateral, _totalSupply, _traderShares);
-            _sizeIncrease = _convertToAssets(_sizeIncrease, _totalSupply, _traderShares);
+            // get the trader's share of the requested increase to the position
+            uint256 _traderSizeIncrease;
+            if (_sizeIncrease == 0 || _totalSupplyIncrease == 0) {
+                // todo - _totalSupplyIncrease should never be 0, cause if no collateral was added, puppets cant get adjusted
+                require(_totalSupplyIncrease != 0, "todo");
+                _traderSizeIncrease = 0;
+            } else {
+                _traderSizeIncrease = _convertToAssets(_sizeIncrease, _totalSupplyIncrease, _traderSharesIncrease);
+            }
+            _traderCollateralIncrease = orchestrator.getPrice(_route.collateralToken) * _traderCollateralIncrease / uint256(IERC20(_route.collateralToken).decimals());
 
-            uint256 _decimals = uint256(IERC20(_route.collateralToken).decimals());
-            _traderCollateralIncrease = orchestrator.getPrice(_route.collateralToken) * _traderCollateralIncrease / _decimals;
-
-            targetRatio = (_currentSize + _sizeIncrease) * _BASIS_POINTS_DIVISOR / (_currentCollateral + _traderCollateralIncrease);
+            targetRatio = (_traderPositionSize + _traderSizeIncrease) * _BASIS_POINTS_DIVISOR / (_traderPositionCollateral + _traderCollateralIncrease);
         }
     }
 

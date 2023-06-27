@@ -61,7 +61,7 @@ contract DecreaseSizeResolver is Auth {
                 IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
                     collateralDelta: 0, // we don't remove collateral
                     sizeDelta: _route.requiredAdjustmentSize(),
-                    acceptablePrice: orchestrator.getPrice(_route.indexToken()) * priceFeedSlippage / _BASIS_POINTS_DIVISOR,
+                    acceptablePrice: orchestrator.getPrice(_route.indexToken()) * _BASIS_POINTS_DIVISOR / priceFeedSlippage,
                     minOut: 0 // minOut can be zero if no swap is required
                 });
 
