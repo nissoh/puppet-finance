@@ -125,8 +125,24 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     /// @notice The ```requiredAdjustmentSize``` function returns the required adjustment size for the route
     /// @notice If Puppets cannot pay the required amount when Trader adds collateral to an existing position, we need to decrease their size so the position's size/collateral ratio is as expected
-    /// @return _requiredSize The required adjustment size for the route 
-    function requiredAdjustmentSize() external view returns (uint256 _requiredSize);
+    /// @notice This function is called by the Keeper when `targetRatio` is set 
+    /**
+     @dev Returns the required adjustment size, USD denominated, with 30 decimals of precision, ready to be used by the Keeper.
+
+     We get the required adjustment size by calculating the difference between the current position size and the target position size:
+      - requiredAdjustmentSize = currentPositionSize - targetPositionSize
+      -
+      - targetPositionSize:
+       - the position size needed to maintain the targetRatio, with the actual collateral amount that was added by all participants (i.e. current collateral in position)
+       - (targetPositionSize = currentCollateral * targetRatio)
+      -
+      - currentPositionSize:
+       - the position size that maintains targetRatio if all participants were to add the required collateral amount
+       - (it's expected from Trader to input a `sizeDelta` that takes assumes all Puppets adding the required collateral amount)
+       - (i.e. if Trader wants to have 10x leverage, he needs to input a `sizeDelta` that takes into account the collateral that will be added by all Puppets following him)
+    */
+    /// @return _requiredAdjustmentSize The required adjustment size, USD denominated, with 30 decimals of precision
+    function requiredAdjustmentSize() external view returns (uint256 _requiredAdjustmentSize);
 
     // Request Info
 

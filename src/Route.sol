@@ -19,7 +19,7 @@ pragma solidity 0.8.17;
 // itburnz: https://github.com/nissoh
 
 // ==============================================================
-// todo - remove return vars when not needed 
+// todo - add return vars to functions that need them
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IGMXVault} from "./interfaces/IGMXVault.sol";
@@ -158,20 +158,13 @@ contract Route is Base, IRoute {
     }
 
     /// @inheritdoc IRoute
-    function requiredAdjustmentSize() external view returns (uint256 _requiredSize) {
-        // todo
-        // requiredAdjustmentSize = Actual position size - Target position size
-        //
-        // Target position size:
-        // the position size needed to maintain targetRatio, with actual collateral amount that was added by participants
-        // (Target position size = actual collateral amount added * targetRatio)
-        //
-        //
-        // Actual position size:
-        // the position size that maintains targetRatio if all participants add the required collateral amount
-        // (Actual position size = collateral amount added if all participants could pay * targetRatio)
-        // (it's expected from Trader to imput sizeAmount considering all Puppets adding the required collateral amount)
-        // (i.e. if Trader wants to have 10x leverage, he needs to input a sizeAmount that takes into account the collateral that will be added by any Puppets following him)
+    function requiredAdjustmentSize() external view returns (uint256) { // todo
+        (uint256 _size, uint256 _collateral) = _getPositionAmounts();
+ 
+        return _size - (_collateral * targetRatio / _BASIS_POINTS_DIVISOR);
+
+
+
     }
 
     // Request Info
@@ -252,7 +245,7 @@ contract Route is Base, IRoute {
         if (_isOpenInterest()) revert PositionStillAlive();
         // https://github.com/gmx-io/gmx-contracts/blob/master/contracts/core/Vault.sol#L757
         // validate liquidation
-        // todo - make functions fail when conditions are not met
+        // todo - make functions fail when conditions are not met --> cant, need to build dedicated resolver
 
         _repayBalance(bytes32(0), 0, true, false);
 
@@ -589,18 +582,13 @@ contract Route is Base, IRoute {
     /// @notice The ```_setTargetRatio``` function is used to set the target ratio of the trader when adding collateral to an existing position
     /// @param _sizeIncrease The USD amount of size to increase the position by. With 1e30 precision
     /// @param _traderCollateralIncrease The amount of collateral the trader is adding to the position
-    function _setTargetRatio(uint256 _sizeIncrease, uint256 _traderCollateralIncrease) internal { // todo
-        // `waitForKeeperAdjustment` is true when the Trader adds collateral and Puppets cannot add the required amount
+    function _setTargetRatio(uint256 _sizeIncrease, uint256 _traderCollateralIncrease) internal { // todo: add tests
         if (waitForKeeperAdjustment) {
-            Route memory _route = route;
-            (uint256 _currentSize, uint256 _currentCollateral,,,,,,) = IGMXVault(orchestrator.gmxVault()).getPosition(
-                address(this),
-                _route.collateralToken,
-                _route.indexToken,
-                _route.isLong
-            );
+            (uint256 _currentSize, uint256 _currentCollateral) = _getPositionAmounts();
 
             Position storage _position = positions[positionIndex];
+            Route memory _route = route;
+
             uint256 _totalSupply = _position.totalSupply;
             uint256 _traderShares = _position.participantShares[_route.trader];
 
@@ -760,6 +748,21 @@ contract Route is Base, IRoute {
         );
 
         return _size > 0 && _collateral > 0;
+    }
+
+    /// @notice The ```_getPositionAmounts``` function is used to get the current position's size and collateral
+    /// @dev This function is called by ```_setTargetRatio``` and ```requiredAdjustmentSize```
+    /// @return _size The current position's size
+    /// @return _collateral The current position's collateral 
+    function _getPositionAmounts() internal view returns (uint256 _size, uint256 _collateral) {
+        Route memory _route = route;
+
+        (_size, _collateral,,,,,,) = IGMXVault(orchestrator.gmxVault()).getPosition(
+            address(this),
+            _route.collateralToken,
+            _route.indexToken,
+            _route.isLong
+        );
     }
 
     /// @notice The ```_convertToShares``` function is used to convert an amount of assets to shares, given the total assets and total supply
