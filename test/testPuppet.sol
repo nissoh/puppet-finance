@@ -1116,6 +1116,8 @@ contract testPuppet is Test {
     function _testKeeperAdjustPosition() internal {
         // todo
         assertEq(Route(route).waitForKeeperAdjustment(), true, "_testKeeperAdjustPosition: E01");
+        console.log("targetRatio:", Route(route).targetRatio());
+        revert("test");
     }
 
     // ============================================================================================

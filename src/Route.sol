@@ -27,11 +27,12 @@ import {IGMXVault} from "./interfaces/IGMXVault.sol";
 import {IRoute} from "./interfaces/IRoute.sol";
 
 import "./Base.sol";
-
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
 /// @title Route
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
 /// @notice This contract acts as a container account which a trader can use to manage their position, and puppets can subscribe to
-contract Route is Base, IRoute {
+contract Route is Base, IRoute, Test {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
@@ -41,8 +42,7 @@ contract Route is Base, IRoute {
     bool public enableKeeperAdjustment;
 
     uint256 public positionIndex;
-
-    uint256 private targetRatio; // used when Puppet's cannot add the required collateral amount and we need to adjust the position
+    uint256 public targetRatio;
 
     uint256 private constant _PRECISION = 1e18;
 
@@ -597,7 +597,12 @@ contract Route is Base, IRoute {
     ) internal { // todo: add tests
         if (waitForKeeperAdjustment) {
             (uint256 _positionSize, uint256 _positionCollateral) = _getPositionAmounts();
-
+            console.log("positionSize", _positionSize);
+            33368375074083431378756460496494938
+            2423018024925916568621243539503505
+            console.log("positionCollateral", _positionCollateral);
+            console.log("currentratio1", _positionCollateral * 1e30 / _positionSize);
+            console.log("currentratio2", _positionCollateral * _BASIS_POINTS_DIVISOR / _positionSize);
             Position storage _position = positions[positionIndex];
             Route memory _route = route;
 
@@ -614,10 +619,26 @@ contract Route is Base, IRoute {
             } else {
                 _traderSizeIncrease = _convertToAssets(_sizeIncrease, _totalSupplyIncrease, _traderSharesIncrease);
             }
+            console.log("_traderCollateralIncrease1", _traderCollateralIncrease);
             _traderCollateralIncrease = orchestrator.getPrice(_route.collateralToken) * _traderCollateralIncrease / uint256(IERC20(_route.collateralToken).decimals());
 
             targetRatio = (_traderPositionSize + _traderSizeIncrease) * _BASIS_POINTS_DIVISOR / (_traderPositionCollateral + _traderCollateralIncrease);
+
+            console.log("----------");
+            console.log("targetRatio", targetRatio);
+            console.log("_traderPositionSize", _traderPositionSize);
+            console.log("_traderSizeIncrease", _traderSizeIncrease);
+            console.log("_traderPositionCollateral", _traderPositionCollateral);
+            console.log("_traderCollateralIncrease", _traderCollateralIncrease);
+            console.log("current ratio:", _traderPositionSize * _BASIS_POINTS_DIVISOR / _traderPositionCollateral);
+            // console.log("_positionSize", _positionSize);
+            // console.log("_positionCollateral", _positionCollateral);
+            // console.log("_sizeIncrease", _sizeIncrease);
+            // console.log("_totalSupplyIncrease", _totalSupplyIncrease);
+            // console.log("_traderSharesIncrease", _traderSharesIncrease);
+            console.log("----------");
         }
+        console.log("hey");
     }
 
     /// @notice The ```_allocateShares``` function is used to update the position accounting with the request data
