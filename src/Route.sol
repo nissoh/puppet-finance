@@ -162,9 +162,6 @@ contract Route is Base, IRoute {
         (uint256 _size, uint256 _collateral) = _getPositionAmounts();
  
         return _size - (_collateral * targetRatio / _BASIS_POINTS_DIVISOR);
-
-
-
     }
 
     // Request Info
