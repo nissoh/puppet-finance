@@ -44,6 +44,8 @@ contract Route is Base, IRoute, Test {
     uint256 public positionIndex;
     uint256 public targetRatio;
 
+    uint256 private immutable collateralTokenDecimals;
+
     uint256 private constant _PRECISION = 1e18;
 
     bytes32 private immutable _routeTypeKey;
@@ -75,6 +77,8 @@ contract Route is Base, IRoute, Test {
         route.collateralToken = _collateralToken;
         route.indexToken = _indexToken;
         route.isLong = _isLong;
+
+        collateralTokenDecimals = 10 ** IERC20(_collateralToken).decimals();
 
         _routeTypeKey = orchestrator.getRouteTypeKey(_collateralToken, _indexToken, _isLong);
 
@@ -597,12 +601,7 @@ contract Route is Base, IRoute, Test {
     ) internal { // todo: add tests
         if (waitForKeeperAdjustment) {
             (uint256 _positionSize, uint256 _positionCollateral) = _getPositionAmounts();
-            console.log("positionSize", _positionSize);
-            33368375074083431378756460496494938
-            2423018024925916568621243539503505
-            console.log("positionCollateral", _positionCollateral);
-            console.log("currentratio1", _positionCollateral * 1e30 / _positionSize);
-            console.log("currentratio2", _positionCollateral * _BASIS_POINTS_DIVISOR / _positionSize);
+
             Position storage _position = positions[positionIndex];
             Route memory _route = route;
 
@@ -619,11 +618,16 @@ contract Route is Base, IRoute, Test {
             } else {
                 _traderSizeIncrease = _convertToAssets(_sizeIncrease, _totalSupplyIncrease, _traderSharesIncrease);
             }
-            console.log("_traderCollateralIncrease1", _traderCollateralIncrease);
-            _traderCollateralIncrease = orchestrator.getPrice(_route.collateralToken) * _traderCollateralIncrease / uint256(IERC20(_route.collateralToken).decimals());
 
+            _traderCollateralIncrease = orchestrator.getPrice(_route.collateralToken) * _traderCollateralIncrease / collateralTokenDecimals;
+
+            uint256 _currentRatio = _traderPositionSize * _BASIS_POINTS_DIVISOR / _traderPositionCollateral;
             targetRatio = (_traderPositionSize + _traderSizeIncrease) * _BASIS_POINTS_DIVISOR / (_traderPositionCollateral + _traderCollateralIncrease);
 
+            if (targetRatio >= _currentRatio) {
+                waitForKeeperAdjustment = false;
+                // todo - abort adjustment
+            }
             console.log("----------");
             console.log("targetRatio", targetRatio);
             console.log("_traderPositionSize", _traderPositionSize);
@@ -638,7 +642,6 @@ contract Route is Base, IRoute, Test {
             // console.log("_traderSharesIncrease", _traderSharesIncrease);
             console.log("----------");
         }
-        console.log("hey");
     }
 
     /// @notice The ```_allocateShares``` function is used to update the position accounting with the request data
