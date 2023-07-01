@@ -605,15 +605,13 @@ contract Route is Base, IRoute, Test {
             Position storage _position = positions[positionIndex];
             Route memory _route = route;
 
-            // get the trader's share of the current position
-            uint256 _traderPositionSize = _convertToAssets(_positionSize, _position.totalSupply, _position.participantShares[_route.trader]);
-            uint256 _traderPositionCollateral = _convertToAssets(_positionCollateral, _position.totalSupply, _position.participantShares[_route.trader]);
+            uint256 _positionTotalSupply = _position.totalSupply;
+            uint256 _traderPositionShares = _position.participantShares[_route.trader];
+            uint256 _traderPositionSize = _convertToAssets(_positionSize, _positionTotalSupply, _traderPositionShares);
+            uint256 _traderPositionCollateral = _convertToAssets(_positionCollateral, _positionTotalSupply, _traderPositionShares);
 
-            // get the trader's share of the requested increase to the position
             uint256 _traderSizeIncrease;
-            if (_sizeIncrease == 0 || _totalSupplyIncrease == 0) {
-                // todo - _totalSupplyIncrease should never be 0, cause if no collateral was added, puppets cant get adjusted
-                require(_totalSupplyIncrease != 0, "todo");
+            if (_sizeIncrease == 0) {
                 _traderSizeIncrease = 0;
             } else {
                 _traderSizeIncrease = _convertToAssets(_sizeIncrease, _totalSupplyIncrease, _traderSharesIncrease);
@@ -626,21 +624,9 @@ contract Route is Base, IRoute, Test {
 
             if (targetRatio >= _currentRatio) {
                 waitForKeeperAdjustment = false;
-                // todo - abort adjustment
+                targetRatio = 0;
+                // todo - abort adjustment if target ratio is not smaller than current ratio
             }
-            console.log("----------");
-            console.log("targetRatio", targetRatio);
-            console.log("_traderPositionSize", _traderPositionSize);
-            console.log("_traderSizeIncrease", _traderSizeIncrease);
-            console.log("_traderPositionCollateral", _traderPositionCollateral);
-            console.log("_traderCollateralIncrease", _traderCollateralIncrease);
-            console.log("current ratio:", _traderPositionSize * _BASIS_POINTS_DIVISOR / _traderPositionCollateral);
-            // console.log("_positionSize", _positionSize);
-            // console.log("_positionCollateral", _positionCollateral);
-            // console.log("_sizeIncrease", _sizeIncrease);
-            // console.log("_totalSupplyIncrease", _totalSupplyIncrease);
-            // console.log("_traderSharesIncrease", _traderSharesIncrease);
-            console.log("----------");
         }
     }
 
