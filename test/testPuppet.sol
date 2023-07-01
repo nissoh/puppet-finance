@@ -178,7 +178,7 @@ contract testPuppet is Test {
         assertEq(Route(route).waitForKeeperAdjustment(), false, "testCorrectFlow: E2");
         _testIncreasePosition(_routeTypeInfo, true, false);
         assertEq(Route(route).waitForKeeperAdjustment(), true, "testCorrectFlow: E3");
-        _testKeeperAdjustPosition();
+        _testKeeperAdjustPosition(_routeKey, _routeTypeKey);
         _testClosePosition(_routeTypeKey, false);
 
         // puppet
@@ -1114,7 +1114,7 @@ contract testPuppet is Test {
         assertEq(_positionIndexBefore + 1, route.positionIndex(), "_testAuthLiquidate: E01");
     }
 
-    function _testKeeperAdjustPosition() internal {
+    function _testKeeperAdjustPosition(bytes32 _routeKey, bytes32 _routeTypeKey) internal {
         // todo
         uint256 _targetLeverage = Route(route).targetLeverage();
         if (_targetLeverage == 0) {
@@ -1123,13 +1123,69 @@ contract testPuppet is Test {
             console.log("targetLeverage:", _targetLeverage);
             assertEq(Route(route).waitForKeeperAdjustment(), true, "_testKeeperAdjustPosition: E01");
             assertTrue(_targetLeverage > 0, "_testKeeperAdjustPosition: E02");
+
+            _keeperDecreaseSize(_targetLeverage, _routeKey, _routeTypeKey);
         }
-        revert("test");
     }
 
     // ============================================================================================
     // Internal Helper Functions
     // ============================================================================================
+
+    function _keeperDecreaseSize(uint256 _targetLeverage, bytes32 _routeKey, bytes32 _routeTypeKey) internal {// todo - finish
+        uint256 _minOut = 0;
+        uint256 _acceptablePrice = 0;
+        uint256 _executionFee = 180000000000000;
+
+        (uint256 _sizeBefore, uint256 _collateralBefore) = _getPositionAmounts(address(route));
+        uint256 _sizeDelta = route.requiredAdjustmentSize();
+        assertTrue(_sizeDelta > 0, "_keeperDecreaseSize: E01");
+
+        IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
+            collateralDelta: 0,
+            sizeDelta: _sizeDelta,
+            acceptablePrice: _acceptablePrice,
+            minOut: _minOut
+        });
+
+        IRoute.SwapParams memory _swapParams = IRoute.SwapParams({
+            path: new address[](0),
+            amount: 0,
+            minOut: 0
+        });
+
+        vm.startPrank(trader);
+        vm.expectRevert(); // reverts with ``
+        orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, isLong);
+        vm.stopPrank();
+
+        vm.startPrank(keeper);
+        vm.expectRevert(); // reverts with ``
+        orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, isLong);
+        
+        vm.expectRevert(); // reverts with ``
+        orchestrator.decreaseSize(_adjustPositionParams, _executionFee, _routeKey);
+
+        orchestrator.decreaseSize{ value: _executionFee }(_adjustPositionParams, _executionFee, _routeKey);
+        vm.stopPrank();
+
+        vm.startPrank(GMXPositionRouterKeeper); // keeper
+        IGMXPositionRouter(gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
+        vm.stopPrank();
+
+        (uint256 _sizeAfter, uint256 _collateralAfter) = _getPositionAmounts(address(route));
+        if (_sizeAfter >= _sizeBefore) {
+            revert("size should be decreased");
+        } else {
+            assertTrue(_sizeAfter < _sizeBefore, "_keeperDecreaseSize: E02");
+            assertApproxEqAbs(_collateralAfter, _collateralBefore, 1e31, "_keeperDecreaseSize: E03");
+            uint256 _positionLeverage = _sizeAfter * 10000 / _collateralAfter;
+            assertApproxEqAbs(_positionLeverage, _targetLeverage, 1e1, "_keeperDecreaseSize: E04");
+            console.log("positionLeverage:", _positionLeverage);
+            console.log("targetLeverage:", _targetLeverage);
+        }
+        
+    }
 
     function _dealERC20(address _token, address _recipient , uint256 _amount) internal {
         deal({ token: address(_token), to: _recipient, give: _amount});
@@ -1144,6 +1200,15 @@ contract testPuppet is Test {
         (uint256 _size, uint256 _collateral,,,,,,) = IGMXVault(gmxVault).getPosition(_account, collateralToken, indexToken, isLong);
 
         return _size > 0 && _collateral > 0;
+    }
+
+    function _getPositionAmounts(address _account) internal view returns (uint256 _size, uint256 _collateral) {
+        (_size, _collateral,,,,,,) = IGMXVault(orchestrator.gmxVault()).getPosition(
+            _account,
+            collateralToken,
+            indexToken,
+            isLong
+        );
     }
 
     function _setRoleCapability(Dictator _dictator, uint8 role, address target, bytes4 functionSig, bool enabled) internal {
