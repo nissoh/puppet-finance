@@ -42,7 +42,7 @@ contract Route is Base, IRoute, Test {
     bool public enableKeeperAdjustment;
 
     uint256 public positionIndex;
-    uint256 public targetRatio;
+    uint256 public targetLeverage;
 
     uint256 private immutable collateralTokenDecimals;
 
@@ -162,10 +162,10 @@ contract Route is Base, IRoute, Test {
     }
 
     /// @inheritdoc IRoute
-    function requiredAdjustmentSize() external view returns (uint256) { // todo
+    function requiredAdjustmentSize() external view returns (uint256 _requiredAdjustment) { // todo
         (uint256 _size, uint256 _collateral) = _getPositionAmounts();
  
-        return _size - (_collateral * targetRatio / _BASIS_POINTS_DIVISOR);
+        _requiredAdjustment = targetLeverage != 0 ? _size - (_collateral * targetLeverage / _BASIS_POINTS_DIVISOR) : 0;
     }
 
     // Request Info
@@ -219,7 +219,7 @@ contract Route is Base, IRoute, Test {
                 uint256 _totalSupply
             ) = _getAssets(_swapParams, _executionFee);
 
-            _setTargetRatio(_adjustPositionParams.sizeDelta, _traderAmountIn, _traderShares, _totalSupply);
+            _setTargetLeverage(_adjustPositionParams.sizeDelta, _traderAmountIn, _traderShares, _totalSupply);
             _requestKey = _requestIncreasePosition(_adjustPositionParams, _puppetsAmountIn + _traderAmountIn, _executionFee);
         } else {
             _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
@@ -486,7 +486,7 @@ contract Route is Base, IRoute, Test {
         if (_context.isOI) {
             uint256 _requiredAdditionalCollateral = _position.latestAmountIn[_puppet] * _context.increaseRatio / _PRECISION;
             if (_requiredAdditionalCollateral != 0) {
-                if (_requiredAdditionalCollateral > _allowanceAmount || _allowanceAmount == 0) {
+                if (_requiredAdditionalCollateral > _allowanceAmount) {
                     waitForKeeperAdjustment = true;
                     _puppetRequestInfo.isAdjustmentRequired = true;
                     if(_allowanceAmount == 0) return _puppetRequestInfo;
@@ -588,12 +588,12 @@ contract Route is Base, IRoute, Test {
         );
     }
 
-    /// @notice The ```_setTargetRatio``` function is used to set the target ratio of the trader when adding collateral to an existing position
+    /// @notice The ```_setTargetLeverage``` function is used to set the target leverage the trader is aiming for when adding collateral to an existing position
     /// @param _sizeIncrease The USD amount of size to increase the position by. With 1e30 precision
     /// @param _traderCollateralIncrease The amount of collateral the trader is adding to the position
     /// @param _traderSharesIncrease The amount of shares the trader will get once the request is executed
-    /// @param _totalSupplyIncrease The total shares of the request
-    function _setTargetRatio(
+    /// @param _totalSupplyIncrease The total shares amount of the request
+    function _setTargetLeverage(
         uint256 _sizeIncrease,
         uint256 _traderCollateralIncrease,
         uint256 _traderSharesIncrease,
@@ -619,13 +619,12 @@ contract Route is Base, IRoute, Test {
 
             _traderCollateralIncrease = orchestrator.getPrice(_route.collateralToken) * _traderCollateralIncrease / collateralTokenDecimals;
 
-            uint256 _currentRatio = _traderPositionSize * _BASIS_POINTS_DIVISOR / _traderPositionCollateral;
-            targetRatio = (_traderPositionSize + _traderSizeIncrease) * _BASIS_POINTS_DIVISOR / (_traderPositionCollateral + _traderCollateralIncrease);
+            uint256 _currentLeverage = _traderPositionSize * _BASIS_POINTS_DIVISOR / _traderPositionCollateral;
+            targetLeverage = (_traderPositionSize + _traderSizeIncrease) * _BASIS_POINTS_DIVISOR / (_traderPositionCollateral + _traderCollateralIncrease);
 
-            if (targetRatio >= _currentRatio) {
+            if (targetLeverage >= _currentLeverage) {
                 waitForKeeperAdjustment = false;
-                targetRatio = 0;
-                // todo - abort adjustment if target ratio is not smaller than current ratio
+                targetLeverage = 0;
             }
         }
     }
@@ -688,7 +687,7 @@ contract Route is Base, IRoute, Test {
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         if ((!_isExecuted && _request.isAdjustmentRequired) || (_isExecuted && _isKeeperRequest)) {
             waitForKeeperAdjustment = false;
-            targetRatio = 0;
+            targetLeverage = 0;
         } else if (_isExecuted && _request.isAdjustmentRequired) {
             enableKeeperAdjustment = true;
         }
@@ -777,7 +776,7 @@ contract Route is Base, IRoute, Test {
     }
 
     /// @notice The ```_getPositionAmounts``` function is used to get the current position's size and collateral
-    /// @dev This function is called by ```_setTargetRatio``` and ```requiredAdjustmentSize```
+    /// @dev This function is called by ```_setTargetLeverage``` and ```requiredAdjustmentSize```
     /// @return _size The current position's size
     /// @return _collateral The current position's collateral 
     function _getPositionAmounts() internal view returns (uint256 _size, uint256 _collateral) {

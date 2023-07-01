@@ -125,7 +125,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     /// @notice The ```requiredAdjustmentSize``` function returns the required adjustment size for the route
     /// @notice If Puppets cannot pay the required amount when Trader adds collateral to an existing position, we need to decrease their size so the position's size/collateral ratio is as expected
-    /// @notice This function is called by the Keeper when `targetRatio` is set 
+    /// @notice This function is called by the Keeper when `targetLeverage` is set 
     /**
      @dev Returns the required adjustment size, USD denominated, with 30 decimals of precision, ready to be used by the Keeper.
 
@@ -133,13 +133,12 @@ interface IRoute is IPositionRouterCallbackReceiver {
       - requiredAdjustmentSize = currentPositionSize - targetPositionSize
       -
       - targetPositionSize:
-       - the position size needed to maintain the targetRatio, with the actual collateral amount that was added by all participants (i.e. current collateral in position)
-       - (targetPositionSize = currentCollateral * targetRatio)
+       - the position size needed to maintain the targetLeverage, with the actual collateral amount that was added by all participants (i.e. current collateral in position)
+       - (targetPositionSize = currentCollateral * targetLeverage)
       -
       - currentPositionSize:
-       - the position size that maintains targetRatio if all participants were to add the required collateral amount
-       - (it's expected from Trader to input a `sizeDelta` that takes assumes all Puppets adding the required collateral amount)
-       - (i.e. if Trader wants to have 10x leverage, he needs to input a `sizeDelta` that takes into account the collateral that will be added by all Puppets following him)
+       - the position size that maintains the targetLeverage if all participants were to add the required collateral amount
+       - (it's expected from Trader to input a `sizeDelta` that assumes all Puppets are adding the required amount of collateral)
     */
     /// @return _requiredAdjustmentSize The required adjustment size, USD denominated, with 30 decimals of precision
     function requiredAdjustmentSize() external view returns (uint256 _requiredAdjustmentSize);

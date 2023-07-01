@@ -588,15 +588,15 @@ contract testPuppet is Test {
         if (_routeTypeInfo.isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  56024816746082845116595567115962304845 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  38162957161373912964268700677440797912 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 50;
             _acceptablePrice = type(uint256).max;
-            _amountInTrader = 1 ether;
+            _amountInTrader = 10 ether;
             // _amountInTrader = _sizeDelta / 2000 
         } else {
             // TODO: short position
             // Available amount in USD: PositionRouter.maxGlobalShortSizes(indexToken) - Vault.globalShortSizes(indexToken)
-            _sizeDelta = 31000000000000000000000000000000000000 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
+            _sizeDelta = 34778143541733920664301863301340741298 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
             _sizeDelta = _sizeDelta / 50;
             _acceptablePrice = type(uint256).min;
             _amountInTrader = _sizeDelta / 5 / 1e24;
@@ -1012,7 +1012,8 @@ contract testPuppet is Test {
 
     function _testNonCollatAmountIn(uint256 _amountInTrader, uint256 _executionFee, IRoute.AdjustPositionParams memory _adjustPositionParams, bytes32 _routeTypeKey) internal {
         // TODO
-        _amountInTrader = _amountInTrader * 2;
+        _amountInTrader = _amountInTrader * 20;
+        
         address[] memory _pathNonCollateral = new address[](2);
         _pathNonCollateral[0] = FRAX;
         _pathNonCollateral[1] = WETH;
@@ -1054,7 +1055,7 @@ contract testPuppet is Test {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 56024816746082845116595567115962304845 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 38162957161373912964268700677440797912 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
@@ -1115,8 +1116,14 @@ contract testPuppet is Test {
 
     function _testKeeperAdjustPosition() internal {
         // todo
-        assertEq(Route(route).waitForKeeperAdjustment(), true, "_testKeeperAdjustPosition: E01");
-        console.log("targetRatio:", Route(route).targetRatio());
+        uint256 _targetLeverage = Route(route).targetLeverage();
+        if (_targetLeverage == 0) {
+            revert("we want to test on adjusment required");
+        } else {
+            console.log("targetLeverage:", _targetLeverage);
+            assertEq(Route(route).waitForKeeperAdjustment(), true, "_testKeeperAdjustPosition: E01");
+            assertTrue(_targetLeverage > 0, "_testKeeperAdjustPosition: E02");
+        }
         revert("test");
     }
 
