@@ -12,6 +12,7 @@ import {Auth, Authority} from "@solmate/auth/Auth.sol";
 import {Orchestrator} from "src/Orchestrator.sol";
 import {Route} from "src/Route.sol";
 import {RouteFactory} from "src/RouteFactory.sol";
+import {DecreaseSizeResolver} from "src/keeper/DecreaseSizeResolver.sol";
 import {Dictator} from "src/Dictator.sol";
 import {IRoute} from "src/interfaces/IRoute.sol";
 
@@ -109,6 +110,8 @@ contract testPuppet is Test {
 
     AggregatorV3Interface priceFeed;
 
+    DecreaseSizeResolver decreaseSizeResolver;
+
     address constant ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     address constant WETH = address(0x82aF49447D8a07e3bd95BD0d56f35241523fBab1);
     address constant FRAX = address(0x17FC002b466eEc40DaE837Fc4bE5c67993ddBd6F);
@@ -133,6 +136,8 @@ contract testPuppet is Test {
         bytes memory _gmxInfo = abi.encode(gmxVaultPriceFeed, gmxRouter, gmxVault, gmxPositionRouter, false, false);
 
         orchestrator = new Orchestrator(_dictator, address(_routeFactory), address(0), bytes32(0), _gmxInfo);
+
+        decreaseSizeResolver = new DecreaseSizeResolver(_dictator, orchestrator);
 
         bytes4 functionSig = orchestrator.setRouteType.selector;
         bytes4 functionSig2 = orchestrator.decreaseSize.selector;
@@ -164,6 +169,8 @@ contract testPuppet is Test {
 
         route = Route(payable(orchestrator.getRoute(_routeKey)));
 
+        assertEq(route.routeKey(), _routeKey, "testCorrectFlow: E0");
+
         // puppet
         _testPuppetDeposit(_assets, WETH);
         _testUpdateRoutesSubscription(WETH, WETH, _routeKey, true);
@@ -174,10 +181,17 @@ contract testPuppet is Test {
 
         // route
         assertEq(Route(route).waitForKeeperAdjustment(), false, "testCorrectFlow: E1");
+        assertEq(route.isAdjustmentEnabled(), false, "testCorrectFlow: E01");
+        
         _testIncreasePosition(_routeTypeInfo, false, false);
+
         assertEq(Route(route).waitForKeeperAdjustment(), false, "testCorrectFlow: E2");
+        assertEq(route.isAdjustmentEnabled(), false, "testCorrectFlow: E02");
+        
         _testIncreasePosition(_routeTypeInfo, true, false);
+        
         assertEq(Route(route).waitForKeeperAdjustment(), true, "testCorrectFlow: E3");
+        
         _testKeeperAdjustPosition(_routeKey, _routeTypeKey);
         _testClosePosition(_routeTypeKey, false);
 
@@ -714,6 +728,7 @@ contract testPuppet is Test {
         }
 
         assertEq(route.isWaitingForCallback(), true, "_testCreateInitialPosition: E100");
+        assertEq(route.isAdjustmentEnabled(), false, "_testCreateInitialPosition: E0100");
 
         // 2. executePosition
         vm.startPrank(GMXPositionRouterKeeper); // keeper
@@ -804,6 +819,7 @@ contract testPuppet is Test {
                 // assertTrue(route.isPuppetAdjusted(bob), "_testCreateInitialPosition: E32");
                 // assertTrue(!route.isPuppetAdjusted(yossi), "_testCreateInitialPosition: E33");
                 // revert("asd");
+                assertEq(route.isAdjustmentEnabled(), true, "_testCreateInitialPosition: E0020");
             } else {
                 // adding collatral request was cancelled
                 revert("we want to test on successfull execution - 1");
@@ -1115,12 +1131,10 @@ contract testPuppet is Test {
     }
 
     function _testKeeperAdjustPosition(bytes32 _routeKey, bytes32 _routeTypeKey) internal {
-        // todo
         uint256 _targetLeverage = Route(route).targetLeverage();
         if (_targetLeverage == 0) {
             revert("we want to test on adjusment required");
         } else {
-            console.log("targetLeverage:", _targetLeverage);
             assertEq(Route(route).waitForKeeperAdjustment(), true, "_testKeeperAdjustPosition: E01");
             assertTrue(_targetLeverage > 0, "_testKeeperAdjustPosition: E02");
 
@@ -1132,21 +1146,24 @@ contract testPuppet is Test {
     // Internal Helper Functions
     // ============================================================================================
 
-    function _keeperDecreaseSize(uint256 _targetLeverage, bytes32 _routeKey, bytes32 _routeTypeKey) internal {// todo - finish
-        uint256 _minOut = 0;
-        uint256 _acceptablePrice = 0;
-        uint256 _executionFee = 180000000000000;
-
+    function _keeperDecreaseSize(uint256 _targetLeverage, bytes32 _routeKey, bytes32 _routeTypeKey) internal {
         (uint256 _sizeBefore, uint256 _collateralBefore) = _getPositionAmounts(address(route));
-        uint256 _sizeDelta = route.requiredAdjustmentSize();
-        assertTrue(_sizeDelta > 0, "_keeperDecreaseSize: E01");
 
-        IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
-            collateralDelta: 0,
-            sizeDelta: _sizeDelta,
-            acceptablePrice: _acceptablePrice,
-            minOut: _minOut
-        });
+        (bool _canExec, bytes memory _execPayload) = decreaseSizeResolver.checker();
+        
+        // Create a new bytes array with the argument part of the payload
+        bytes memory arguments = new bytes(_execPayload.length - 4);
+        for (uint256 i = 0; i < _execPayload.length - 4; i++) {
+            arguments[i] = _execPayload[i + 4];
+        }
+
+        // Then we decode the arguments
+        (IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKeyFromPayload) =
+            abi.decode(arguments, (IRoute.AdjustPositionParams, uint256, bytes32));
+
+        assertEq(_routeKey, _routeKeyFromPayload, "_keeperDecreaseSize: E0001");
+        assertTrue(_canExec, "_keeperDecreaseSize: E01");
+        assertTrue(_adjustPositionParams.sizeDelta > 0, "_keeperDecreaseSize: E02");
 
         IRoute.SwapParams memory _swapParams = IRoute.SwapParams({
             path: new address[](0),
@@ -1155,36 +1172,50 @@ contract testPuppet is Test {
         });
 
         vm.startPrank(trader);
-        vm.expectRevert(); // reverts with ``
+        vm.expectRevert(); // reverts with `WaitingForKeeperAdjustment`
         orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, isLong);
         vm.stopPrank();
 
         vm.startPrank(keeper);
-        vm.expectRevert(); // reverts with ``
+        vm.expectRevert(); // reverts with `RouteNotRegistered`
         orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, isLong);
         
-        vm.expectRevert(); // reverts with ``
+        vm.expectRevert(); // reverts with `InvalidExecutionFee`
         orchestrator.decreaseSize(_adjustPositionParams, _executionFee, _routeKey);
+
+        assertTrue(route.isAdjustmentEnabled(), "_testKeeperAdjustPosition: E002");
 
         orchestrator.decreaseSize{ value: _executionFee }(_adjustPositionParams, _executionFee, _routeKey);
         vm.stopPrank();
+
+        (_canExec,) = decreaseSizeResolver.checker();
+        assertTrue(!_canExec, "_keeperDecreaseSize: E05");
+
+        assertTrue(!route.isAdjustmentEnabled(), "_testKeeperAdjustPosition: E003");
 
         vm.startPrank(GMXPositionRouterKeeper); // keeper
         IGMXPositionRouter(gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
         vm.stopPrank();
 
+        assertTrue(!route.isAdjustmentEnabled(), "_testKeeperAdjustPosition: E004");
+
         (uint256 _sizeAfter, uint256 _collateralAfter) = _getPositionAmounts(address(route));
         if (_sizeAfter >= _sizeBefore) {
-            revert("size should be decreased");
+            revert("we want to test on successful execution decrease");
         } else {
             assertTrue(_sizeAfter < _sizeBefore, "_keeperDecreaseSize: E02");
             assertApproxEqAbs(_collateralAfter, _collateralBefore, 1e31, "_keeperDecreaseSize: E03");
-            uint256 _positionLeverage = _sizeAfter * 10000 / _collateralAfter;
-            assertApproxEqAbs(_positionLeverage, _targetLeverage, 1e1, "_keeperDecreaseSize: E04");
-            console.log("positionLeverage:", _positionLeverage);
-            console.log("targetLeverage:", _targetLeverage);
+
+            _keeperDecreaseSizeExt(_targetLeverage, _sizeAfter, _collateralAfter);
         }
-        
+    }
+
+    function _keeperDecreaseSizeExt(uint256 _targetLeverage, uint256 _sizeAfter, uint256 _collateralAfter) internal {
+        uint256 _positionLeverage = _sizeAfter * 10000 / _collateralAfter;
+        assertApproxEqAbs(_positionLeverage, _targetLeverage, 1e1, "_keeperDecreaseSize: E04");
+
+        (bool _canExec,) = decreaseSizeResolver.checker();
+        assertTrue(!_canExec, "_keeperDecreaseSize: E06");
     }
 
     function _dealERC20(address _token, address _recipient , uint256 _amount) internal {

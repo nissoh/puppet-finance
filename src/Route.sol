@@ -19,7 +19,7 @@ pragma solidity 0.8.17;
 // itburnz: https://github.com/nissoh
 
 // ==============================================================
-// todo - add return vars to functions that need them
+// todo - remove return vars from functions that dont need them
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IGMXVault} from "./interfaces/IGMXVault.sol";
@@ -27,12 +27,11 @@ import {IGMXVault} from "./interfaces/IGMXVault.sol";
 import {IRoute} from "./interfaces/IRoute.sol";
 
 import "./Base.sol";
-import "forge-std/Test.sol";
-import "forge-std/console.sol";
+
 /// @title Route
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
 /// @notice This contract acts as a container account which a trader can use to manage their position, and puppets can subscribe to
-contract Route is Base, IRoute, Test {
+contract Route is Base, IRoute {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
@@ -135,7 +134,7 @@ contract Route is Base, IRoute, Test {
     }
 
     /// @inheritdoc IRoute
-    function routeKey() external view returns (bytes32 _routeKey) { // todo - test
+    function routeKey() external view returns (bytes32 _routeKey) {
         _routeKey = orchestrator.getRouteKey(route.trader, _routeTypeKey);
     }
 
@@ -157,12 +156,12 @@ contract Route is Base, IRoute, Test {
     }
 
     /// @inheritdoc IRoute
-    function isAdjustmentEnabled() external view returns (bool _isEnabled) { // todo - test
+    function isAdjustmentEnabled() external view returns (bool _isEnabled) {
         _isEnabled = enableKeeperAdjustment;
     }
 
     /// @inheritdoc IRoute
-    function requiredAdjustmentSize() external view returns (uint256 _requiredAdjustment) { // todo
+    function requiredAdjustmentSize() external view returns (uint256 _requiredAdjustment) {
         (uint256 _size, uint256 _collateral) = _getPositionAmounts();
  
         _requiredAdjustment = targetLeverage != 0 ? _size - (_collateral * targetLeverage / _BASIS_POINTS_DIVISOR) : 0;
@@ -243,8 +242,10 @@ contract Route is Base, IRoute, Test {
         if (!waitForKeeperAdjustment) revert NotWaitingForKeeperAdjustment();
         if (!enableKeeperAdjustment) revert KeeperAdjustmentDisabled();
 
-        _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
         keeperRequests[_requestKey] = true;
+        enableKeeperAdjustment = false;
+
+        _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
     }
 
     /// @inheritdoc IRoute
@@ -293,7 +294,7 @@ contract Route is Base, IRoute, Test {
 
         _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey]);
 
-        orchestrator.emitCallback(_requestKey, _isExecuted, _isIncrease);
+        orchestrator.emitExecutionCallback(_requestKey, _isExecuted, _isIncrease);
 
         emit Callback(_requestKey, _isExecuted, _isIncrease);
     }
@@ -598,7 +599,7 @@ contract Route is Base, IRoute, Test {
         uint256 _traderCollateralIncrease,
         uint256 _traderSharesIncrease,
         uint256 _totalSupplyIncrease
-    ) internal { // todo: add tests
+    ) internal {
         if (waitForKeeperAdjustment) {
             (uint256 _positionSize, uint256 _positionCollateral) = _getPositionAmounts();
 
@@ -686,9 +687,10 @@ contract Route is Base, IRoute, Test {
 
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         if ((!_isExecuted && _request.isAdjustmentRequired) || (_isExecuted && _isKeeperRequest)) {
+            if (_isKeeperRequest) enableKeeperAdjustment = false;
             waitForKeeperAdjustment = false;
             targetLeverage = 0;
-        } else if (_isExecuted && _request.isAdjustmentRequired) {
+        } else if ((_isExecuted && _request.isAdjustmentRequired) || (!_isExecuted && _isKeeperRequest)) {
             enableKeeperAdjustment = true;
         }
 

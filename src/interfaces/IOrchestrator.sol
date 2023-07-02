@@ -247,11 +247,11 @@ interface IOrchestrator {
     /// @param _receiver The address of the receiver
     function sendFunds(uint256 _amount, address _asset, address _receiver) external;
 
-    /// @notice The ```sendFundsToVault``` function is called by a Route to emit an event on GMX callback
+    /// @notice The ```emitExecutionCallback``` function is called by a Route to emit an event on a GMX position execution callback
     /// @param _requestKey The request key
     /// @param _isExecuted The boolean indicating if the request is executed
     /// @param _isIncrease The boolean indicating if the request is an increase or decrease request
-    function emitCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external;
+    function emitExecutionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external;
 
     // Authority
 
@@ -334,7 +334,7 @@ interface IOrchestrator {
     event CreditPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
     event UpdateOpenTimestamp(address indexed puppet, bytes32 indexed routeType, uint256 timestamp);
     event Send(uint256 amount, address indexed asset, address indexed receiver, address indexed caller);
-    event Callback(address indexed route, bytes32 indexed requestKey, bool indexed isExecuted, bool isIncrease);
+    event Executed(address indexed route, bytes32 indexed requestKey, bool indexed isExecuted, bool isIncrease);
     event DecreaseSize(bytes32 indexed requestKey, bytes32 indexed routeKey);
     event Liquidate(bytes32 indexed routeKey);
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);

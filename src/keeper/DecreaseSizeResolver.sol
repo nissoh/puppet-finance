@@ -27,18 +27,13 @@ import {IGMXVaultPriceFeed} from "../interfaces/IGMXVaultPriceFeed.sol";
 
 import {IOrchestrator} from "../interfaces/IOrchestrator.sol";
 import {IRoute} from "../interfaces/IRoute.sol";
-// todo - test
-contract DecreaseSizeResolver is Auth {
 
-    bool public includeAmmPrice;
-    bool public maximise;
+contract DecreaseSizeResolver is Auth {
 
     uint256 public executionFee;
     uint256 public priceFeedSlippage;
 
     uint256 private constant _BASIS_POINTS_DIVISOR = 10000;
-
-    IGMXVaultPriceFeed public gmxVaultPriceFeed;
 
     IOrchestrator public orchestrator;
 
@@ -46,7 +41,12 @@ contract DecreaseSizeResolver is Auth {
     // Constructor
     // ============================================================================================
 
-    constructor(Authority _authority) Auth(address(0), _authority) {}
+    constructor(Authority _authority, IOrchestrator _orchestrator) Auth(address(0), _authority) {
+        orchestrator = _orchestrator;
+
+        executionFee = 180000000000000;
+        priceFeedSlippage = 2000000; // 0.5%
+    }
 
     // ============================================================================================
     // View Functions
@@ -86,23 +86,11 @@ contract DecreaseSizeResolver is Auth {
         orchestrator = _orchestrator;
     }
 
-    function setGMXVaultPriceFeed(IGMXVaultPriceFeed _gmxVaultPriceFeed) external requiresAuth {
-        gmxVaultPriceFeed = _gmxVaultPriceFeed;
-    }
-
     function setExecutionFee(uint256 _executionFee) external requiresAuth {
         executionFee = _executionFee;
     }
 
     function setPriceFeedSlippage(uint256 _priceFeedSlippage) external requiresAuth {
         priceFeedSlippage = _priceFeedSlippage;
-    }
-
-    function setPriceFeedIncludeAmmPrice(bool _includeAmmPrice) external requiresAuth {
-        includeAmmPrice = _includeAmmPrice;
-    }
-
-    function setPriceFeedMaximise(bool _maximise) external requiresAuth {
-        maximise = _maximise;
     }
 }

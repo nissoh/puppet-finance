@@ -456,8 +456,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function emitCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external onlyRoute {
-        emit Callback(msg.sender, _requestKey, _isExecuted, _isIncrease);
+    function emitExecutionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external onlyRoute {
+        emit Executed(msg.sender, _requestKey, _isExecuted, _isIncrease);
     }
 
     // ============================================================================================
