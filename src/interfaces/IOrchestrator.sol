@@ -47,20 +47,20 @@ interface IOrchestrator {
     // global
 
     /// @notice The ```keeper``` function returns the address of the Keeper
-    /// @return address The address of the Keeper
-    function keeper() external view returns (address);
+    /// @return _keeper The address of the Keeper
+    function keeper() external view returns (address _keeper);
 
     /// @notice The ```referralCode``` function returns the referral code
-    /// @return bytes32 The referral code
-    function referralCode() external view returns (bytes32);
+    /// @return _referralCode The referral code
+    function referralCode() external view returns (bytes32 _referralCode);
 
     /// @notice The ```routes``` function returns all the routes
-    /// @return address The address array of all the routes
-    function routes() external view returns (address[] memory);
+    /// @return _routes The address array of all the routes
+    function routes() external view returns (address[] memory _routes);
 
     /// @notice The ```paused``` function returns the paused state
-    /// @return bool The paused state
-    function paused() external view returns (bool);
+    /// @return _paused The paused state
+    function paused() external view returns (bool _paused);
 
     // route
 
@@ -68,27 +68,27 @@ interface IOrchestrator {
     /// @param _collateralToken The address of the Collateral Token
     /// @param _indexToken The address of the Index Token
     /// @param _isLong The boolean value of the position
-    /// @return bytes32 The RouteType key
-    function getRouteTypeKey(address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32);
+    /// @return _routeTypeKey The RouteType key
+    function getRouteTypeKey(address _collateralToken, address _indexToken, bool _isLong) external pure returns (bytes32 _routeTypeKey);
 
     /// @notice The ```getRouteKey``` function returns the Route key for a given RouteType key and Trader address
     /// @param _trader The address of the Trader
     /// @param _routeTypeKey The RouteType key
-    /// @return bytes32 The Route key
-    function getRouteKey(address _trader, bytes32 _routeTypeKey) external view returns (bytes32);
+    /// @return _routeKey The Route key
+    function getRouteKey(address _trader, bytes32 _routeTypeKey) external view returns (bytes32 _routeKey);
 
     /// @notice The ```getRoute``` function returns the Route address for a given Route key
     /// @param _routeKey The Route key
-    /// @return address The Route address
-    function getRoute(bytes32 _routeKey) external view returns (address);
+    /// @return _route The Route address
+    function getRoute(bytes32 _routeKey) external view returns (address _route);
 
     /// @notice The ```getRoute``` function returns the Route address for a given Route attributes and Trader address
     /// @param _trader The address of the Trader
     /// @param _collateralToken The address of the Collateral Token
     /// @param _indexToken The address of the Index Token
     /// @param _isLong The boolean value of the position
-    /// @return address The Route address
-    function getRoute(address _trader, address _collateralToken, address _indexToken, bool _isLong) external view returns (address);
+    /// @return _route The Route address
+    function getRoute(address _trader, address _collateralToken, address _indexToken, bool _isLong) external view returns (address _route);
 
     /// @notice The ```subscribedPuppets``` function returns all the subscribed puppets for a given Route key
     /// @notice Those puppets may not be subscribed to the current Route's position
@@ -112,46 +112,50 @@ interface IOrchestrator {
     /// @notice The ```puppetAccountBalance``` function returns the account balance for a given Puppet and Asset
     /// @param _puppet The address of the Puppet
     /// @param _asset The address of the Asset
-    /// @return uint256 The account balance
-    function puppetAccountBalance(address _puppet, address _asset) external view returns (uint256);
+    /// @return _balance The account balance
+    function puppetAccountBalance(address _puppet, address _asset) external view returns (uint256 _balance);
 
     /// @notice The ```puppetThrottleLimit``` function returns the throttle limit for a given Puppet and RouteType
     /// @param _puppet The address of the Puppet
     /// @param _routeType The RouteType key
-    /// @return uint256 The throttle limit
-    function puppetThrottleLimit(address _puppet, bytes32 _routeType) external view returns (uint256);
+    /// @return _balance The throttle limit
+    function puppetThrottleLimit(address _puppet, bytes32 _routeType) external view returns (uint256 _balance);
 
     /// @notice The ```lastPositionOpenedTimestamp``` function returns the last position opened timestamp for a given Puppet and RouteType
     /// @param _puppet The address of the Puppet
     /// @param _routeType The RouteType key
-    /// @return uint256 The last position opened timestamp
-    function lastPositionOpenedTimestamp(address _puppet, bytes32 _routeType) external view returns (uint256);
+    /// @return _lastPositionOpenedTimestamp The last position opened timestamp
+    function lastPositionOpenedTimestamp(address _puppet, bytes32 _routeType) external view returns (uint256 _lastPositionOpenedTimestamp);
 
     /// @notice The ```isBelowThrottleLimit``` function returns whether a given Puppet is below the throttle limit for a given RouteType
     /// @param _puppet The address of the Puppet
     /// @param _routeType The RouteType key
-    /// @return bool Whether the Puppet is below the throttle limit
-    function isBelowThrottleLimit(address _puppet, bytes32 _routeType) external view returns (bool);
+    /// @return _isBelowThrottleLimit Whether the Puppet is below the throttle limit
+    function isBelowThrottleLimit(address _puppet, bytes32 _routeType) external view returns (bool _isBelowThrottleLimit);
 
     // gmx
 
     /// @notice The ```getPrice``` function returns the price for a given Token from the GMX vaultPriceFeed
     /// @notice prices are USD denominated with 30 decimals
     /// @param _token The address of the Token
-    /// @return uint256 The price
-    function getPrice(address _token) external view returns (uint256);
+    /// @return _price The price
+    function getPrice(address _token) external view returns (uint256 _price);
+
+    /// @notice The ```gmxVaultPriceFeed``` function returns the GMX vaultPriceFeed address
+    /// @return _gmxVaultPriceFeed The GMX vaultPriceFeed address
+    function gmxVaultPriceFeed() external view returns (address _gmxVaultPriceFeed);
 
     /// @notice The ```gmxInfo``` function returns the GMX Router address
-    /// @return address The GMX Router address
-    function gmxRouter() external view returns (address);
+    /// @return _router The GMX Router address
+    function gmxRouter() external view returns (address _router);
 
     /// @notice The ```gmxPositionRouter``` function returns the GMX Position Router address
-    /// @return address The GMX Position Router address
-    function gmxPositionRouter() external view returns (address);
+    /// @return _positionRouter The GMX Position Router address
+    function gmxPositionRouter() external view returns (address _positionRouter);
 
     /// @notice The ```gmxVault``` function returns the GMX Vault address
-    /// @return address The GMX Vault address
-    function gmxVault() external view returns (address);
+    /// @return _vault The GMX Vault address
+    function gmxVault() external view returns (address _vault);
 
     // ============================================================================================
     // Mutated Functions

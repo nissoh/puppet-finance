@@ -54,6 +54,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     // settings
     address public routeFactory;
+
     address private _keeper;
 
     bool private _paused;
@@ -192,7 +193,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function puppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance) {
+    function puppetAllowancePercentage(address _puppet, address _route) external view returns (uint256) {
         return EnumerableMap.get(_puppetInfo[_puppet].allowances, _route);
     }
 
@@ -228,7 +229,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         );
     }
 
-    function getGMXVaultPriceFeed() external view returns (address) {
+    /// @inheritdoc IOrchestrator
+    function gmxVaultPriceFeed() external view returns (address) {
         return _gmxInfo.vaultPriceFeed;
     }
 

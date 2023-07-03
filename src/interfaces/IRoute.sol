@@ -152,8 +152,8 @@ interface IRoute is IPositionRouterCallbackReceiver {
     function puppetsRequestAmounts(bytes32 _requestKey) external view returns (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts);
 
     /// @notice The ```isWaitingForCallback``` function indicates if the route is waiting for a callback from GMX
-    /// @return bool Indicating if the route is waiting for a callback from GMX
-    function isWaitingForCallback() external view returns (bool);
+    /// @return _isWaitingForCallback A boolean Indicating if the route is waiting for a callback from GMX
+    function isWaitingForCallback() external view returns (bool _isWaitingForCallback);
 
     // ============================================================================================
     // Mutated Functions

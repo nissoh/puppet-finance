@@ -19,7 +19,7 @@ pragma solidity 0.8.17;
 // itburnz: https://github.com/nissoh
 
 // ==============================================================
-// todo - remove return vars from functions that dont need them
+
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IGMXVault} from "./interfaces/IGMXVault.sol";
@@ -30,16 +30,17 @@ import "./Base.sol";
 
 /// @title Route
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
-/// @notice This contract acts as a container account which a trader can use to manage their position, and puppets can subscribe to
+/// @notice This contract acts as a container account for a specific trading route, called by the Orchestrator and owned by a Trader
 contract Route is Base, IRoute {
 
     using SafeERC20 for IERC20;
     using Address for address payable;
 
     bool public waitForKeeperAdjustment;
-    bool public enableKeeperAdjustment;
     bool public isPositionOpen;
     bool public frozen;
+
+    bool private enableKeeperAdjustment;
 
     uint256 public positionIndex;
     uint256 public targetLeverage;
@@ -115,57 +116,57 @@ contract Route is Base, IRoute {
     // Route Info
 
     /// @inheritdoc IRoute
-    function trader() external view returns (address _trader) {
-        _trader = route.trader;
+    function trader() external view returns (address) {
+        return route.trader;
     }
 
     /// @inheritdoc IRoute
-    function collateralToken() external view returns (address _collateralToken) {
-        _collateralToken = route.collateralToken;
+    function collateralToken() external view returns (address) {
+        return route.collateralToken;
     }
 
     /// @inheritdoc IRoute
-    function indexToken() external view returns (address _indexToken) {
-        _indexToken = route.indexToken;
+    function indexToken() external view returns (address) {
+        return route.indexToken;
     }
 
     /// @inheritdoc IRoute
-    function isLong() external view returns (bool _isLong) {
-        _isLong = route.isLong;
+    function isLong() external view returns (bool) {
+        return route.isLong;
     }
 
     /// @inheritdoc IRoute
-    function routeKey() external view returns (bytes32 _routeKey) {
-        _routeKey = orchestrator.getRouteKey(route.trader, _routeTypeKey);
+    function routeKey() external view returns (bytes32) {
+        return orchestrator.getRouteKey(route.trader, _routeTypeKey);
     }
 
     // Position Info
 
     /// @inheritdoc IRoute
-    function puppets() external view returns (address[] memory _puppets) {
-        _puppets = positions[positionIndex].puppets;
+    function puppets() external view returns (address[] memory) {
+        return positions[positionIndex].puppets;
     }
 
     /// @inheritdoc IRoute
-    function participantShares(address _participant) external view returns (uint256 _shares) {
-        _shares = positions[positionIndex].participantShares[_participant];
+    function participantShares(address _participant) external view returns (uint256) {
+        return positions[positionIndex].participantShares[_participant];
     }
 
     /// @inheritdoc IRoute
-    function latestAmountIn(address _participant) external view returns (uint256 _amountIn) {
-        _amountIn = positions[positionIndex].latestAmountIn[_participant];
+    function latestAmountIn(address _participant) external view returns (uint256) {
+        return positions[positionIndex].latestAmountIn[_participant];
     }
 
     /// @inheritdoc IRoute
-    function isAdjustmentEnabled() external view returns (bool _isEnabled) {
-        _isEnabled = enableKeeperAdjustment;
+    function isAdjustmentEnabled() external view returns (bool) {
+        return enableKeeperAdjustment;
     }
 
     /// @inheritdoc IRoute
-    function requiredAdjustmentSize() external view returns (uint256 _requiredAdjustment) {
+    function requiredAdjustmentSize() external view returns (uint256) {
         (uint256 _size, uint256 _collateral) = _getPositionAmounts();
  
-        _requiredAdjustment = targetLeverage != 0 ? _size - (_collateral * targetLeverage / _BASIS_POINTS_DIVISOR) : 0;
+        return targetLeverage != 0 ? _size - (_collateral * targetLeverage / _BASIS_POINTS_DIVISOR) : 0;
     }
 
     // Request Info
@@ -621,11 +622,12 @@ contract Route is Base, IRoute {
             _traderCollateralIncrease = orchestrator.getPrice(_route.collateralToken) * _traderCollateralIncrease / collateralTokenDecimals;
 
             uint256 _currentLeverage = _traderPositionSize * _BASIS_POINTS_DIVISOR / _traderPositionCollateral;
-            targetLeverage = (_traderPositionSize + _traderSizeIncrease) * _BASIS_POINTS_DIVISOR / (_traderPositionCollateral + _traderCollateralIncrease);
+            uint256 _targetLeverage = (_traderPositionSize + _traderSizeIncrease) * _BASIS_POINTS_DIVISOR / (_traderPositionCollateral + _traderCollateralIncrease);
 
-            if (targetLeverage >= _currentLeverage) {
+            if (_targetLeverage >= _currentLeverage) {
                 waitForKeeperAdjustment = false;
-                targetLeverage = 0;
+            } else {
+                targetLeverage = _targetLeverage;
             }
         }
     }
@@ -680,6 +682,7 @@ contract Route is Base, IRoute {
     /// @param _isExecuted A boolean indicating whether the request was executed
     /// @param _isKeeperRequest A boolean indicating whether the request was made by a keeper
     function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _isExecuted, bool _isKeeperRequest) internal {
+        AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         Position storage _position = positions[positionIndex];
         Route memory _route = route;
 
@@ -687,14 +690,7 @@ contract Route is Base, IRoute {
             _resetRoute();
         }
 
-        AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
-        if ((!_isExecuted && _request.isAdjustmentRequired) || (_isExecuted && _isKeeperRequest)) {
-            if (_isKeeperRequest) enableKeeperAdjustment = false;
-            waitForKeeperAdjustment = false;
-            targetLeverage = 0;
-        } else if ((_isExecuted && _request.isAdjustmentRequired) || (!_isExecuted && _isKeeperRequest)) {
-            enableKeeperAdjustment = true;
-        }
+        _setAdjustmentFlags(_request.isAdjustmentRequired, _isExecuted, _isKeeperRequest);
 
         uint256 _totalAssets = IERC20(_route.collateralToken).balanceOf(address(this));
         if (_totalAssets > 0) {
@@ -739,6 +735,20 @@ contract Route is Base, IRoute {
         }
 
         emit Repay(_totalAssets);
+    }
+
+    /// @notice The ```_setAdjustmentFlags``` function sets the adjustment flags, used by the Keeper to determine whether to adjust the position
+    /// @dev This function is called by ```_repayBalance```
+    /// @param _isAdjustmentRequired A boolean indicating whether the adjustment is required
+    /// @param _isExecuted A boolean indicating whether the request was executed
+    /// @param _isKeeperRequest A boolean indicating whether the request was made by a keeper
+    function _setAdjustmentFlags(bool _isAdjustmentRequired, bool _isExecuted, bool _isKeeperRequest) internal {
+        if ((!_isExecuted && _isAdjustmentRequired) || (_isExecuted && _isKeeperRequest)) {
+            waitForKeeperAdjustment = false;
+            targetLeverage = 0;
+        } else if ((_isExecuted && _isAdjustmentRequired) || (!_isExecuted && _isKeeperRequest)) {
+            enableKeeperAdjustment = true;
+        }
     }
 
     /// @notice The ```_resetRoute``` function is used to increment the position index, which is used to track the current position
