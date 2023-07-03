@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.17;
 
 import "forge-std/Test.sol";
@@ -182,18 +182,52 @@ contract testPuppet is Test {
         // route
         assertEq(Route(route).waitForKeeperAdjustment(), false, "testCorrectFlow: E1");
         assertEq(route.isAdjustmentEnabled(), false, "testCorrectFlow: E01");
+        assertEq(route.isPositionOpen(), false, "testCorrectFlow: E001");
+
+        vm.startPrank(keeper);
+        vm.expectRevert(); // reverts with `PositionNotOpen`
+        orchestrator.liquidate(_routeKey);
+        vm.stopPrank();
         
         _testIncreasePosition(_routeTypeInfo, false, false);
 
+        vm.startPrank(keeper);
+        vm.expectRevert(); // reverts with `PositionStillAlive`
+        orchestrator.liquidate(_routeKey);
+        vm.stopPrank();
+
         assertEq(Route(route).waitForKeeperAdjustment(), false, "testCorrectFlow: E2");
         assertEq(route.isAdjustmentEnabled(), false, "testCorrectFlow: E02");
+        assertEq(route.isPositionOpen(), true, "testCorrectFlow: E002");
         
         _testIncreasePosition(_routeTypeInfo, true, false);
-        
+
+        vm.startPrank(keeper);
+        vm.expectRevert(); // reverts with `PositionStillAlive`
+        orchestrator.liquidate(_routeKey);
+        vm.stopPrank();
+
         assertEq(Route(route).waitForKeeperAdjustment(), true, "testCorrectFlow: E3");
+        assertEq(route.isPositionOpen(), true, "testCorrectFlow: E003");
         
         _testKeeperAdjustPosition(_routeKey, _routeTypeKey);
+
+        vm.startPrank(keeper);
+        vm.expectRevert(); // reverts with `PositionStillAlive`
+        orchestrator.liquidate(_routeKey);
+        vm.stopPrank();
+
+        assertEq(route.isPositionOpen(), true, "testCorrectFlow: E004");
+
         _testClosePosition(_routeTypeKey, false);
+
+        vm.startPrank(keeper);
+        vm.expectRevert(); // reverts with `PositionNotOpen`
+        orchestrator.liquidate(_routeKey);
+        vm.stopPrank();
+
+        assertEq(route.isPositionOpen(), false, "testCorrectFlow: E005");
+        assertEq(_isOpenInterest(address(route)), false, "testCorrectFlow: E006");
 
         // puppet
         _testRemoveRouteSubscription(WETH, WETH, true);
@@ -251,7 +285,6 @@ contract testPuppet is Test {
 
         // auth
         _testClosePosition(_routeTypeKey, true);
-        _testAuthLiquidate(_routeKey);
     }
 
     function testRegisterRouteAndIncreasePosition() public {
@@ -1016,19 +1049,17 @@ contract testPuppet is Test {
                 assertEq(route.latestAmountIn(bob), 0, "_testClosePosition: E18");
                 assertEq(route.latestAmountIn(yossi), 0, "_testClosePosition: E19");
                 assertEq(route.latestAmountIn(trader), 0, "_testClosePosition: E20");
-                // assertEq(route.isPuppetAdjusted(alice), false, "_testClosePosition: E21");
-                // assertEq(route.isPuppetAdjusted(bob), false, "_testClosePosition: E22");
-                // assertEq(route.isPuppetAdjusted(yossi), false, "_testClosePosition: E23");
             }
         } else {
             bytes32 _routeKey = orchestrator.getRouteKey(trader, _routeTypeKey);
             _testAuthDecreaseSize(_adjustPositionParams, _executionFee, _routeKey);
         }
+        assertTrue(!_isOpenInterest(address(route)), "_testClosePosition: E113");
     }
 
     function _testNonCollatAmountIn(uint256 _amountInTrader, uint256 _executionFee, IRoute.AdjustPositionParams memory _adjustPositionParams, bytes32 _routeTypeKey) internal {
         // TODO
-        _amountInTrader = _amountInTrader * 20;
+        _amountInTrader = _amountInTrader * 2;
         
         address[] memory _pathNonCollateral = new address[](2);
         _pathNonCollateral[0] = FRAX;
@@ -1117,19 +1148,6 @@ contract testPuppet is Test {
         vm.stopPrank();
     }
 
-    function _testAuthLiquidate(bytes32 _routeKey) internal {
-        vm.expectRevert(); // reverts with Unauthorized()
-        orchestrator.liquidate(_routeKey);
-
-        uint256 _positionIndexBefore = route.positionIndex();
-
-        vm.startPrank(keeper);
-        orchestrator.liquidate(_routeKey);
-        vm.stopPrank();
-
-        assertEq(_positionIndexBefore + 1, route.positionIndex(), "_testAuthLiquidate: E01");
-    }
-
     function _testKeeperAdjustPosition(bytes32 _routeKey, bytes32 _routeTypeKey) internal {
         uint256 _targetLeverage = Route(route).targetLeverage();
         if (_targetLeverage == 0) {
@@ -1139,6 +1157,8 @@ contract testPuppet is Test {
             assertTrue(_targetLeverage > 0, "_testKeeperAdjustPosition: E02");
 
             _keeperDecreaseSize(_targetLeverage, _routeKey, _routeTypeKey);
+            assertEq(route.waitForKeeperAdjustment(), false, "_testKeeperAdjustPosition: E03");
+            assertEq(route.targetLeverage(), 0, "_testKeeperAdjustPosition: E04");
         }
     }
 
@@ -1184,6 +1204,7 @@ contract testPuppet is Test {
         orchestrator.decreaseSize(_adjustPositionParams, _executionFee, _routeKey);
 
         assertTrue(route.isAdjustmentEnabled(), "_testKeeperAdjustPosition: E002");
+        assertEq(route.waitForKeeperAdjustment(), true, "_testKeeperAdjustPosition: E0002");
 
         orchestrator.decreaseSize{ value: _executionFee }(_adjustPositionParams, _executionFee, _routeKey);
         vm.stopPrank();
@@ -1192,12 +1213,14 @@ contract testPuppet is Test {
         assertTrue(!_canExec, "_keeperDecreaseSize: E05");
 
         assertTrue(!route.isAdjustmentEnabled(), "_testKeeperAdjustPosition: E003");
+        assertEq(route.waitForKeeperAdjustment(), true, "_testKeeperAdjustPosition: E0003");
 
         vm.startPrank(GMXPositionRouterKeeper); // keeper
         IGMXPositionRouter(gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
         vm.stopPrank();
 
         assertTrue(!route.isAdjustmentEnabled(), "_testKeeperAdjustPosition: E004");
+        assertEq(route.waitForKeeperAdjustment(), false, "_testKeeperAdjustPosition: E0004");
 
         (uint256 _sizeAfter, uint256 _collateralAfter) = _getPositionAmounts(address(route));
         if (_sizeAfter >= _sizeBefore) {

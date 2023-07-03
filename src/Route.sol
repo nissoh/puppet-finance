@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL
+// SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.17;
 
 // ==============================================================
@@ -36,9 +36,10 @@ contract Route is Base, IRoute {
     using SafeERC20 for IERC20;
     using Address for address payable;
 
-    bool public frozen;
     bool public waitForKeeperAdjustment;
     bool public enableKeeperAdjustment;
+    bool public isPositionOpen;
+    bool public frozen;
 
     uint256 public positionIndex;
     uint256 public targetLeverage;
@@ -242,18 +243,17 @@ contract Route is Base, IRoute {
         if (!waitForKeeperAdjustment) revert NotWaitingForKeeperAdjustment();
         if (!enableKeeperAdjustment) revert KeeperAdjustmentDisabled();
 
-        keeperRequests[_requestKey] = true;
         enableKeeperAdjustment = false;
 
         _requestKey = _requestDecreasePosition(_adjustPositionParams, _executionFee);
+
+        keeperRequests[_requestKey] = true;
     }
 
     /// @inheritdoc IRoute
     function liquidate() external onlyOrchestrator nonReentrant {
         if (_isOpenInterest()) revert PositionStillAlive();
-        // https://github.com/gmx-io/gmx-contracts/blob/master/contracts/core/Vault.sol#L757
-        // validate liquidation
-        // todo - make functions fail when conditions are not met --> cant, need to build dedicated resolver
+        if (!isPositionOpen) revert PositionNotOpen();
 
         _repayBalance(bytes32(0), 0, true, false);
 
@@ -657,6 +657,8 @@ contract Route is Base, IRoute {
                 }
             }
 
+            isPositionOpen = true;
+
             uint256 _newTraderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
 
             _position.participantShares[_route.trader] += _newTraderShares;
@@ -676,7 +678,7 @@ contract Route is Base, IRoute {
     /// @param _requestKey The request key of the request, expected to be `bytes32(0)` if called on a successful request
     /// @param _traderAmountIn The amount ETH paid by the trader before this function is called
     /// @param _isExecuted A boolean indicating whether the request was executed
-    /// @param _isKeeperRequest A boolean indicating whether the keeper should be repaid the unused execution fee
+    /// @param _isKeeperRequest A boolean indicating whether the request was made by a keeper
     function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _isExecuted, bool _isKeeperRequest) internal {
         Position storage _position = positions[positionIndex];
         Route memory _route = route;
@@ -742,6 +744,7 @@ contract Route is Base, IRoute {
     /// @notice The ```_resetRoute``` function is used to increment the position index, which is used to track the current position
     /// @dev This function is called by ```_repayBalance```, only if there's no open interest
     function _resetRoute() internal {
+        isPositionOpen = false;
         positionIndex += 1;
 
         emit Reset();

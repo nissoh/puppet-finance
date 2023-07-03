@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL
+// SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.17;
 
 // ==============================================================
@@ -221,6 +221,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     error InvalidExecutionFee();
     error InvalidPath();
     error PositionStillAlive();
+    error PositionNotOpen();
     error Paused();
     error NotOrchestrator();
     error RouteFrozen();
