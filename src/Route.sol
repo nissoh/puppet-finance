@@ -286,14 +286,14 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     // called by owner
 
     /// @inheritdoc IRoute
-    function rescueTokens(uint256 _amount, address _token, address _receiver) external onlyOrchestrator {
+    function rescueTokenFunds(uint256 _amount, address _token, address _receiver) external onlyOrchestrator {
         if (_token == address(0)) {
             payable(_receiver).sendValue(_amount);
         } else {
             IERC20(_token).safeTransfer(_receiver, _amount);
         }
 
-        emit Rescue(_amount, _token, _receiver);
+        emit RescueTokenFunds(_amount, _token, _receiver);
     }
 
     /// @inheritdoc IRoute

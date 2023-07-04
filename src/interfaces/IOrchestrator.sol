@@ -296,7 +296,7 @@ interface IOrchestrator {
     /// @param _token The address of the Token
     /// @param _receiver The address of the receiver
     /// @param _route The address of the Route
-    function rescueRouteTokens(uint256 _amount, address _token, address _receiver, address _route) external;
+    function rescueRouteTokenFunds(uint256 _amount, address _token, address _receiver, address _route) external;
 
     /// @notice The ```freezeRoute``` function is called by the Authority to freeze or unfreeze a Route
     /// @param _route The address of the Route
@@ -330,9 +330,6 @@ interface IOrchestrator {
     /// @param _factory The address of the new Route Factory
     function setRouteFactory(address _factory) external;
 
-    /// @notice The ```pause``` function is called by the Authority to pause all Routes
-    /// @param _pause The new pause state
-    function pause(bool _pause) external;
 
     // ============================================================================================
     // Events
@@ -366,7 +363,7 @@ interface IOrchestrator {
     event SetReferralCode(bytes32 indexed referralCode);
     event SetRouteFactory(address indexed factory);
     event SetKeeper(address indexed keeper);
-    event RouteRescue(uint256 amount, address indexed token, address indexed receiver, address indexed route);
+    event RescueRouteTokenFunds(uint256 amount, address indexed token, address indexed receiver, address indexed route);
     event Rescue(uint256 amount, address indexed token, address indexed receiver);
     event FreezeRoute(address indexed route, bool indexed freeze);
 

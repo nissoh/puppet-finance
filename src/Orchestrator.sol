@@ -520,10 +520,10 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function rescueRouteTokens(uint256 _amount, address _token, address _receiver, address _route) external requiresAuth nonReentrant {
-        IRoute(_route).rescueTokens(_amount, _token, _receiver);
+    function rescueRouteTokenFunds(uint256 _amount, address _token, address _receiver, address _route) external requiresAuth nonReentrant {
+        IRoute(_route).rescueTokenFunds(_amount, _token, _receiver);
 
-        emit RouteRescue(_amount, _token, _receiver, _route);
+        emit RescueRouteTokenFunds(_amount, _token, _receiver, _route);
     }
 
     /// @inheritdoc IOrchestrator
@@ -587,13 +587,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         routeFactory = _factory;
 
         emit SetRouteFactory(_factory);
-    }
-
-    /// @inheritdoc IOrchestrator
-    function pause(bool _pause) external requiresAuth nonReentrant {
-        _paused = _pause;
-
-        emit Pause(_pause);
     }
 
     // ============================================================================================
