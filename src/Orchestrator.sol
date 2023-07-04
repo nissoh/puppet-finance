@@ -487,22 +487,23 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         uint256 _executionFee,
         bytes32 _routeKey
     ) external payable requiresAuth nonReentrant returns (bytes32 _requestKey) {
-        address _route = _routeInfo[_routeKey].route;
-        if (_route == address(0)) revert RouteNotRegistered();
+        IRoute _route = IRoute(_routeInfo[_routeKey].route);
+        if (address(_route) == address(0)) revert RouteNotRegistered();
 
-        _requestKey = IRoute(_route).decreaseSize{ value: msg.value }(_adjustPositionParams, _executionFee);
+        _requestKey = _route.decreaseSize{ value: msg.value }(_adjustPositionParams, _executionFee);
 
-        emit DecreaseSize(_requestKey, _routeKey);
+        emit DecreaseSize(_requestKey, _routeKey, getPositionKey(_route));
     }
 
     /// @inheritdoc IOrchestrator
     function liquidate(bytes32 _routeKey) external requiresAuth nonReentrant {
-        address _route = _routeInfo[_routeKey].route;
-        if (_route == address(0)) revert RouteNotRegistered();
+        IRoute _route = IRoute(_routeInfo[_routeKey].route);
+        if (address(_route) == address(0)) revert RouteNotRegistered();
 
-        IRoute(_route).liquidate();
 
-        emit Liquidate(_routeKey);
+        _route.liquidate();
+
+        emit Liquidate(_routeKey, getPositionKey(_route));
     }
 
     // called by owner

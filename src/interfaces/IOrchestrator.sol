@@ -351,8 +351,8 @@ interface IOrchestrator {
     event Send(uint256 amount, address indexed asset, address indexed receiver, address indexed caller);
     event Executed(address indexed route, bytes32 indexed requestKey, bool indexed isExecuted, bool isIncrease);
     event SharesIncrease(uint256[] puppetsShares, uint256 traderShares, uint256 totalSupply, bytes32 indexed positionKey);
-    event DecreaseSize(bytes32 indexed requestKey, bytes32 indexed routeKey);
-    event Liquidate(bytes32 indexed routeKey);
+    event DecreaseSize(bytes32 indexed requestKey, bytes32 indexed routeKey, bytes32 indexed positionKey);
+    event Liquidate(bytes32 indexed routeKey, bytes32 indexed positionKey);
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
     event SetGMXUtils(address vaultPriceFeed, address router, address vault, address positionRouter);
     event SetGMXUtils(address vaultPriceFeed, address router, address vault, address positionRouter, bool priceFeedMaximise, bool priceFeedIncludeAmmPrice);
