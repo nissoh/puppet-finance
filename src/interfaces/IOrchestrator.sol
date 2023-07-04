@@ -330,6 +330,9 @@ interface IOrchestrator {
     /// @param _factory The address of the new Route Factory
     function setRouteFactory(address _factory) external;
 
+    /// @notice The ```pause``` function is called by the Authority to pause all Routes
+    /// @param _pause The new pause state
+    function pause(bool _pause) external;
 
     // ============================================================================================
     // Events

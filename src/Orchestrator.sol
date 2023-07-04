@@ -589,6 +589,13 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         emit SetRouteFactory(_factory);
     }
 
+    /// @inheritdoc IOrchestrator
+    function pause(bool _pause) external requiresAuth nonReentrant {
+        _paused = _pause;
+
+        emit Pause(_pause);
+    }
+
     // ============================================================================================
     // Receive Function
     // ============================================================================================
