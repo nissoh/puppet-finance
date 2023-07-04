@@ -311,8 +311,8 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant {
         if (msg.sender != orchestrator.gmxPositionRouter()) revert NotCallbackCaller();
 
-        if (_isExecuted) {
-            if (_isIncrease) _allocateShares(_requestKey);
+        if (_isExecuted && _isIncrease) {
+            _allocateShares(_requestKey);
         }
 
         _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey]);
@@ -378,7 +378,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
             positions[_positionIndex].addCollateralRequestsIndex += 1;
 
             // 4. pull funds from Orchestrator
-            orchestrator.sendFunds(_puppetsAmountIn, route.collateralToken, address(this));
+            orchestrator.transferRouteFunds(_puppetsAmountIn, route.collateralToken, address(this));
 
             return (_puppetsAmountIn, _traderAmountIn, _traderShares, _totalSupply);
         }

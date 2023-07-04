@@ -140,8 +140,8 @@ contract testPuppet is Test {
         decreaseSizeResolver = new DecreaseSizeResolver(_dictator, orchestrator);
 
         bytes4 functionSig = orchestrator.setRouteType.selector;
-        bytes4 functionSig2 = orchestrator.decreaseSize.selector;
-        bytes4 functionSig3 = orchestrator.liquidate.selector;
+        bytes4 functionSig2 = orchestrator.keepTargetLeverage.selector;
+        bytes4 functionSig3 = orchestrator.liquidatePosition.selector;
 
         vm.startPrank(owner);
         _setRoleCapability(_dictator, 0, address(orchestrator), functionSig, true);
@@ -186,14 +186,14 @@ contract testPuppet is Test {
 
         vm.startPrank(keeper);
         vm.expectRevert(); // reverts with `PositionNotOpen`
-        orchestrator.liquidate(_routeKey);
+        orchestrator.liquidatePosition(_routeKey);
         vm.stopPrank();
         
         _testIncreasePosition(_routeTypeInfo, false, false);
 
         vm.startPrank(keeper);
         vm.expectRevert(); // reverts with `PositionStillAlive`
-        orchestrator.liquidate(_routeKey);
+        orchestrator.liquidatePosition(_routeKey);
         vm.stopPrank();
 
         assertEq(Route(route).waitForKeeperAdjustment(), false, "testCorrectFlow: E2");
@@ -204,7 +204,7 @@ contract testPuppet is Test {
 
         vm.startPrank(keeper);
         vm.expectRevert(); // reverts with `PositionStillAlive`
-        orchestrator.liquidate(_routeKey);
+        orchestrator.liquidatePosition(_routeKey);
         vm.stopPrank();
 
         assertEq(Route(route).waitForKeeperAdjustment(), true, "testCorrectFlow: E3");
@@ -214,7 +214,7 @@ contract testPuppet is Test {
 
         vm.startPrank(keeper);
         vm.expectRevert(); // reverts with `PositionStillAlive`
-        orchestrator.liquidate(_routeKey);
+        orchestrator.liquidatePosition(_routeKey);
         vm.stopPrank();
 
         assertEq(route.isPositionOpen(), true, "testCorrectFlow: E004");
@@ -223,7 +223,7 @@ contract testPuppet is Test {
 
         vm.startPrank(keeper);
         vm.expectRevert(); // reverts with `PositionNotOpen`
-        orchestrator.liquidate(_routeKey);
+        orchestrator.liquidatePosition(_routeKey);
         vm.stopPrank();
 
         assertEq(route.isPositionOpen(), false, "testCorrectFlow: E005");
@@ -334,15 +334,15 @@ contract testPuppet is Test {
         vm.startPrank(trader);
 
         vm.expectRevert(); // reverts with ZeroAddress()
-        orchestrator.registerRoute(address(0), address(0), true);
+        orchestrator.createRouteType(address(0), address(0), true);
 
         vm.expectRevert(); // reverts with NoPriceFeedForAsset()
-        orchestrator.registerRoute(FRAX, WETH, true);
+        orchestrator.createRouteType(FRAX, WETH, true);
 
-        _routeKey = orchestrator.registerRoute(_collateralToken, _indexToken, _isLong);
+        _routeKey = orchestrator.createRouteType(_collateralToken, _indexToken, _isLong);
 
         vm.expectRevert(); // reverts with RouteAlreadyRegistered()
-        orchestrator.registerRoute(_collateralToken, _indexToken, _isLong);
+        orchestrator.createRouteType(_collateralToken, _indexToken, _isLong);
 
         address[] memory _pupptsForRoute = orchestrator.subscribedPuppets(_routeKey);
 
@@ -373,15 +373,15 @@ contract testPuppet is Test {
         vm.startPrank(alice);
 
         vm.expectRevert(); // reverts with NoPriceFeedForCollateralToken()
-        orchestrator.deposit{ value: _assets }(_assets, FRAX, alice);
+        orchestrator.depositRoute{ value: _assets }(_assets, FRAX, alice);
         
         uint256 _puppetAssetsBefore = orchestrator.puppetAccountBalance(bob, _token);
         if (_token == WETH) {
-            orchestrator.deposit{ value: _assets }(_assets, _token, alice);
+            orchestrator.depositRoute{ value: _assets }(_assets, _token, alice);
             assertEq(_aliceBalanceBeforeETH - _assets, address(alice).balance, "_testPuppetDeposit: E1");
         } else {
             _approve(address(orchestrator), _token, _assets);
-            orchestrator.deposit(_assets, _token, alice);
+            orchestrator.depositRoute(_assets, _token, alice);
             assertEq(_aliceBalanceBefore - _assets, IERC20(_token).balanceOf(alice), "_testPuppetDeposit: E01");
         }
         
@@ -393,7 +393,7 @@ contract testPuppet is Test {
         vm.startPrank(bob);
         _approve(address(orchestrator), _token, _assets);
         _puppetAssetsBefore = orchestrator.puppetAccountBalance(bob, _token);
-        orchestrator.deposit(_assets, _token, bob);
+        orchestrator.depositRoute(_assets, _token, bob);
         assertEq(orchestrator.puppetAccountBalance(bob, _token), _puppetAssetsBefore + _assets, "_testPuppetDeposit: E2");
         assertEq(_bobBalanceBefore - _assets, IERC20(_token).balanceOf(bob), "_testPuppetDeposit: E3");
         vm.stopPrank();
@@ -403,7 +403,7 @@ contract testPuppet is Test {
         vm.startPrank(yossi);
         _approve(address(orchestrator), _token, _assets);
         _puppetAssetsBefore = orchestrator.puppetAccountBalance(yossi, _token);
-        orchestrator.deposit(_assets, _token, yossi);
+        orchestrator.depositRoute(_assets, _token, yossi);
         assertEq(orchestrator.puppetAccountBalance(yossi, _token), _puppetAssetsBefore + _assets, "_testPuppetDeposit: E4");
         assertEq(_yossiBalanceBefore - _assets, IERC20(_token).balanceOf(yossi), "_testPuppetDeposit: E5");
         vm.stopPrank();
@@ -578,7 +578,7 @@ contract testPuppet is Test {
         vm.startPrank(alice);
         uint256 _orchestratorBalanceBefore = IERC20(_token).balanceOf(address(orchestrator));
         uint256 _puppetBalanceBefore = IERC20(_token).balanceOf(alice);
-        orchestrator.withdraw(_assets, _token, alice, false);
+        orchestrator.withdrawRoute(_assets, _token, alice, false);
         uint256 _puppetBalanceAfter = IERC20(_token).balanceOf(alice);
         uint256 _orchestratorBalanceAfter = IERC20(_token).balanceOf(address(orchestrator));
         vm.stopPrank();
@@ -590,7 +590,7 @@ contract testPuppet is Test {
         vm.startPrank(bob);
         _orchestratorBalanceBefore = IERC20(_token).balanceOf(address(orchestrator));
         _puppetBalanceBefore = IERC20(_token).balanceOf(bob);
-        orchestrator.withdraw(_assets, _token, bob, false);
+        orchestrator.withdrawRoute(_assets, _token, bob, false);
         _puppetBalanceAfter = IERC20(_token).balanceOf(bob);
         _orchestratorBalanceAfter = IERC20(_token).balanceOf(address(orchestrator));
         vm.stopPrank();
@@ -603,11 +603,11 @@ contract testPuppet is Test {
         _orchestratorBalanceBefore = IERC20(_token).balanceOf(address(orchestrator));
         if (_token == WETH) {
             _puppetBalanceBefore = address(yossi).balance;
-            orchestrator.withdraw(_assets, _token, yossi, true);
+            orchestrator.withdrawRoute(_assets, _token, yossi, true);
             _puppetBalanceAfter = address(yossi).balance;
         } else {
             _puppetBalanceBefore = IERC20(_token).balanceOf(yossi);
-            orchestrator.withdraw(_assets, _token, yossi, false);
+            orchestrator.withdrawRoute(_assets, _token, yossi, false);
             _puppetBalanceAfter = IERC20(_token).balanceOf(yossi);
         }
         _orchestratorBalanceAfter = IERC20(_token).balanceOf(address(orchestrator));
@@ -865,17 +865,17 @@ contract testPuppet is Test {
         if (_addCollateralToAnExistingPosition) {
             _dealERC20(_params.tokenIn, yossi, _params.amountInTrader);
             vm.startPrank(yossi);
-            orchestrator.deposit{ value: _params.amountInTrader }(_params.amountInTrader, WETH, yossi);
+            orchestrator.depositRoute{ value: _params.amountInTrader }(_params.amountInTrader, WETH, yossi);
             vm.stopPrank();
 
             // withdraw all of alice's position
             vm.startPrank(alice);
-            orchestrator.withdraw(orchestrator.puppetAccountBalance(alice, _params.tokenIn), _params.tokenIn, alice, false);
+            orchestrator.withdrawRoute(orchestrator.puppetAccountBalance(alice, _params.tokenIn), _params.tokenIn, alice, false);
             vm.stopPrank();
 
             // withdraw all of bob's position
             vm.startPrank(bob);
-            orchestrator.withdraw(orchestrator.puppetAccountBalance(bob, _params.tokenIn), _params.tokenIn, bob, false);
+            orchestrator.withdrawRoute(orchestrator.puppetAccountBalance(bob, _params.tokenIn), _params.tokenIn, bob, false);
             vm.stopPrank();
 
             assertEq(orchestrator.puppetAccountBalance(alice, _params.tokenIn), 0, "_testCreatePosition: E0001");
@@ -1137,10 +1137,10 @@ contract testPuppet is Test {
 
     function _testAuthDecreaseSize(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) internal {
         vm.expectRevert(); // reverts with Unauthorized()
-        orchestrator.decreaseSize(_adjustPositionParams, _executionFee, _routeKey);
+        orchestrator.keepTargetLeverage(_adjustPositionParams, _executionFee, _routeKey);
 
         vm.startPrank(keeper);
-        orchestrator.decreaseSize{ value: _executionFee }(_adjustPositionParams, _executionFee, _routeKey);
+        orchestrator.keepTargetLeverage{ value: _executionFee }(_adjustPositionParams, _executionFee, _routeKey);
         vm.stopPrank();
 
         vm.startPrank(GMXPositionRouterKeeper); // keeper
@@ -1201,12 +1201,12 @@ contract testPuppet is Test {
         orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, _routeTypeKey, _executionFee, isLong);
         
         vm.expectRevert(); // reverts with `InvalidExecutionFee`
-        orchestrator.decreaseSize(_adjustPositionParams, _executionFee, _routeKey);
+        orchestrator.keepTargetLeverage(_adjustPositionParams, _executionFee, _routeKey);
 
         assertTrue(route.isAdjustmentEnabled(), "_testKeeperAdjustPosition: E002");
         assertEq(route.waitForKeeperAdjustment(), true, "_testKeeperAdjustPosition: E0002");
 
-        orchestrator.decreaseSize{ value: _executionFee }(_adjustPositionParams, _executionFee, _routeKey);
+        orchestrator.keepTargetLeverage{ value: _executionFee }(_adjustPositionParams, _executionFee, _routeKey);
         vm.stopPrank();
 
         (_canExec,) = decreaseSizeResolver.checker();

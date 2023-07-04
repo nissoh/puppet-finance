@@ -168,12 +168,12 @@ interface IOrchestrator {
 
     // Trader
 
-    /// @notice The ```registerRoute``` function is called by a Trader to register a new Route
+    /// @notice The ```createRouteType``` function is called by a Trader to create a new Route
     /// @param _collateralToken The address of the Collateral Token
     /// @param _indexToken The address of the Index Token
     /// @param _isLong The boolean value of the position
     /// @return bytes32 The Route key
-    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) external returns (bytes32);
+    function createRouteType(address _collateralToken, address _indexToken, bool _isLong) external returns (bytes32);
 
     /// @notice The ```registerRouteAndRequestPosition``` function is called by a Trader to register a new Route and create an Increase Position Request
     /// @param _adjustPositionParams The adjusment params for the position
@@ -213,18 +213,18 @@ interface IOrchestrator {
     /// @param _subscribe Whether to subscribe or unsubscribe
     function updateRoutesSubscriptions(uint256[] memory _allowances, address[] memory _traders, bytes32[] memory _routeTypeKeys, bool[] memory _subscribe) external;
 
-    /// @notice The ```deposit``` function is called by a Puppet to deposit funds into his deposit account
+    /// @notice The ```depositRoute``` function is called by a Puppet to deposit funds into his deposit account
     /// @param _amount The amount to deposit
     /// @param _asset The address of the Asset
     /// @param _puppet The address of the recepient
-    function deposit(uint256 _amount, address _asset, address _puppet) external payable;
+    function depositRoute(uint256 _amount, address _asset, address _puppet) external payable;
 
-    /// @notice The ```withdraw``` function is called by a Puppet to withdraw funds from his deposit account
+    /// @notice The ```withdrawRoute``` function is called by a Puppet to withdraw funds from his deposit account
     /// @param _amount The amount to withdraw
     /// @param _asset The address of the Asset
     /// @param _receiver The address of the receiver of withdrawn funds
     /// @param _isETH Whether to withdraw ETH or not. Available only for WETH deposits
-    function withdraw(uint256 _amount, address _asset, address _receiver, bool _isETH) external;
+    function withdrawRoute(uint256 _amount, address _asset, address _receiver, bool _isETH) external;
 
     /// @notice The ```setThrottleLimit``` function is called by a Puppet to set his throttle limit for a given RouteType
     /// @param _throttleLimit The throttle limit
@@ -250,11 +250,11 @@ interface IOrchestrator {
     /// @param _routeType The RouteType key
     function updateLastPositionOpenedTimestamp(address _puppet, bytes32 _routeType) external;
 
-    /// @notice The ```sendFunds``` function is called by a Route to send funds to a _receiver
+    /// @notice The ```transferRouteFunds``` function is called by a Route to send funds to a _receiver
     /// @param _amount The amount to send
     /// @param _asset The address of the Asset
     /// @param _receiver The address of the receiver
-    function sendFunds(uint256 _amount, address _asset, address _receiver) external;
+    function transferRouteFunds(uint256 _amount, address _asset, address _receiver) external;
 
     /// @notice The ```emitExecutionCallback``` function is called by a Route to emit an event on a GMX position execution callback
     /// @param _requestKey The request key
@@ -272,16 +272,16 @@ interface IOrchestrator {
 
     // called by keeper
 
-    /// @notice The ```decreaseSize``` function is called by Puppet keepers to decrease the position size in case there are Puppets to adjust
+    /// @notice The ```keepTargetLeverage``` function is called by a keeper to adjust mirrored position to target leverage to match trader leverage
     /// @param _adjustPositionParams The adjusment params for the position
     /// @param _executionFee The total execution fee, paid by the Keeper in ETH
     /// @param _routeKey The Route key
     /// @return _requestKey The request key
-    function decreaseSize(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external payable returns (bytes32 _requestKey);
+    function keepTargetLeverage(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external payable returns (bytes32 _requestKey);
 
-    /// @notice The ```liquidate``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
+    /// @notice The ```liquidatePosition``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
     /// @param _routeKey The Route key
-    function liquidate(bytes32 _routeKey) external;
+    function liquidatePosition(bytes32 _routeKey) external;
 
     // called by owner
 
@@ -330,7 +330,7 @@ interface IOrchestrator {
     /// @param _factory The address of the new Route Factory
     function setRouteFactory(address _factory) external;
 
-    /// @notice The ```setFeeDivisors``` function is called by the Authority to pause all Routes
+    /// @notice The ```pause``` function is called by the Authority to pause all Routes
     /// @param _pause The new pause state
     function pause(bool _pause) external;
 
@@ -338,28 +338,34 @@ interface IOrchestrator {
     // Events
     // ============================================================================================
 
-    event RegisterRoute(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
-    event RequestPosition(address[] puppets, address indexed caller, bytes32 indexed routeTypeKey, bytes32 indexed positionKey);
+    event CreateRouteType(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
+    event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
+
     event ApprovePlugin(address indexed caller, bytes32 indexed routeTypeKey);
-    event Subscribe(uint256 allowance, address indexed trader, address indexed puppet, bytes32 routeTypeKey, bool indexed subscribe);
-    event Deposit(uint256 indexed amount, address indexed asset, address caller, address indexed puppet);
-    event Withdraw(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
+    event SubscribeTrader(uint256 allowance, address indexed trader, address indexed puppet, bytes32 routeTypeKey, bool indexed subscribe);
     event SetThrottleLimit(address indexed puppet, bytes32 indexed routeType, uint256 throttleLimit);
-    event DebitPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
-    event CreditPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
+
     event UpdateOpenTimestamp(address indexed puppet, bytes32 indexed routeType, uint256 timestamp);
-    event Send(uint256 amount, address indexed asset, address indexed receiver, address indexed caller);
-    event Executed(address indexed route, bytes32 indexed requestKey, bool indexed isExecuted, bool isIncrease);
+    
+    event DepositRoute(uint256 indexed amount, address indexed asset, address caller, address indexed puppet);
+    event WithdrawRoute(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
+
+    event RequestPosition(address[] puppets, address indexed caller, bytes32 indexed routeTypeKey, bytes32 indexed positionKey);
+    event ExecutePosition(address indexed route, bytes32 indexed requestKey, bool indexed isExecuted, bool isIncrease);
     event SharesIncrease(uint256[] puppetsShares, uint256 traderShares, uint256 totalSupply, bytes32 indexed positionKey);
     event DecreaseSize(bytes32 indexed requestKey, bytes32 indexed routeKey, bytes32 indexed positionKey);
-    event Liquidate(bytes32 indexed routeKey, bytes32 indexed positionKey);
-    event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
+    event LiquidatePosition(bytes32 indexed routeKey, bytes32 indexed positionKey);
+
+    event DebitPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
+    event CreditPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
+
+    event TransferRouteFunds(uint256 amount, address indexed asset, address indexed receiver, address indexed caller);
     event SetGMXUtils(address vaultPriceFeed, address router, address vault, address positionRouter);
     event SetGMXUtils(address vaultPriceFeed, address router, address vault, address positionRouter, bool priceFeedMaximise, bool priceFeedIncludeAmmPrice);
     event Pause(bool paused);
     event SetReferralCode(bytes32 indexed referralCode);
     event SetRouteFactory(address indexed factory);
-    event Keeper(address indexed keeper);
+    event SetKeeper(address indexed keeper);
     event RouteRescue(uint256 amount, address indexed token, address indexed receiver, address indexed route);
     event Rescue(uint256 amount, address indexed token, address indexed receiver);
     event FreezeRoute(address indexed route, bool indexed freeze);

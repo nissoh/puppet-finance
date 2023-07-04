@@ -67,7 +67,7 @@ contract DecreaseSizeResolver is Auth {
 
                 _canExec = true;
                 _execPayload = abi.encodeWithSelector(
-                    IOrchestrator.decreaseSize.selector,
+                    IOrchestrator.keepTargetLeverage.selector,
                     _adjustPositionParams,
                     executionFee,
                     _routeKey
