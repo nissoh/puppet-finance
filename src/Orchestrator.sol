@@ -157,6 +157,21 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
+    function getPositionKey(IRoute _route) public view returns (bytes32) { // todo - test
+        return keccak256(abi.encodePacked(address(_route), _route.collateralToken(), _route.indexToken(), _route.isLong()));
+    }
+
+    /// @inheritdoc IOrchestrator
+    function subscribedPuppets(bytes32 _routeKey) public view returns (address[] memory _puppets) {
+        EnumerableSet.AddressSet storage _puppetsSet = _routeInfo[_routeKey].puppets;
+        _puppets = new address[](EnumerableSet.length(_puppetsSet));
+
+        for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
+            _puppets[i] = EnumerableSet.at(_puppetsSet, i);
+        }
+    }
+
+    /// @inheritdoc IOrchestrator
     function getRoute(bytes32 _routeKey) external view returns (address) {
         return _routeInfo[_routeKey].route;
     }
@@ -167,16 +182,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
 
         return _routeInfo[_routeKey].route;
-    }
-
-    /// @inheritdoc IOrchestrator
-    function subscribedPuppets(bytes32 _routeKey) external view returns (address[] memory _puppets) {
-        EnumerableSet.AddressSet storage _puppetsSet = _routeInfo[_routeKey].puppets;
-        _puppets = new address[](EnumerableSet.length(_puppetsSet));
-
-        for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
-            _puppets[i] = EnumerableSet.at(_puppetsSet, i);
-        }
     }
 
     // puppet
@@ -312,17 +317,20 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         uint256 _executionFee,
         bool _isIncrease
     ) public payable nonReentrant returns (bytes32 _requestKey) {
-        address _route = _routeInfo[getRouteKey(msg.sender, _routeTypeKey)].route;
-        if (_route == address(0)) revert RouteNotRegistered();
+        bytes32 _routeKey = getRouteKey(msg.sender, _routeTypeKey);
+        IRoute _route = IRoute(_routeInfo[_routeKey].route);
+        if (address(_route) == address(0)) revert RouteNotRegistered();
 
-        _requestKey = IRoute(_route).requestPosition{ value: msg.value }(
+        _requestKey = _route.requestPosition{ value: msg.value }(
             _adjustPositionParams,
             _swapParams,
             _executionFee,
             _isIncrease
         );
 
-        emit RequestPositionAdjustment(msg.sender, _route, _routeTypeKey, _requestKey);
+        address[] memory _puppets = _route.isPositionOpen() ? _route.puppets() : subscribedPuppets(_routeKey);
+
+        emit RequestPosition(_puppets, msg.sender, _routeTypeKey, getPositionKey(_route));
     }
 
     /// @inheritdoc IOrchestrator
@@ -460,6 +468,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @inheritdoc IOrchestrator
     function emitExecutionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external onlyRoute {
         emit Executed(msg.sender, _requestKey, _isExecuted, _isIncrease);
+    }
+
+    /// @inheritdoc IOrchestrator
+    function emitSharesIncrease(uint256[] memory _puppetsShares, uint256 _traderShares, uint256 _totalSupply) external onlyRoute {
+        emit SharesIncrease(_puppetsShares, _traderShares, _totalSupply, getPositionKey(IRoute(msg.sender)));
     }
 
     // ============================================================================================

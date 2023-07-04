@@ -33,12 +33,14 @@ interface IRoute is IPositionRouterCallbackReceiver {
 
     struct Position {
         uint256 addCollateralRequestsIndex;
+        uint256 lastTraderAmountIn;
+        uint256 traderShares;
         uint256 totalSupply;
         uint256 totalAssets;
         bytes32[] requestKeys;
         address[] puppets;
-        mapping(address => uint256) participantShares; // participant => shares
-        mapping(address => uint256) latestAmountIn; // puppet => latestAmountIn
+        uint256[] puppetsShares;
+        uint256[] lastPuppetsAmountsIn;
     }
 
     struct AddCollateralRequest{
@@ -109,19 +111,23 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @return _puppets The address array of puppets
     function puppets() external view returns (address[] memory _puppets);
 
-    /// @notice The ```puppetShares``` function returns the shares of a participant in the current position
+    /// @notice The ```participantShares``` function returns the shares of a participant in the current position
     /// @param _participant The participant address
     /// @return _shares The shares of the participant
     function participantShares(address _participant) external view returns (uint256 _shares);
 
-    /// @notice The ```totalSupply``` function returns the latest collateral amount added by a participant to the current position
+    /// @notice The ```lastAmountIn``` function returns the latest collateral amount added by a participant to the current position
     /// @param _participant The participant address
-    /// @return _amountIn The latest collateral amount added by the participant
-    function latestAmountIn(address _participant) external view returns (uint256 _amountIn);
+    /// @return _amount The latest collateral amount added by the participant
+    function lastAmountIn(address _participant) external view returns (uint256 _amount);
+
+    /// @notice The ```isPositionOpen``` function indicates whether the Route's position should be open or closed
+    /// @return _open Indicating whether the Route's position should be open or closed 
+    function isPositionOpen() external view returns (bool _open);
 
     /// @notice The ```isAdjustmentEnabled``` function indicates if the route is enabled for keeper adjustment
-    /// @return _isEnabled Indicating if the route is enabled for keeper adjustment
-    function isAdjustmentEnabled() external view returns (bool _isEnabled);
+    /// @return _enabled Indicating if the route is enabled for keeper adjustment
+    function isAdjustmentEnabled() external view returns (bool _enabled);
 
     /// @notice The ```requiredAdjustmentSize``` function returns the required adjustment size for the route
     /// @notice If Puppets cannot pay the required amount when Trader adds collateral to an existing position, we need to decrease their size so the position's size/collateral ratio is as expected
@@ -140,8 +146,8 @@ interface IRoute is IPositionRouterCallbackReceiver {
        - the position size that maintains the targetLeverage if all participants were to add the required collateral amount
        - (it's expected from Trader to input a `sizeDelta` that assumes all Puppets are adding the required amount of collateral)
     */
-    /// @return _requiredAdjustmentSize The required adjustment size, USD denominated, with 30 decimals of precision
-    function requiredAdjustmentSize() external view returns (uint256 _requiredAdjustmentSize);
+    /// @return _size The required adjustment size, USD denominated, with 30 decimals of precision
+    function requiredAdjustmentSize() external view returns (uint256 _size);
 
     // Request Info
 
@@ -152,8 +158,8 @@ interface IRoute is IPositionRouterCallbackReceiver {
     function puppetsRequestAmounts(bytes32 _requestKey) external view returns (uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts);
 
     /// @notice The ```isWaitingForCallback``` function indicates if the route is waiting for a callback from GMX
-    /// @return _isWaitingForCallback A boolean Indicating if the route is waiting for a callback from GMX
-    function isWaitingForCallback() external view returns (bool _isWaitingForCallback);
+    /// @return _waitingForCallback A boolean Indicating if the route is waiting for a callback from GMX
+    function isWaitingForCallback() external view returns (bool _waitingForCallback);
 
     // ============================================================================================
     // Mutated Functions

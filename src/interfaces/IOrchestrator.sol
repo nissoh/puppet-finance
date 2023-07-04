@@ -77,6 +77,17 @@ interface IOrchestrator {
     /// @return _routeKey The Route key
     function getRouteKey(address _trader, bytes32 _routeTypeKey) external view returns (bytes32 _routeKey);
 
+    /// @notice The ```getPositionKey``` function returns the Position key for a given Route, similar to what is stored in GMX
+    /// @param _route The Route address
+    /// @return _positionKey The Position key
+    function getPositionKey(IRoute _route) external view returns (bytes32 _positionKey);
+
+    /// @notice The ```subscribedPuppets``` function returns all the subscribed puppets for a given Route key
+    /// @notice Those puppets may not be subscribed to the current Route's position
+    /// @param _routeKey The Route key
+    /// @return _puppets The address array of all the subscribed puppets
+    function subscribedPuppets(bytes32 _routeKey) external view returns (address[] memory _puppets);
+
     /// @notice The ```getRoute``` function returns the Route address for a given Route key
     /// @param _routeKey The Route key
     /// @return _route The Route address
@@ -89,12 +100,6 @@ interface IOrchestrator {
     /// @param _isLong The boolean value of the position
     /// @return _route The Route address
     function getRoute(address _trader, address _collateralToken, address _indexToken, bool _isLong) external view returns (address _route);
-
-    /// @notice The ```subscribedPuppets``` function returns all the subscribed puppets for a given Route key
-    /// @notice Those puppets may not be subscribed to the current Route's position
-    /// @param _routeKey The Route key
-    /// @return _puppets The address array of all the subscribed puppets
-    function subscribedPuppets(bytes32 _routeKey) external view returns (address[] memory _puppets);
 
     // puppet
 
@@ -257,6 +262,12 @@ interface IOrchestrator {
     /// @param _isIncrease The boolean indicating if the request is an increase or decrease request
     function emitExecutionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external;
 
+    /// @notice The ```emitSharesIncrease``` function is called by a Route to emit an event on a successful add collateral request
+    /// @param _puppetsShares The array of Puppets shares, corresponding to the Route's subscribed Puppets, as stored in the Route Position struct
+    /// @param _traderShares The Trader's shares, as stored in the Route Position struct
+    /// @param _totalSupply The total supply of the Route's shares
+    function emitSharesIncrease(uint256[] memory _puppetsShares, uint256 _traderShares, uint256 _totalSupply) external;
+
     // Authority
 
     // called by keeper
@@ -328,9 +339,9 @@ interface IOrchestrator {
     // ============================================================================================
 
     event RegisterRoute(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
-    event RequestPositionAdjustment(address indexed caller, address indexed route, bytes32 indexed requestKey, bytes32 routeTypeKey);
+    event RequestPosition(address[] puppets, address indexed caller, bytes32 indexed routeTypeKey, bytes32 indexed positionKey);
     event ApprovePlugin(address indexed caller, bytes32 indexed routeTypeKey);
-    event Subscribe(uint256 allowance, address indexed trader, address indexed puppet, bytes32 _routeTypeKey, bool indexed subscribe);
+    event Subscribe(uint256 allowance, address indexed trader, address indexed puppet, bytes32 routeTypeKey, bool indexed subscribe);
     event Deposit(uint256 indexed amount, address indexed asset, address caller, address indexed puppet);
     event Withdraw(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
     event SetThrottleLimit(address indexed puppet, bytes32 indexed routeType, uint256 throttleLimit);
@@ -339,6 +350,7 @@ interface IOrchestrator {
     event UpdateOpenTimestamp(address indexed puppet, bytes32 indexed routeType, uint256 timestamp);
     event Send(uint256 amount, address indexed asset, address indexed receiver, address indexed caller);
     event Executed(address indexed route, bytes32 indexed requestKey, bool indexed isExecuted, bool isIncrease);
+    event SharesIncrease(uint256[] puppetsShares, uint256 traderShares, uint256 totalSupply, bytes32 indexed positionKey);
     event DecreaseSize(bytes32 indexed requestKey, bytes32 indexed routeKey);
     event Liquidate(bytes32 indexed routeKey);
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
