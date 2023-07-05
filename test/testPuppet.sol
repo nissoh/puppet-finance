@@ -635,7 +635,7 @@ contract testPuppet is Test {
         if (_routeTypeInfo.isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  42212957161373912964268700677440797912 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  44112957161373912964268700677440797912 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 50;
             _acceptablePrice = type(uint256).max;
             _amountInTrader = 10 ether;
@@ -643,7 +643,7 @@ contract testPuppet is Test {
         } else {
             // TODO: short position
             // Available amount in USD: PositionRouter.maxGlobalShortSizes(indexToken) - Vault.globalShortSizes(indexToken)
-            _sizeDelta = 27523412981260342240605303493048228332 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
+            _sizeDelta = 24523392442001907916970453894686836277 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
             _sizeDelta = _sizeDelta / 50;
             _acceptablePrice = type(uint256).min;
             _amountInTrader = _sizeDelta / 5 / 1e24;
@@ -1102,7 +1102,7 @@ contract testPuppet is Test {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 42212957161373912964268700677440797912 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 44112957161373912964268700677440797912 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
