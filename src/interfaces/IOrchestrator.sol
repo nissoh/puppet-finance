@@ -168,12 +168,12 @@ interface IOrchestrator {
 
     // Trader
 
-    /// @notice The ```createRouteType``` function is called by a Trader to create a new Route
+    /// @notice The ```createRoute``` function is called by a Trader to create a new Route
     /// @param _collateralToken The address of the Collateral Token
     /// @param _indexToken The address of the Index Token
     /// @param _isLong The boolean value of the position
     /// @return bytes32 The Route key
-    function createRouteType(address _collateralToken, address _indexToken, bool _isLong) external returns (bytes32);
+    function createRoute(address _collateralToken, address _indexToken, bool _isLong) external returns (bytes32);
 
     /// @notice The ```registerRouteAndRequestPosition``` function is called by a Trader to register a new Route and create an Increase Position Request
     /// @param _adjustPositionParams The adjusment params for the position
@@ -199,32 +199,32 @@ interface IOrchestrator {
 
     // Puppet
 
-    /// @notice The ```updateRouteSubscription``` function is called by a Puppet to update his subscription to a Route
+    /// @notice The ```subscribeRoute``` function is called by a Puppet to update his subscription to a Route
     /// @param _allowance The allowance percentage
     /// @param _trader The address of the Trader
     /// @param _routeTypeKey The RouteType key
     /// @param _subscribe Whether to subscribe or unsubscribe
-    function updateRouteSubscription(uint256 _allowance, address _trader, bytes32 _routeTypeKey, bool _subscribe) external;
+    function subscribeRoute(uint256 _allowance, address _trader, bytes32 _routeTypeKey, bool _subscribe) external;
 
-    /// @notice The ```updateRoutesSubscriptions``` function is called by a Puppet to update his subscription to a list of Routes
+    /// @notice The ```batchSubscribeRoute``` function is called by a Puppet to update his subscription to a list of Routes
     /// @param _allowances The allowance percentage array
     /// @param _traders The address array of Traders
     /// @param _routeTypeKeys The RouteType key array
     /// @param _subscribe Whether to subscribe or unsubscribe
-    function updateRoutesSubscriptions(uint256[] memory _allowances, address[] memory _traders, bytes32[] memory _routeTypeKeys, bool[] memory _subscribe) external;
+    function batchSubscribeRoute(uint256[] memory _allowances, address[] memory _traders, bytes32[] memory _routeTypeKeys, bool[] memory _subscribe) external;
 
-    /// @notice The ```depositRoute``` function is called by a Puppet to deposit funds into his deposit account
+    /// @notice The ```deposit``` function is called by a Puppet to deposit funds into his deposit account
     /// @param _amount The amount to deposit
     /// @param _asset The address of the Asset
     /// @param _puppet The address of the recepient
-    function depositRoute(uint256 _amount, address _asset, address _puppet) external payable;
+    function deposit(uint256 _amount, address _asset, address _puppet) external payable;
 
-    /// @notice The ```withdrawRoute``` function is called by a Puppet to withdraw funds from his deposit account
+    /// @notice The ```withdraw``` function is called by a Puppet to withdraw funds from his deposit account
     /// @param _amount The amount to withdraw
     /// @param _asset The address of the Asset
     /// @param _receiver The address of the receiver of withdrawn funds
     /// @param _isETH Whether to withdraw ETH or not. Available only for WETH deposits
-    function withdrawRoute(uint256 _amount, address _asset, address _receiver, bool _isETH) external;
+    function withdraw(uint256 _amount, address _asset, address _receiver, bool _isETH) external;
 
     /// @notice The ```setThrottleLimit``` function is called by a Puppet to set his throttle limit for a given RouteType
     /// @param _throttleLimit The throttle limit
@@ -272,12 +272,12 @@ interface IOrchestrator {
 
     // called by keeper
 
-    /// @notice The ```keepTargetLeverage``` function is called by a keeper to adjust mirrored position to target leverage to match trader leverage
+    /// @notice The ```adjustTargetLeverage``` function is called by a keeper to adjust mirrored position to target leverage to match trader leverage
     /// @param _adjustPositionParams The adjusment params for the position
     /// @param _executionFee The total execution fee, paid by the Keeper in ETH
     /// @param _routeKey The Route key
     /// @return _requestKey The request key
-    function keepTargetLeverage(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external payable returns (bytes32 _requestKey);
+    function adjustTargetLeverage(IRoute.AdjustPositionParams memory _adjustPositionParams, uint256 _executionFee, bytes32 _routeKey) external payable returns (bytes32 _requestKey);
 
     /// @notice The ```liquidatePosition``` function is called by Puppet keepers to reset the Route's accounting in case of a liquidation
     /// @param _routeKey The Route key
@@ -291,12 +291,12 @@ interface IOrchestrator {
     /// @param _receiver The address of the receiver
     function rescueTokens(uint256 _amount, address _token, address _receiver) external;
 
-    /// @notice The ```rescueRouteTokens``` function is called by the Authority to rescue tokens from a Route
+    /// @notice The ```rescueRouteFunds``` function is called by the Authority to rescue tokens from a Route
     /// @param _amount The amount to rescue
     /// @param _token The address of the Token
     /// @param _receiver The address of the receiver
     /// @param _route The address of the Route
-    function rescueRouteTokenFunds(uint256 _amount, address _token, address _receiver, address _route) external;
+    function rescueRouteFunds(uint256 _amount, address _token, address _receiver, address _route) external;
 
     /// @notice The ```freezeRoute``` function is called by the Authority to freeze or unfreeze a Route
     /// @param _route The address of the Route
@@ -338,22 +338,22 @@ interface IOrchestrator {
     // Events
     // ============================================================================================
 
-    event CreateRouteType(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
+    event CreateRoute(address indexed trader, address indexed route, bytes32 indexed routeTypeKey);
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
 
     event ApprovePlugin(address indexed caller, bytes32 indexed routeTypeKey);
-    event SubscribeTrader(uint256 allowance, address indexed trader, address indexed puppet, bytes32 routeTypeKey, bool indexed subscribe);
+    event SubscribeRoute(uint256 allowance, address indexed trader, address indexed puppet, bytes32 routeTypeKey, bool indexed subscribe);
     event SetThrottleLimit(address indexed puppet, bytes32 indexed routeType, uint256 throttleLimit);
 
     event UpdateOpenTimestamp(address indexed puppet, bytes32 indexed routeType, uint256 timestamp);
     
-    event DepositRoute(uint256 indexed amount, address indexed asset, address caller, address indexed puppet);
-    event WithdrawRoute(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
+    event Deposit(uint256 indexed amount, address indexed asset, address caller, address indexed puppet);
+    event Withdraw(uint256 amount, address indexed asset, address indexed receiver, address indexed puppet);
 
     event RequestPosition(address[] puppets, address indexed caller, bytes32 indexed routeTypeKey, bytes32 indexed positionKey);
     event ExecutePosition(address indexed route, bytes32 indexed requestKey, bool indexed isExecuted, bool isIncrease);
     event SharesIncrease(uint256[] puppetsShares, uint256 traderShares, uint256 totalSupply, bytes32 indexed positionKey);
-    event DecreaseSize(bytes32 indexed requestKey, bytes32 indexed routeKey, bytes32 indexed positionKey);
+    event AdjustTargetLeverage(bytes32 indexed requestKey, bytes32 indexed routeKey, bytes32 indexed positionKey);
     event LiquidatePosition(bytes32 indexed routeKey, bytes32 indexed positionKey);
 
     event DebitPuppet(uint256 amount, address indexed asset, address indexed puppet, address indexed caller);
@@ -366,7 +366,7 @@ interface IOrchestrator {
     event SetReferralCode(bytes32 indexed referralCode);
     event SetRouteFactory(address indexed factory);
     event SetKeeper(address indexed keeper);
-    event RescueRouteTokenFunds(uint256 amount, address indexed token, address indexed receiver, address indexed route);
+    event RescueRouteFunds(uint256 amount, address indexed token, address indexed receiver, address indexed route);
     event Rescue(uint256 amount, address indexed token, address indexed receiver);
     event FreezeRoute(address indexed route, bool indexed freeze);
 
