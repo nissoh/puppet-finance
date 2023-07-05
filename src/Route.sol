@@ -311,9 +311,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant {
         if (msg.sender != orchestrator.gmxPositionRouter()) revert NotCallbackCaller();
 
-        if (_isExecuted && _isIncrease) {
-            _allocateShares(_requestKey);
-        }
+        if (_isExecuted && _isIncrease) _allocateShares(_requestKey);
 
         _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey]);
 

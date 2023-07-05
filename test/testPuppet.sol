@@ -186,14 +186,14 @@ contract testPuppet is Test {
 
         vm.startPrank(keeper);
         vm.expectRevert(); // reverts with `PositionNotOpen`
-        orchestrator.liquidate(_routeKey);
+        orchestrator.liquidatePosition(_routeKey);
         vm.stopPrank();
         
         _testIncreasePosition(_routeTypeInfo, false, false);
 
         vm.startPrank(keeper);
         vm.expectRevert(); // reverts with `PositionStillAlive`
-        orchestrator.liquidate(_routeKey);
+        orchestrator.liquidatePosition(_routeKey);
         vm.stopPrank();
 
         assertEq(Route(route).waitForKeeperAdjustment(), false, "testCorrectFlow: E2");
@@ -204,7 +204,7 @@ contract testPuppet is Test {
 
         vm.startPrank(keeper);
         vm.expectRevert(); // reverts with `PositionStillAlive`
-        orchestrator.liquidate(_routeKey);
+        orchestrator.liquidatePosition(_routeKey);
         vm.stopPrank();
 
         assertEq(Route(route).waitForKeeperAdjustment(), true, "testCorrectFlow: E3");
@@ -214,7 +214,7 @@ contract testPuppet is Test {
 
         vm.startPrank(keeper);
         vm.expectRevert(); // reverts with `PositionStillAlive`
-        orchestrator.liquidate(_routeKey);
+        orchestrator.liquidatePosition(_routeKey);
         vm.stopPrank();
 
         assertEq(route.isPositionOpen(), true, "testCorrectFlow: E004");
@@ -223,7 +223,7 @@ contract testPuppet is Test {
 
         vm.startPrank(keeper);
         vm.expectRevert(); // reverts with `PositionNotOpen`
-        orchestrator.liquidate(_routeKey);
+        orchestrator.liquidatePosition(_routeKey);
         vm.stopPrank();
 
         assertEq(route.isPositionOpen(), false, "testCorrectFlow: E005");
