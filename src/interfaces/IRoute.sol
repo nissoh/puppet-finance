@@ -197,7 +197,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @param _amount The amount to rescue
     /// @param _token The token address
     /// @param _receiver The receiver address
-    function rescueTokens(uint256 _amount, address _token, address _receiver) external;
+    function rescueTokenFunds(uint256 _amount, address _token, address _receiver) external;
 
     /// @notice The ```freeze``` function is called by the Orchestrator and Authority to freeze the Route
     /// @param _freeze The boolean indicating if the Route should be frozen or unfrozen 
@@ -214,7 +214,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event DecreaseRequest(bytes32 indexed requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice);
     event Repay(uint256 totalAssets);
     event Reset();
-    event Rescue(uint256 amount, address token, address receiver);
+    event RescueTokenFunds(uint256 amount, address token, address receiver);
     event Freeze(bool indexed freeze);
 
     // ============================================================================================

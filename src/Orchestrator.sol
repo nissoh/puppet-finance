@@ -260,7 +260,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     /// @inheritdoc IOrchestrator
     // slither-disable-next-line reentrancy-no-eth
-    function registerRoute(address _collateralToken, address _indexToken, bool _isLong) public nonReentrant returns (bytes32 _routeKey) {
+    function createRoute(address _collateralToken, address _indexToken, bool _isLong) public nonReentrant returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
 
         bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
@@ -287,7 +287,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         isRoute[_routeAddr] = true;
         _routes.push(_routeAddr);
 
-        emit RegisterRoute(msg.sender, _routeAddr, _routeTypeKey);
+        emit CreateRoute(msg.sender, _routeAddr, _routeTypeKey);
     }
 
     /// @inheritdoc IOrchestrator
@@ -299,7 +299,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         address _indexToken,
         bool _isLong
     ) external payable returns (bytes32 _routeKey, bytes32 _requestKey) {
-        _routeKey = registerRoute(_collateralToken, _indexToken, _isLong);
+        _routeKey = createRoute(_collateralToken, _indexToken, _isLong);
         _requestKey = requestPosition(
             _adjustPositionParams,
             _swapParams,
@@ -348,7 +348,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // ============================================================================================
 
     /// @inheritdoc IOrchestrator
-    function updateRouteSubscription(uint256 _allowance, address _trader, bytes32 _routeTypeKey, bool _subscribe) public nonReentrant {
+    function subscribeRoute(uint256 _allowance, address _trader, bytes32 _routeTypeKey, bool _subscribe) public nonReentrant {
         bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
         RouteInfo storage _route = _routeInfo[_routeKey];
         PuppetInfo storage _puppet = _puppetInfo[msg.sender];
@@ -366,11 +366,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             EnumerableSet.remove(_route.puppets, msg.sender);
         }
 
-        emit Subscribe(_allowance, _trader, msg.sender, _routeTypeKey, _subscribe);
+        emit SubscribeRoute(_allowance, _trader, msg.sender, _routeTypeKey, _subscribe);
     }
 
     /// @inheritdoc IOrchestrator
-    function updateRoutesSubscriptions(
+    function batchSubscribeRoute(
         uint256[] memory _allowances,
         address[] memory _traders,
         bytes32[] memory _routeTypeKeys,
@@ -381,7 +381,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         if (_traders.length != _routeTypeKeys.length) revert MismatchedInputArrays();
 
         for (uint256 i = 0; i < _traders.length; i++) {
-            updateRouteSubscription(_allowances[i], _traders[i], _routeTypeKeys[i], _subscribe[i]);
+            subscribeRoute(_allowances[i], _traders[i], _routeTypeKeys[i], _subscribe[i]);
         }
     }
 
@@ -459,15 +459,15 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function sendFunds(uint256 _amount, address _asset, address _receiver) external onlyRoute {
+    function transferRouteFunds(uint256 _amount, address _asset, address _receiver) external onlyRoute {
         IERC20(_asset).safeTransfer(_receiver, _amount);
 
-        emit Send(_amount, _asset, _receiver, msg.sender);
+        emit TransferRouteFunds(_amount, _asset, _receiver, msg.sender);
     }
 
     /// @inheritdoc IOrchestrator
     function emitExecutionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external onlyRoute {
-        emit Executed(msg.sender, _requestKey, _isExecuted, _isIncrease);
+        emit ExecutePosition(msg.sender, _requestKey, _isExecuted, _isIncrease);
     }
 
     /// @inheritdoc IOrchestrator
@@ -482,7 +482,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // called by keeper
 
     /// @inheritdoc IOrchestrator
-    function decreaseSize(
+    function adjustTargetLeverage(
         IRoute.AdjustPositionParams memory _adjustPositionParams,
         uint256 _executionFee,
         bytes32 _routeKey
@@ -492,18 +492,18 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         _requestKey = _route.decreaseSize{ value: msg.value }(_adjustPositionParams, _executionFee);
 
-        emit DecreaseSize(_requestKey, _routeKey, getPositionKey(_route));
+        emit AdjustTargetLeverage(_requestKey, _routeKey, getPositionKey(_route));
     }
 
     /// @inheritdoc IOrchestrator
-    function liquidate(bytes32 _routeKey) external requiresAuth nonReentrant {
+    function liquidatePosition(bytes32 _routeKey) external requiresAuth nonReentrant {
         IRoute _route = IRoute(_routeInfo[_routeKey].route);
         if (address(_route) == address(0)) revert RouteNotRegistered();
 
 
         _route.liquidate();
 
-        emit Liquidate(_routeKey, getPositionKey(_route));
+        emit LiquidatePosition(_routeKey, getPositionKey(_route));
     }
 
     // called by owner
@@ -520,10 +520,10 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function rescueRouteTokens(uint256 _amount, address _token, address _receiver, address _route) external requiresAuth nonReentrant {
-        IRoute(_route).rescueTokens(_amount, _token, _receiver);
+    function rescueRouteFunds(uint256 _amount, address _token, address _receiver, address _route) external requiresAuth nonReentrant {
+        IRoute(_route).rescueTokenFunds(_amount, _token, _receiver);
 
-        emit RouteRescue(_amount, _token, _receiver, _route);
+        emit RescueRouteFunds(_amount, _token, _receiver, _route);
     }
 
     /// @inheritdoc IOrchestrator
@@ -568,7 +568,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         _keeper = _keeperAddr;
 
-        emit Keeper(_keeper);
+        emit SetKeeper(_keeper);
     }
 
     /// @inheritdoc IOrchestrator

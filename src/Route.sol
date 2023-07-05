@@ -286,14 +286,14 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     // called by owner
 
     /// @inheritdoc IRoute
-    function rescueTokens(uint256 _amount, address _token, address _receiver) external onlyOrchestrator {
+    function rescueTokenFunds(uint256 _amount, address _token, address _receiver) external onlyOrchestrator {
         if (_token == address(0)) {
             payable(_receiver).sendValue(_amount);
         } else {
             IERC20(_token).safeTransfer(_receiver, _amount);
         }
 
-        emit Rescue(_amount, _token, _receiver);
+        emit RescueTokenFunds(_amount, _token, _receiver);
     }
 
     /// @inheritdoc IRoute
@@ -311,9 +311,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant {
         if (msg.sender != orchestrator.gmxPositionRouter()) revert NotCallbackCaller();
 
-        if (_isExecuted) {
-            if (_isIncrease) _allocateShares(_requestKey);
-        }
+        if (_isExecuted && _isIncrease) _allocateShares(_requestKey);
 
         _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey]);
 
@@ -378,7 +376,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
             positions[_positionIndex].addCollateralRequestsIndex += 1;
 
             // 4. pull funds from Orchestrator
-            orchestrator.sendFunds(_puppetsAmountIn, route.collateralToken, address(this));
+            orchestrator.transferRouteFunds(_puppetsAmountIn, route.collateralToken, address(this));
 
             return (_puppetsAmountIn, _traderAmountIn, _traderShares, _totalSupply);
         }
