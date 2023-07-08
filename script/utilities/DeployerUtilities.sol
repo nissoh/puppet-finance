@@ -23,6 +23,7 @@ contract DeployerUtilities is Script {
     address internal _gmxRouter = 0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064;
     address internal _gmxVault = 0x489ee077994B6658eAfA855C308275EAd8097C4A;
     address internal _gmxPositionRouter = 0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868;
+    address internal _gmxVaultPriceFeed = 0x2d68011bcA022ed0E474264145F46CC4de96a002;
 
     // tokens
 

@@ -14,7 +14,7 @@ import "./utilities/DeployerUtilities.sol";
 
 contract DeployPuppet is DeployerUtilities {
 
-    bytes private _gmxInfo = abi.encode(_gmxRouter, _gmxVault, _gmxPositionRouter);
+    bytes private _gmxInfo = abi.encode(_gmxVaultPriceFeed, _gmxRouter, _gmxVault, _gmxPositionRouter, false, false);
 
     function run() public {
         vm.startBroadcast(_deployerPrivateKey);
@@ -23,7 +23,6 @@ contract DeployPuppet is DeployerUtilities {
         RouteFactory _routeFactory = RouteFactory(_routeFactoryAddr);
 
         Orchestrator _orchestrator = new Orchestrator(_dictator, address(_routeFactory), _keeperAddr, _referralCode, _gmxInfo);
-        // Orchestrator _orchestrator = Orchestrator(_orchestratorAddr);
 
         bytes4 functionSig = _orchestrator.setRouteType.selector;
 

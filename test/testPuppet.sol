@@ -169,6 +169,8 @@ contract testPuppet is Test {
 
         route = Route(payable(orchestrator.getRoute(_routeKey)));
 
+        _testGetPositionKey(address(route));
+
         assertEq(route.routeKey(), _routeKey, "testCorrectFlow: E0");
 
         // puppet
@@ -246,6 +248,8 @@ contract testPuppet is Test {
 
         route = Route(payable(orchestrator.getRoute(_routeKey)));
 
+        _testGetPositionKey(address(route));
+
         // puppet
         _testPuppetDeposit(_assets, WETH);
         _testUpdateRoutesSubscription(WETH, WETH, _routeKey, true);
@@ -272,6 +276,8 @@ contract testPuppet is Test {
         bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(WETH, WETH, true);
 
         route = Route(payable(orchestrator.getRoute(_routeKey)));
+
+        _testGetPositionKey(address(route));
 
         // puppet
         _testPuppetDeposit(_assets, WETH);
@@ -302,6 +308,8 @@ contract testPuppet is Test {
         bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(USDC, WETH, false);
 
         route = Route(payable(orchestrator.getRoute(_routeKey)));
+
+        _testGetPositionKey(address(route));
 
         // puppet
         _testPuppetDeposit(_assets, USDC);
@@ -1059,7 +1067,7 @@ contract testPuppet is Test {
 
     function _testNonCollatAmountIn(uint256 _amountInTrader, uint256 _executionFee, IRoute.AdjustPositionParams memory _adjustPositionParams, bytes32 _routeTypeKey) internal {
         // TODO
-        _amountInTrader = _amountInTrader * 20;
+        _amountInTrader = _amountInTrader * 1;
         
         address[] memory _pathNonCollateral = new address[](2);
         _pathNonCollateral[0] = FRAX;
@@ -1160,6 +1168,12 @@ contract testPuppet is Test {
             assertEq(route.waitForKeeperAdjustment(), false, "_testKeeperAdjustPosition: E03");
             assertEq(route.targetLeverage(), 0, "_testKeeperAdjustPosition: E04");
         }
+    }
+
+    function _testGetPositionKey(address _route) internal {
+        bytes32 _puppetPositionKey = orchestrator.getPositionKey(IRoute(_route));
+        bytes32 _gmxPositionKey = IGMXVault(gmxVault).getPositionKey(_route, collateralToken, indexToken, isLong);
+        assertEq(_puppetPositionKey, _gmxPositionKey, "_testGetPositionKey: E00");
     }
 
     // ============================================================================================

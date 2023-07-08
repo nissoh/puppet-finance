@@ -157,7 +157,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function getPositionKey(IRoute _route) public view returns (bytes32) { // todo - test
+    function getPositionKey(IRoute _route) public view returns (bytes32) {
         return keccak256(abi.encodePacked(address(_route), _route.collateralToken(), _route.indexToken(), _route.isLong()));
     }
 
@@ -424,7 +424,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         emit Withdraw(_amount, _asset, _receiver, msg.sender);
     }
-
 
     /// @inheritdoc IOrchestrator
     function setThrottleLimit(uint256 _throttleLimit, bytes32 _routeType) external {
