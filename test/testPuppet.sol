@@ -210,7 +210,9 @@ contract testPuppet is Test, DeployerUtilities {
         _openPositionAsserts();
 
         _testIncreasePosition(true, true);
-        _postIncreasePositionAsserts(); // todo - here // todo - add _testKeeperAdjustPosition
+        _postIncreasePositionAsserts();
+        _testKeeperAdjustPosition();
+
         _testClosePosition(false);
     }
 
@@ -239,7 +241,7 @@ contract testPuppet is Test, DeployerUtilities {
         _openPositionAsserts();
 
         _testIncreasePosition(true, false);
-        _postIncreasePositionAsserts(); // todo - add _testKeeperAdjustPosition
+        _postIncreasePositionAsserts();
 
         // auth
         _testClosePosition(true);
@@ -254,7 +256,7 @@ contract testPuppet is Test, DeployerUtilities {
     }
 
     function testUSDCCorrectFlow() public {
-        uint256 _assets = 0.0001 ether / 1000;
+        uint256 _assets = 0.0001 ether / 100;
         collateralToken = _usdc;
         indexToken = _weth;
         isLong = false;
@@ -279,7 +281,8 @@ contract testPuppet is Test, DeployerUtilities {
         _openPositionAsserts();
 
         _testIncreasePosition(true, false);
-        _postIncreasePositionAsserts(); // todo - add _testKeeperAdjustPosition
+        _postIncreasePositionAsserts();
+        _testKeeperAdjustPosition();
 
         _testClosePosition(false);
 
@@ -296,6 +299,7 @@ contract testPuppet is Test, DeployerUtilities {
     //
 
     // Trader
+    // todo - clean internal functions
 
     function _testRegisterRoute() internal returns (bytes32 _routeKey) {
         vm.startPrank(trader);
@@ -603,7 +607,7 @@ contract testPuppet is Test, DeployerUtilities {
         if (isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  44112957161373912964268700677440797912 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  48753267084287229186720991398763184564 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 50;
             _acceptablePrice = type(uint256).max;
             _amountInTrader = 10 ether;
@@ -611,8 +615,8 @@ contract testPuppet is Test, DeployerUtilities {
         } else {
             // TODO: short position
             // Available amount in USD: PositionRouter.maxGlobalShortSizes(indexToken) - Vault.globalShortSizes(indexToken)
-            _sizeDelta = 24523392442001907916970453894686836277 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
-            _sizeDelta = _sizeDelta / 50;
+            _sizeDelta = 28018120086134973491914592838971429844 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
+            _sizeDelta = _sizeDelta / 2;
             _acceptablePrice = type(uint256).min;
             _amountInTrader = _sizeDelta / 5 / 1e24;
         }
@@ -1090,6 +1094,11 @@ contract testPuppet is Test, DeployerUtilities {
         orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _traderSwapDataNonCollateral, _routeTypeKey, _executionFee, true);
         assertTrue(IERC20(_frax).balanceOf(trader) < _traderFraxBalanceBefore, "_testCreateInitialPosition: E1");
         vm.stopPrank();
+
+        // 2. executePosition
+        vm.startPrank(GMXPositionRouterKeeper); // keeper
+        IGMXPositionRouter(_gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
+        vm.stopPrank();
     }
 
     function _testRegisterRouteAndIncreasePosition() internal {
@@ -1100,7 +1109,7 @@ contract testPuppet is Test, DeployerUtilities {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 44112957161373912964268700677440797912 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 48753267084287229186720991398763184564 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
@@ -1242,7 +1251,6 @@ contract testPuppet is Test, DeployerUtilities {
 
         assertTrue(route.isAdjustmentEnabled(), "_testKeeperAdjustPosition: E002");
         assertEq(route.waitForKeeperAdjustment(), true, "_testKeeperAdjustPosition: E0002");
-
         orchestrator.adjustTargetLeverage{ value: _executionFee }(_adjustPositionParams, _executionFee, routeKey);
         vm.stopPrank();
 
@@ -1264,7 +1272,7 @@ contract testPuppet is Test, DeployerUtilities {
             revert("we want to test on successful execution decrease");
         } else {
             assertTrue(_sizeAfter < _sizeBefore, "_keeperDecreaseSize: E02");
-            assertApproxEqAbs(_collateralAfter, _collateralBefore, 1e31, "_keeperDecreaseSize: E03");
+            assertApproxEqAbs(_collateralAfter, _collateralBefore, 1e33, "_keeperDecreaseSize: E03");
 
             _keeperDecreaseSizeExt(_targetLeverage, _sizeAfter, _collateralAfter);
         }

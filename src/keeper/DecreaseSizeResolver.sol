@@ -61,7 +61,7 @@ contract DecreaseSizeResolver is Auth {
                 IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
                     collateralDelta: 0, // we don't remove collateral
                     sizeDelta: _route.requiredAdjustmentSize(),
-                    acceptablePrice: orchestrator.getPrice(_route.indexToken()) * _BASIS_POINTS_DIVISOR / priceFeedSlippage,
+                    acceptablePrice: _getAcceptablePrice(_route),
                     minOut: 0 // minOut can be zero if no swap is required
                 });
 
@@ -75,6 +75,14 @@ contract DecreaseSizeResolver is Auth {
 
                 break;
             }
+        }
+    }
+
+    function _getAcceptablePrice(IRoute _route) internal view returns (uint256) {
+        if (_route.isLong()) {
+            return orchestrator.getPrice(_route.indexToken()) * _BASIS_POINTS_DIVISOR / priceFeedSlippage;
+        } else {
+            return orchestrator.getPrice(_route.indexToken()) * priceFeedSlippage / _BASIS_POINTS_DIVISOR;
         }
     }
 
