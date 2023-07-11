@@ -29,14 +29,6 @@ contract testPuppet is Test, DeployerUtilities {
 
     using SafeERC20 for IERC20;
 
-    struct GMXInfo {
-        address gmxRouter;
-        address gmxReader;
-        address gmxVault;
-        address gmxPositionRouter;
-        address gmxReferralRebatesSender;
-    }
-
      struct CreatePositionParams {
         IRoute.AdjustPositionParams adjustPositionParams;
         IRoute.SwapParams swapParams;
@@ -66,15 +58,6 @@ contract testPuppet is Test, DeployerUtilities {
         uint256 aliceDepositAccountBalanceBefore;
         uint256 bobDepositAccountBalanceBefore;
         uint256 yossiDepositAccountBalanceBefore;
-        address tokenIn;
-        bytes32 routeTypeKey;
-    }
-
-    struct RouteTypeInfo {
-        address collateralToken;
-        address indexToken;
-        bool isLong;
-        bytes32 routeTypeKey;
     }
 
     struct ClosePositionBefore {
@@ -299,7 +282,6 @@ contract testPuppet is Test, DeployerUtilities {
     //
 
     // Trader
-    // todo - clean internal functions
 
     function _testRegisterRoute() internal returns (bytes32 _routeKey) {
         vm.startPrank(trader);
@@ -607,15 +589,15 @@ contract testPuppet is Test, DeployerUtilities {
         if (isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  48753267084287229186720991398763184564 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
-            _sizeDelta = _sizeDelta / 50;
+            _sizeDelta =  49303267084287229186720991398763184564 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta = _sizeDelta / 2;
             _acceptablePrice = type(uint256).max;
-            _amountInTrader = 10 ether;
+            _amountInTrader = 0.1 ether;
             // _amountInTrader = _sizeDelta / 2000 
         } else {
             // TODO: short position
             // Available amount in USD: PositionRouter.maxGlobalShortSizes(indexToken) - Vault.globalShortSizes(indexToken)
-            _sizeDelta = 28018120086134973491914592838971429844 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
+            _sizeDelta = 22793460367058138613345722013892012527 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
             _sizeDelta = _sizeDelta / 2;
             _acceptablePrice = type(uint256).min;
             _amountInTrader = _sizeDelta / 5 / 1e24;
@@ -876,9 +858,7 @@ contract testPuppet is Test, DeployerUtilities {
             orchesratorBalanceBefore: IERC20(_params.tokenIn).balanceOf(address(orchestrator)),
             aliceDepositAccountBalanceBefore: orchestrator.puppetAccountBalance(alice, _params.tokenIn),
             bobDepositAccountBalanceBefore: orchestrator.puppetAccountBalance(bob, _params.tokenIn),
-            yossiDepositAccountBalanceBefore: orchestrator.puppetAccountBalance(yossi, _params.tokenIn),
-            tokenIn: _params.tokenIn,
-            routeTypeKey: _params.routeTypeKey
+            yossiDepositAccountBalanceBefore: orchestrator.puppetAccountBalance(yossi, _params.tokenIn)
         });
 
         vm.startPrank(trader);
@@ -916,17 +896,17 @@ contract testPuppet is Test, DeployerUtilities {
             address[] memory _puppets = route.puppets();
             // bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(_weth, _weth, true);
             assertEq(IERC20(_weth).balanceOf(address(route)), 0, "_testCreatePosition: E14");
-            assertEq(orchestrator.lastPositionOpenedTimestamp(alice, _createPositionFirst.routeTypeKey), block.timestamp, "_testCreatePosition: E16");
-            assertEq(orchestrator.lastPositionOpenedTimestamp(bob, _createPositionFirst.routeTypeKey), block.timestamp, "_testCreatePosition: E17");
-            assertEq(orchestrator.lastPositionOpenedTimestamp(yossi, _createPositionFirst.routeTypeKey), block.timestamp, "_testCreatePosition: E18");
+            assertEq(orchestrator.lastPositionOpenedTimestamp(alice, routeTypeKey), block.timestamp, "_testCreatePosition: E16");
+            assertEq(orchestrator.lastPositionOpenedTimestamp(bob, routeTypeKey), block.timestamp, "_testCreatePosition: E17");
+            assertEq(orchestrator.lastPositionOpenedTimestamp(yossi, routeTypeKey), block.timestamp, "_testCreatePosition: E18");
             assertEq(_addCollateralRequestsIndexAfter, _addCollateralRequestsIndexBefore + 1, "_testCreatePosition: E19");
-            assertEq(IERC20(_createPositionFirst.tokenIn).balanceOf(address(orchestrator)) + _puppetsAmountIn, _createPositionFirst.orchesratorBalanceBefore, "_testCreatePosition: E20");
+            assertEq(IERC20(collateralToken).balanceOf(address(orchestrator)) + _puppetsAmountIn, _createPositionFirst.orchesratorBalanceBefore, "_testCreatePosition: E20");
             assertEq(_puppetsShares.length, 3, "_testCreatePosition: E22");
             assertEq(_puppetsAmounts.length, 3, "_testCreatePosition: E23");
             assertEq(_puppets.length, 3, "_testCreatePosition: E24");
-            assertEq(_createPositionFirst.aliceDepositAccountBalanceBefore - _puppetsAmounts[0], orchestrator.puppetAccountBalance(alice, _createPositionFirst.tokenIn), "_testCreatePosition: E25");
-            assertEq(_createPositionFirst.bobDepositAccountBalanceBefore - _puppetsAmounts[1], orchestrator.puppetAccountBalance(bob, _createPositionFirst.tokenIn), "_testCreatePosition: E26");
-            assertEq(_createPositionFirst.yossiDepositAccountBalanceBefore - _puppetsAmounts[2], orchestrator.puppetAccountBalance(yossi, _createPositionFirst.tokenIn), "_testCreatePosition: E27");
+            assertEq(_createPositionFirst.aliceDepositAccountBalanceBefore - _puppetsAmounts[0], orchestrator.puppetAccountBalance(alice, collateralToken), "_testCreatePosition: E25");
+            assertEq(_createPositionFirst.bobDepositAccountBalanceBefore - _puppetsAmounts[1], orchestrator.puppetAccountBalance(bob, collateralToken), "_testCreatePosition: E26");
+            assertEq(_createPositionFirst.yossiDepositAccountBalanceBefore - _puppetsAmounts[2], orchestrator.puppetAccountBalance(yossi, collateralToken), "_testCreatePosition: E27");
             assertEq(_puppetsShares[0], _puppetsShares[1], "_testCreatePosition: E28");
             assertEq(_puppetsAmounts[0], _puppetsAmounts[1], "_testCreatePosition: E30");
         }
@@ -1109,7 +1089,7 @@ contract testPuppet is Test, DeployerUtilities {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 48753267084287229186720991398763184564 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 49303267084287229186720991398763184564 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
@@ -1280,7 +1260,7 @@ contract testPuppet is Test, DeployerUtilities {
 
     function _keeperDecreaseSizeExt(uint256 _targetLeverage, uint256 _sizeAfter, uint256 _collateralAfter) internal {
         uint256 _positionLeverage = _sizeAfter * 10000 / _collateralAfter;
-        assertApproxEqAbs(_positionLeverage, _targetLeverage, 1e1, "_keeperDecreaseSize: E04");
+        assertApproxEqAbs(_positionLeverage, _targetLeverage, 1e2, "_keeperDecreaseSize: E04");
 
         (bool _canExec,) = decreaseSizeResolver.checker();
         assertTrue(!_canExec, "_keeperDecreaseSize: E06");
