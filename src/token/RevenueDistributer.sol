@@ -1,12 +1,11 @@
-// # @version 0.2.7
-// """
-// @title Curve Fee Distribution
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.19;
+
+// @title Puppet Revenue Distributer
 // @author Curve Finance
 // @license MIT
-// """
 
-// from vyper.interfaces import ERC20
-
+contract RevenueDistributer {}
 
 // interface VotingEscrow:
 //     def user_point_epoch(addr: address) -> uint256: view

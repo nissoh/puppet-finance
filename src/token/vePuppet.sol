@@ -1,43 +1,39 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
-/**
-@title Voting Escrow
-@author Curve Finance
-@license MIT
-@notice Votes have a weight depending on time, so that users are
-        committed to the future of (whatever they are voting for)
-@dev Vote weight decays linearly over time. Lock time cannot be
-     more than `MAXTIME` (4 years).
+// @title Voting Escrow
+// @author Curve Finance
+// @license MIT
+// @notice Votes have a weight depending on time, so that users are committed to the future of (whatever they are voting for)
+// @dev Vote weight decays linearly over time. Lock time cannot be more than `MAXTIME` (4 years).
 
-# Voting escrow to have time-weighted votes
-# Votes have a weight depending on time, so that users are committed
-# to the future of (whatever they are voting for).
-# The weight in this implementation is linear, and lock cannot be more than maxtime:
-# w ^
-# 1 +        /
-#   |      /
-#   |    /
-#   |  /
-#   |/
-# 0 +--------+------> time
-#       maxtime (4 years?)
-*/
+// Voting escrow to have time-weighted votes
+// Votes have a weight depending on time, so that users are committed
+// to the future of (whatever they are voting for).
+// The weight in this implementation is linear, and lock cannot be more than maxtime:
+// w ^
+// 1 +        /
+//   |      /
+//   |    /
+//   |  /
+//   |/
+// 0 +--------+------> time
+//       maxtime (4 years?)
 
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import { IERC20 } from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 struct Point {
   int128 bias;
-  int128 slope; // # -dweight / dt
+  int128 slope; // -dweight / dt
   uint256 ts;
   uint256 blk; // block
 }
-/* We cannot really do block numbers per se b/c slope is per time, not per block
- * and per block could be fairly bad b/c Ethereum changes blocktimes.
- * What we can do is to extrapolate ***At functions */
+// We cannot really do block numbers per se b/c slope is per time, not per block
+// and per block could be fairly bad b/c Ethereum changes blocktimes.
+// What we can do is to extrapolate ***At functions
 
 struct LockedBalance {
   int128 amount;
