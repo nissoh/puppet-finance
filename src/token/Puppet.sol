@@ -41,24 +41,24 @@ contract Puppet {
     // =========
     // DAO-controlled reserve - 12%
     // Core - 8%
-    // Private Sale - 5%
-    // Public Sale - 5%
+    // Private sale - 5%
+    // Public sale - 5%
     // == 30% ==
     // left for inflation: 70%
 
     // Supply parameters
-    // NOTE: the supply of tokens will start at 3 million, and approximately 1 million new tokens will be minted in the first year
-    // Each subsequent year, the number of new tokens minted will decrease by about 17.4%
-    // leading to a total supply of approximately 10 million tokens after 15 years
-    uint256 private constant INITIAL_SUPPLY = 1_303_030_303;
-    // uint256 private constant INITIAL_SUPPLY = 3_000_000; // 3 million
+    // NOTE: the supply of tokens will start at 3 million, and approximately 1.3 million new tokens will be minted in the first year.
+    // Each subsequent year, the number of new tokens minted will decrease by about 14%,
+    // leading to a total supply of approximately 10 million tokens after 50 years
+    // uint256 public constant TOTAL_SUPPLY = 10_000_000;
+    // uint256 private constant INITIAL_SUPPLY = 1_303_030_303;
+    uint256 private constant INITIAL_SUPPLY = 3000000;
 
-    uint256 private constant INITIAL_RATE = 274_815_283 * 10 ** 18 / YEAR; // leading to 43% premine
-    // uint256 private constant INITIAL_RATE = 1000000 * 10 ** 18 / YEAR; // equals to 1 million tokens per year
+    // uint256 private constant INITIAL_RATE = 274_815_283 * 10 ** 18 / YEAR; // leading to 43% premine
+    uint256 private constant INITIAL_RATE = 1125000 * 10 ** 18 / YEAR;
 
     uint256 private constant RATE_REDUCTION_TIME = YEAR;
-    uint256 private constant RATE_REDUCTION_COEFFICIENT = 1189207115002721024; // 2 ** (1/4) * 1e18 (~18.92%) 
-    // uint256 private constant RATE_REDUCTION_COEFFICIENT = todo; // (~10%)
+    uint256 private constant RATE_REDUCTION_COEFFICIENT = 1189207115002721024; // 2 ** (1/4) * 1e18
 
     uint256 private constant RATE_DENOMINATOR = 10 ** 18;
     uint256 private constant INFLATION_DELAY = 86400;
