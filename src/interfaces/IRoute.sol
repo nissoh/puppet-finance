@@ -208,14 +208,14 @@ interface IRoute is IPositionRouterCallbackReceiver {
     // ============================================================================================
 
     event Liquidate();
-    event Callback(bytes32 indexed requestKey, bool indexed isExecuted, bool indexed isIncrease);
+    event Callback(bytes32 requestKey, bool isExecuted, bool isIncrease);
     event PluginApproval();
-    event IncreaseRequest(bytes32 indexed requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice);
-    event DecreaseRequest(bytes32 indexed requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice);
+    event IncreaseRequest(bytes32 requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice);
+    event DecreaseRequest(bytes32 requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice);
     event Repay(uint256 totalAssets);
     event Reset();
     event RescueTokenFunds(uint256 amount, address token, address receiver);
-    event Freeze(bool indexed freeze);
+    event Freeze(bool freeze);
 
     // ============================================================================================
     // Errors

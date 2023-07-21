@@ -328,9 +328,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             _isIncrease
         );
 
-        address[] memory _puppets = _route.isPositionOpen() ? _route.puppets() : subscribedPuppets(_routeKey);
-
-        emit RequestPosition(_puppets, msg.sender, _routeTypeKey, getPositionKey(_route));
+        if (_route.isPositionOpen()) {
+            emit AdjustPosition(msg.sender, address(_route), _isIncrease, _requestKey, _routeTypeKey, getPositionKey(_route));
+        } else {
+            emit OpenPosition(subscribedPuppets(_routeKey), msg.sender, address(_route), _isIncrease, _requestKey, _routeTypeKey, getPositionKey(_route));
+        }
     }
 
     /// @inheritdoc IOrchestrator
@@ -491,7 +493,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         _requestKey = _route.decreaseSize{ value: msg.value }(_adjustPositionParams, _executionFee);
 
-        emit AdjustTargetLeverage(_requestKey, _routeKey, getPositionKey(_route));
+        emit AdjustTargetLeverage(address(_route), _requestKey, _routeKey, getPositionKey(_route));
     }
 
     /// @inheritdoc IOrchestrator
@@ -502,7 +504,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         _route.liquidate();
 
-        emit LiquidatePosition(_routeKey, getPositionKey(_route));
+        emit LiquidatePosition(address(_route), _routeKey, getPositionKey(_route));
     }
 
     // called by owner

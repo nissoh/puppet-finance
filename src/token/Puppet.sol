@@ -22,46 +22,44 @@ contract Puppet {
     address public admin;
 
     uint256 public decimals;
-    uint256 private total_supply;
+    uint256 private _totalSupply;
 
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowances;
 
     // Supply variables
-    int128 public mining_epoch;
+    int128 public miningEpoch;
 
-    uint256 public start_epoch_time;
     uint256 public rate;
-    uint256 public start_epoch_supply;
+    uint256 public startEpochTime;
+    uint256 public startEpochSupply;
 
     // General constants
-    uint256 private constant YEAR = 86400 * 365;
+    uint256 private constant _YEAR = 86400 * 365;
+
+    // Supply parameters
+    // NOTE: the supply of tokens will start at 3 million, and approximately 1,125,000 new tokens will be minted in the first year.
+    // Each subsequent year, the number of new tokens minted will decrease by about 18%,
+    // leading to a total supply of approximately 10 million tokens after 50 years.
+    // Supply is capped at 10 million tokens either way.
 
     // Allocation:
     // =========
-    // DAO-controlled reserve - 12%
-    // Core - 8%
+    // DAO controlled reserve - 14%
+    // Core - 10%
     // Private sale - 5%
-    // Public sale - 5%
+    // GBC airdrop - 1%
     // == 30% ==
     // left for inflation: 70%
 
-    // Supply parameters
-    // NOTE: the supply of tokens will start at 3 million, and approximately 1.3 million new tokens will be minted in the first year.
-    // Each subsequent year, the number of new tokens minted will decrease by about 14%,
-    // leading to a total supply of approximately 10 million tokens after 50 years
-    // uint256 public constant TOTAL_SUPPLY = 10_000_000;
-    // uint256 private constant INITIAL_SUPPLY = 1_303_030_303;
-    uint256 private constant INITIAL_SUPPLY = 3000000;
+    uint256 public constant MAX_SUPPLY = 10000000 * 1e18;
 
-    // uint256 private constant INITIAL_RATE = 274_815_283 * 10 ** 18 / YEAR; // leading to 43% premine
-    uint256 private constant INITIAL_RATE = 1125000 * 10 ** 18 / YEAR;
-
-    uint256 private constant RATE_REDUCTION_TIME = YEAR;
-    uint256 private constant RATE_REDUCTION_COEFFICIENT = 1189207115002721024; // 2 ** (1/4) * 1e18
-
-    uint256 private constant RATE_DENOMINATOR = 10 ** 18;
-    uint256 private constant INFLATION_DELAY = 86400;
+    uint256 private constant _INITIAL_SUPPLY = 3000000;
+    uint256 private constant _INITIAL_RATE = 1125000 * 1e18 / _YEAR;
+    uint256 private constant _RATE_REDUCTION_TIME = _YEAR;
+    uint256 private constant _RATE_REDUCTION_COEFFICIENT = 1189207115002721024; // 2 ** (1/4) * 1e18
+    uint256 private constant _RATE_DENOMINATOR = 1e18;
+    uint256 private constant _INFLATION_DELAY = 86400;
 
     // ============================================================================================
     // Constructor
@@ -72,19 +70,19 @@ contract Puppet {
     /// @param _symbol Token symbol
     /// @param _decimals Number of decimals for token
     constructor(string memory _name, string memory _symbol, uint256 _decimals) {
-        uint256 init_supply = INITIAL_SUPPLY * 10 ** _decimals;
+        uint256 _initSupply = _INITIAL_SUPPLY * 10 ** _decimals;
         name = _name;
         symbol = _symbol;
         decimals = _decimals;
-        balanceOf[msg.sender] = init_supply;
-        total_supply = init_supply;
+        balanceOf[msg.sender] = _initSupply;
+        _totalSupply = _initSupply;
         admin = msg.sender;
-        emit Transfer(address(0), msg.sender, init_supply);
+        emit Transfer(address(0), msg.sender, _initSupply);
 
-        start_epoch_time = block.timestamp + INFLATION_DELAY - RATE_REDUCTION_TIME;
-        mining_epoch = -1;
+        startEpochTime = block.timestamp + _INFLATION_DELAY - _RATE_REDUCTION_TIME;
+        miningEpoch = -1;
         rate = 0;
-        start_epoch_supply = init_supply;
+        startEpochSupply = _initSupply;
     }
 
     // ============================================================================================
@@ -94,60 +92,60 @@ contract Puppet {
     // view functions
 
     /// @notice Current number of tokens in existence (claimed or unclaimed)
-    function available_supply() external view returns (uint256) {
-        return _available_supply();
+    function availableSupply() external view returns (uint256) {
+        return _availableSupply();
     }
 
     /// @notice How much supply is mintable from start timestamp till end timestamp
     /// @param start Start of the time interval (timestamp)
     /// @param end End of the time interval (timestamp)
     /// @return Tokens mintable from `start` till `end`
-    function mintable_in_timeframe(uint256 start, uint256 end) external view returns (uint256) {
+    function mintableInTimeframe(uint256 start, uint256 end) external view returns (uint256) {
         require(start <= end, "start > end");
-        uint256 to_mint = 0;
-        uint256 current_epoch_time = start_epoch_time;
-        uint256 current_rate = rate;
+        uint256 _toMint = 0;
+        uint256 _currentEpochTime = startEpochTime;
+        uint256 _currentRate = rate;
 
         // Special case if end is in future (not yet minted) epoch
-        if (end > current_epoch_time + RATE_REDUCTION_TIME) {
-            current_epoch_time += RATE_REDUCTION_TIME;
-            current_rate = current_rate * RATE_DENOMINATOR / RATE_REDUCTION_COEFFICIENT;
+        if (end > _currentEpochTime + _RATE_REDUCTION_TIME) {
+            _currentEpochTime += _RATE_REDUCTION_TIME;
+            _currentRate = _currentRate * _RATE_DENOMINATOR / _RATE_REDUCTION_COEFFICIENT;
         }
 
-        require(end <= current_epoch_time + RATE_REDUCTION_TIME, "too far in future");
+        require(end <= _currentEpochTime + _RATE_REDUCTION_TIME, "too far in future");
 
         for (uint256 i = 0; i < 999; i++) { // Curve will not work in 1000 years. Darn!
-            if (end >= current_epoch_time) {
-                uint256 current_end = end;
-                if (current_end > current_epoch_time + RATE_REDUCTION_TIME) {
-                    current_end = current_epoch_time + RATE_REDUCTION_TIME;
+            if (end >= _currentEpochTime) {
+                uint256 _currentEnd = end;
+                if (_currentEnd > _currentEpochTime + _RATE_REDUCTION_TIME) {
+                    _currentEnd = _currentEpochTime + _RATE_REDUCTION_TIME;
                 }
 
-                uint256 current_start = start;
-                if (current_start >= current_epoch_time + RATE_REDUCTION_TIME) {
+                uint256 _currentStart = start;
+                if (_currentStart >= _currentEpochTime + _RATE_REDUCTION_TIME) {
                     break; // We should never get here but what if...
-                } else if (current_start < current_epoch_time) {
-                    current_start = current_epoch_time;
+                } else if (_currentStart < _currentEpochTime) {
+                    _currentStart = _currentEpochTime;
                 }
 
-                to_mint += current_rate * (current_end - current_start);
+                _toMint += _currentRate * (_currentEnd - _currentStart);
 
-                if (start >= current_epoch_time) {
+                if (start >= _currentEpochTime) {
                     break;
                 }
             }
 
-            current_epoch_time -= RATE_REDUCTION_TIME;
-            current_rate = current_rate * RATE_REDUCTION_COEFFICIENT / RATE_DENOMINATOR; // double-division with rounding made rate a bit less => good
-            require(current_rate <= INITIAL_RATE, "This should never happen");
+            _currentEpochTime -= _RATE_REDUCTION_TIME;
+            _currentRate = _currentRate * _RATE_REDUCTION_COEFFICIENT / _RATE_DENOMINATOR; // double-division with rounding made rate a bit less => good
+            require(_currentRate <= _INITIAL_RATE, "This should never happen");
         }
 
-        return to_mint;
+        return _toMint;
     }
 
     /// @notice Total number of tokens in existence.
     function totalSupply() external view returns (uint256) {
-        return total_supply;
+        return _totalSupply;
     }
 
     /// @notice Check the amount of tokens that an owner allowed to a spender
@@ -162,39 +160,39 @@ contract Puppet {
 
     /// @notice Update mining rate and supply at the start of the epoch
     /// @dev Callable by any address, but only once per epoch. Total supply becomes slightly larger if this function is called late
-    function update_mining_parameters() external {
-        require(block.timestamp >= start_epoch_time + RATE_REDUCTION_TIME, "too soon!");
-        _update_mining_parameters();
+    function updateMiningParameters() external {
+        require(block.timestamp >= startEpochTime + _RATE_REDUCTION_TIME, "too soon!");
+        _updateMiningParameters();
     }
 
     /// @notice Get timestamp of the current mining epoch start while simultaneously updating mining parameters
     /// @return Timestamp of the epoch
-    function start_epoch_time_write() external returns (uint256) {
-        uint256 _start_epoch_time = start_epoch_time;
-        if (block.timestamp >= _start_epoch_time + RATE_REDUCTION_TIME) {
-            _update_mining_parameters();
-            return start_epoch_time;
+    function startEpochTimeWrite() external returns (uint256) {
+        uint256 _startEpochTime = startEpochTime;
+        if (block.timestamp >= _startEpochTime + _RATE_REDUCTION_TIME) {
+            _updateMiningParameters();
+            return startEpochTime;
         } else {
-            return _start_epoch_time;
+            return _startEpochTime;
         }
     }
 
     /// @notice Get timestamp of the next mining epoch start while simultaneously updating mining parameters
     /// @return Timestamp of the next epoch
-    function future_epoch_time_write() external returns (uint256) {
-        uint256 _start_epoch_time = start_epoch_time;
-        if (block.timestamp >= _start_epoch_time + RATE_REDUCTION_TIME) {
-            _update_mining_parameters();
-            return start_epoch_time + RATE_REDUCTION_TIME;
+    function futureEpochTimeWrite() external returns (uint256) {
+        uint256 _startEpochTime = startEpochTime;
+        if (block.timestamp >= _startEpochTime + _RATE_REDUCTION_TIME) {
+            _updateMiningParameters();
+            return startEpochTime + _RATE_REDUCTION_TIME;
         } else {
-            return _start_epoch_time + RATE_REDUCTION_TIME;
+            return _startEpochTime + _RATE_REDUCTION_TIME;
         }
     }
 
     /// @notice Set the minter address
     /// @dev Only callable once, when minter has not yet been set
     /// @param _minter Address of the minter
-    function set_minter(address _minter) external {
+    function setMinter(address _minter) external {
         require(msg.sender == admin, "admin only");
         require(minter == address(0), "can set the minter only once, at creation");
         minter = _minter;
@@ -204,7 +202,7 @@ contract Puppet {
     /// @notice Set the new admin.
     /// @dev After all is set up, admin only can change the token name
     /// @param _admin New admin address
-    function set_admin(address _admin) external {
+    function setAdmin(address _admin) external {
         require(msg.sender == admin, "admin only");
         admin = _admin;
         emit SetAdmin(_admin);
@@ -260,12 +258,13 @@ contract Puppet {
     function mint(address _to, uint256 _value) external returns (bool) {
         require(msg.sender == minter, "minter only");
         require(_to != address(0), "zero address");
-        if (block.timestamp >= start_epoch_time + RATE_REDUCTION_TIME) {
-            _update_mining_parameters();
+        if (block.timestamp >= startEpochTime + _RATE_REDUCTION_TIME) {
+            _updateMiningParameters();
         }
-        uint256 _total_supply = total_supply + _value;
-        require(_total_supply <= _available_supply(), "exceeds allowable mint amount");
-        total_supply = _total_supply;
+        uint256 _newTotalSupply = _totalSupply + _value;
+        require(_newTotalSupply <= _availableSupply(), "exceeds allowable mint amount");
+        require(_newTotalSupply <= MAX_SUPPLY, "exceeds max supply");
+        _totalSupply = _newTotalSupply;
         balanceOf[_to] += _value;
         emit Transfer(address(0), _to, _value);
         return true;
@@ -277,7 +276,7 @@ contract Puppet {
     /// @return bool success
     function burn(uint256 _value) external returns (bool) {
         balanceOf[msg.sender] -= _value;
-        total_supply -= _value;
+        _totalSupply -= _value;
         emit Transfer(msg.sender, address(0), _value);
         return true;
     }
@@ -286,7 +285,7 @@ contract Puppet {
     /// @dev Only callable by the admin account
     /// @param _name New token name
     /// @param _symbol New token symbol
-    function set_name(string memory _name, string memory _symbol) external {
+    function setName(string memory _name, string memory _symbol) external {
         require(msg.sender == admin, "only admin is allowed to change name");
         name = _name;
         symbol = _symbol;
@@ -298,30 +297,30 @@ contract Puppet {
 
     // view functions
 
-    function _available_supply() internal view returns (uint256) {
-        return start_epoch_supply + (block.timestamp - start_epoch_time) * rate;
+    function _availableSupply() internal view returns (uint256) {
+        return startEpochSupply + (block.timestamp - startEpochTime) * rate;
     }
 
     // mutated functions
 
     /// @dev Update mining rate and supply at the start of the epoch. Any modifying mining call must also call this
-    function _update_mining_parameters() internal {
+    function _updateMiningParameters() internal {
         uint256 _rate = rate;
-        uint256 _start_epoch_supply = start_epoch_supply;
+        uint256 _startEpochSupply = startEpochSupply;
 
-        start_epoch_time += RATE_REDUCTION_TIME;
-        mining_epoch += 1;
+        startEpochTime += _RATE_REDUCTION_TIME;
+        miningEpoch += 1;
 
         if (_rate == 0) {
-            _rate = INITIAL_RATE;
+            _rate = _INITIAL_RATE;
         } else {
-            _start_epoch_supply += _rate * RATE_REDUCTION_TIME;
-            start_epoch_supply = _start_epoch_supply;
-            _rate = _rate * RATE_DENOMINATOR / RATE_REDUCTION_COEFFICIENT;
+            _startEpochSupply += _rate * _RATE_REDUCTION_TIME;
+            startEpochSupply = _startEpochSupply;
+            _rate = _rate * _RATE_DENOMINATOR / _RATE_REDUCTION_COEFFICIENT;
         }
 
         rate = _rate;
 
-        emit UpdateMiningParameters(block.timestamp, _rate, _start_epoch_supply);
+        emit UpdateMiningParameters(block.timestamp, _rate, _startEpochSupply);
     }
 }

@@ -41,5 +41,5 @@ interface IRouteFactory {
     // Events
     // ============================================================================================
 
-    event RouteCreated(address indexed caller, address indexed route, address indexed orchestrator, address trader, address collateralToken, address indexToken, bool isLong);
+    event RouteCreated(address indexed caller, address route, address orchestrator, address trader, address collateralToken, address indexToken, bool isLong);
 }
