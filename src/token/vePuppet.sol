@@ -79,7 +79,7 @@ contract vePuppet is Ownable, ReentrancyGuard {
     mapping(address => uint256) public user_point_epoch;
     mapping(uint256 => int128) public slope_changes; // time -> signed slope change
 
-    string public constant name = "vePUPPET";
+    string public constant name = "Vote-escrowed PUPPET";
     string public constant symbol = "vePUPPET";
     string public constant version = "1.0.0";
     uint8 public constant decimals = 18;

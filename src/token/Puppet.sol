@@ -38,9 +38,9 @@ contract Puppet {
     uint256 private constant _YEAR = 86400 * 365;
 
     // Supply parameters
-    // NOTE: the supply of tokens will start at 3 million, and approximately 1,125,000 new tokens will be minted in the first year.
+    // NOTE: the supply of tokens will start at 3 million, and approximately 1,115,000 new tokens will be minted in the first year.
     // Each subsequent year, the number of new tokens minted will decrease by about 18%,
-    // leading to a total supply of approximately 10 million tokens after 50 years.
+    // leading to a total supply of approximately 10 million tokens after about 40 years.
     // Supply is capped at 10 million tokens either way.
 
     // Allocation:
@@ -55,7 +55,7 @@ contract Puppet {
     uint256 public constant MAX_SUPPLY = 10000000 * 1e18;
 
     uint256 private constant _INITIAL_SUPPLY = 3000000;
-    uint256 private constant _INITIAL_RATE = 1125000 * 1e18 / _YEAR;
+    uint256 private constant _INITIAL_RATE = 1115000 * 1e18 / _YEAR;
     uint256 private constant _RATE_REDUCTION_TIME = _YEAR;
     uint256 private constant _RATE_REDUCTION_COEFFICIENT = 1189207115002721024; // 2 ** (1/4) * 1e18
     uint256 private constant _RATE_DENOMINATOR = 1e18;
@@ -138,6 +138,10 @@ contract Puppet {
             _currentEpochTime -= _RATE_REDUCTION_TIME;
             _currentRate = _currentRate * _RATE_REDUCTION_COEFFICIENT / _RATE_DENOMINATOR; // double-division with rounding made rate a bit less => good
             require(_currentRate <= _INITIAL_RATE, "This should never happen");
+        }
+
+        if (_toMint > MAX_SUPPLY - _totalSupply) {
+            _toMint = MAX_SUPPLY - _totalSupply;
         }
 
         return _toMint;
@@ -263,7 +267,6 @@ contract Puppet {
         }
         uint256 _newTotalSupply = _totalSupply + _value;
         require(_newTotalSupply <= _availableSupply(), "exceeds allowable mint amount");
-        require(_newTotalSupply <= MAX_SUPPLY, "exceeds max supply");
         _totalSupply = _newTotalSupply;
         balanceOf[_to] += _value;
         emit Transfer(address(0), _to, _value);
@@ -297,8 +300,12 @@ contract Puppet {
 
     // view functions
 
-    function _availableSupply() internal view returns (uint256) {
-        return startEpochSupply + (block.timestamp - startEpochTime) * rate;
+    function _availableSupply() internal view returns (uint256) { 
+        return _min(startEpochSupply + (block.timestamp - startEpochTime) * rate, MAX_SUPPLY);
+    }
+
+    function _min(uint256 _a, uint256 _b) internal pure returns (uint256) {
+        return _a < _b ? _a : _b;
     }
 
     // mutated functions

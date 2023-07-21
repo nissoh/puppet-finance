@@ -50,7 +50,7 @@ contract testPuppetERC20 is Test, DeployerUtilities {
 
         uint256 _mintableForFirstEpoch = puppetERC20.mintableInTimeframe(puppetERC20.startEpochTime(), puppetERC20.startEpochTime() + (86400 * 365));
 
-        assertApproxEqAbs(_mintableForFirstEpoch, 1125000 * 1e18, 1e20, "testParamsOnFinishedEpochs: E7"); // make sure ~1,125,000 tokens will be emitted in 1st year
+        assertApproxEqAbs(_mintableForFirstEpoch, 1115000 * 1e18, 1e20, "testParamsOnFinishedEpochs: E7"); // make sure ~1,125,000 tokens will be emitted in 1st year
 
         skip(86400 * 365 / 2); // skip half of 1st epoch (year)
         assertEq(puppetERC20.availableSupply(), puppetERC20.totalSupply() + (_mintableForFirstEpoch / 2), "testParamsOnFinishedEpochs: E8");
@@ -61,35 +61,36 @@ contract testPuppetERC20 is Test, DeployerUtilities {
         skip(86400 * 365 / 2); // skip 2nd half of 1st epoch (year)
         assertEq(puppetERC20.availableSupply(), puppetERC20.totalSupply() + (_mintableForFirstEpoch), "testParamsOnFinishedEpochs: E8");
 
-        _testMint(_mintableForFirstEpoch);
+        _testMint(_mintableForFirstEpoch); // this also starts the next epoch
 
         uint256 _mintedLastEpoch = _mintableForFirstEpoch;
-        for (uint256 i = 0; i < 49; i++) {
-            // puppetERC20.updateMiningParameters(); // start Epoch
-
+        for (uint256 i = 0; i < 39; i++) {
             uint256 _mintableForEpoch = puppetERC20.mintableInTimeframe(puppetERC20.startEpochTime(), puppetERC20.startEpochTime() + (86400 * 365));
 
+            assertTrue(_mintableForEpoch > 0, "testParamsOnFinishedEpochs: E9:");
+
              // make sure inflation is decreasing by ~18% each year
-            assertApproxEqAbs(_mintableForEpoch, _mintedLastEpoch - (_mintedLastEpoch * 18 / 100), 1e23, "testParamsOnFinishedEpochs: E9:");
+            assertApproxEqAbs(_mintableForEpoch, _mintedLastEpoch - (_mintedLastEpoch * 18 / 100), 1e23, "testParamsOnFinishedEpochs: E10:");
 
             skip(86400 * 365); // skip the entire epoch (year)
 
-            _testMint(_mintableForEpoch);
+            _testMint(_mintableForEpoch); // this also starts the next epoch
 
             _mintedLastEpoch = _mintableForEpoch;
         }
 
-        assertEq(puppetERC20.availableSupply(), 10000000 * 1e18, "testParamsOnFinishedEpochs: E10:");
-        assertEq(puppetERC20.totalSupply(), 10000000 * 1e18, "testParamsOnFinishedEpochs: E11:");
+        assertEq(puppetERC20.availableSupply(), 10000000 * 1e18, "testParamsOnFinishedEpochs: E11:");
+        assertEq(puppetERC20.totalSupply(), 10000000 * 1e18, "testParamsOnFinishedEpochs: E12:");
+
+        vm.startPrank(minter);
+        vm.expectRevert(); // reverts with ```exceeds allowable mint amount```        
+        puppetERC20.mint(owner, 1);
+        vm.stopPrank();
     }
 
     function _testMint(uint256 _mintableForEpoch) internal {
         uint256 _aliceBalanceBefore = puppetERC20.balanceOf(alice);
         uint256 _totalSupplyBefore = puppetERC20.totalSupply();
-
-        if ((_totalSupplyBefore + _mintableForEpoch) > puppetERC20.MAX_SUPPLY()) {
-            _mintableForEpoch = puppetERC20.MAX_SUPPLY() - _totalSupplyBefore;
-        }
 
         assertEq(puppetERC20.totalSupply(), _totalSupplyBefore, "_testMint: E1");
 
@@ -101,9 +102,6 @@ contract testPuppetERC20 is Test, DeployerUtilities {
         vm.stopPrank();
 
         assertEq(puppetERC20.availableSupply(), _totalSupplyBefore + _mintableForEpoch, "_testMint: E2");
-        console.log("puppetERC20.availableSupply(): ", puppetERC20.availableSupply());
-        console.log("_totalSupplyBefore: ", _totalSupplyBefore);
-        console.log("_mintableForEpoch: ", _mintableForEpoch);
         assertEq(puppetERC20.totalSupply(), _totalSupplyBefore + _mintableForEpoch, "_testMint: E3");
         assertEq(puppetERC20.balanceOf(alice), _aliceBalanceBefore + _mintableForEpoch, "_testMint: E4");
     }
