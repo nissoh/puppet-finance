@@ -43,7 +43,7 @@ contract testPuppetERC20 is Test, DeployerUtilities {
 
     function testParamsOnFinishedEpochs() public {
 
-        skip(86400); // skip INFLATION_DELAY
+        skip(86400); // skip INFLATION_DELAY (1 day)
 
         // First Epoch
         puppetERC20.updateMiningParameters(); // start 1st epoch

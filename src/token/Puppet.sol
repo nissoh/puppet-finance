@@ -41,7 +41,7 @@ contract Puppet {
     // NOTE: the supply of tokens will start at 3 million, and approximately 1,115,000 new tokens will be minted in the first year.
     // Each subsequent year, the number of new tokens minted will decrease by about 18%,
     // leading to a total supply of approximately 10 million tokens after about 40 years.
-    // Supply is capped at 10 million tokens either way.
+    // Supply is hard-capped at 10 million tokens either way.
 
     // Allocation:
     // =========
