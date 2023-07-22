@@ -9,11 +9,15 @@ pragma solidity 0.8.19;
 
 contract Puppet {
 
+    // events
+
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
     event UpdateMiningParameters(uint256 time, uint256 rate, uint256 supply);
     event SetMinter(address minter);
     event SetAdmin(address admin);
+
+    // ERC20 variables
 
     string public name;
     string public symbol;
@@ -27,17 +31,18 @@ contract Puppet {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowances;
 
-    // Supply variables
+    // supply variables
+
     int128 public miningEpoch;
 
     uint256 public rate;
     uint256 public startEpochTime;
     uint256 public startEpochSupply;
 
-    // General constants
+    // supply constants
+
     uint256 private constant _YEAR = 86400 * 365;
 
-    // Supply parameters
     // NOTE: the supply of tokens will start at 3 million, and approximately 1,115,000 new tokens will be minted in the first year.
     // Each subsequent year, the number of new tokens minted will decrease by about 18%,
     // leading to a total supply of approximately 10 million tokens after about 40 years.
