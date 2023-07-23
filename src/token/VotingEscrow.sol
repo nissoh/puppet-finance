@@ -25,7 +25,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 // 0 +--------+------> time
 //       maxtime (4 years?)
 
-// todo - add (1) auto-max-relock, (2) global emergency unlock (unlocked)
+// todo - add (1) auto-max-relock
 contract VotingEscrow is ReentrancyGuard {
 
     using SafeERC20 for IERC20;
@@ -63,6 +63,8 @@ contract VotingEscrow is ReentrancyGuard {
     string public name;
     string public symbol;
     string public version;
+
+    bool public unlocked;
 
     address public token;
     address public admin; // Can and will be a smart contract
@@ -123,11 +125,16 @@ contract VotingEscrow is ReentrancyGuard {
     }
 
     // ============================================================================================
-    // Modifier
+    // Modifiers
     // ============================================================================================
 
     modifier onlyUserOrWhitelist() {
         if (msg.sender != tx.origin) require(contractsWhitelist[msg.sender], "Smart contract not allowed");
+        _;
+    }
+
+    modifier notUnlocked() {
+        require(!unlocked, "unlocked globally");
         _;
     }
 
@@ -259,7 +266,7 @@ contract VotingEscrow is ReentrancyGuard {
     // mutated functions
 
     /// @notice Record global data to checkpoint
-    function checkpoint() external {
+    function checkpoint() external notUnlocked {
         _checkpoint(address(0), LockedBalance(0, 0), LockedBalance(0, 0));
     }
 
@@ -268,7 +275,7 @@ contract VotingEscrow is ReentrancyGuard {
     /// cannot extend their locktime and deposit for a brand new user
     /// @param _addr User's wallet address
     /// @param _value Amount to add to user's lock
-    function depositFor(address _addr, uint256 _value) external nonReentrant {
+    function depositFor(address _addr, uint256 _value) external nonReentrant notUnlocked {
         LockedBalance memory _locked = locked[_addr];
 
         require(_value > 0, "need non-zero value");
@@ -281,7 +288,7 @@ contract VotingEscrow is ReentrancyGuard {
     /// @notice Deposit `_value` tokens for `msg.sender` and lock until `_unlockTime`
     /// @param _value Amount to deposit
     /// @param _unlockTime Epoch time when tokens unlock, rounded down to whole weeks
-    function createLock(uint256 _value, uint256 _unlockTime) external onlyUserOrWhitelist nonReentrant {
+    function createLock(uint256 _value, uint256 _unlockTime) external onlyUserOrWhitelist nonReentrant notUnlocked {
         require(_value > 0, "need non-zero value");
         require(locked[msg.sender].amount == 0, "Withdraw old tokens first");
 
@@ -294,7 +301,7 @@ contract VotingEscrow is ReentrancyGuard {
 
     /// @notice Deposit `_value` additional tokens for `msg.sender` without modifying the unlock time
     /// @param _value Amount of tokens to deposit and add to the lock
-    function increaseAmount(uint256 _value) external onlyUserOrWhitelist nonReentrant {
+    function increaseAmount(uint256 _value) external onlyUserOrWhitelist nonReentrant notUnlocked {
         LockedBalance memory _locked = locked[msg.sender];
 
         require(_value > 0, "need non-zero value");
@@ -306,7 +313,7 @@ contract VotingEscrow is ReentrancyGuard {
 
     /// @notice Extend the unlock time for `msg.sender` to `_unlockTime`
     /// @param _unlockTime New epoch time for unlocking
-    function increaseUnlockTime(uint256 _unlockTime) external onlyUserOrWhitelist nonReentrant {
+    function increaseUnlockTime(uint256 _unlockTime) external onlyUserOrWhitelist nonReentrant notUnlocked {
         LockedBalance memory _locked = locked[msg.sender];
 
         require(_locked.amount > 0, "No existing lock found");
@@ -325,7 +332,7 @@ contract VotingEscrow is ReentrancyGuard {
         LockedBalance memory _locked = locked[msg.sender];
 
         require(_locked.amount > 0, "No existing lock found");
-        require(_locked.end <= block.timestamp, "The lock didn't expire");
+        if (!unlocked) require(_locked.end <= block.timestamp, "The lock didn't expire");
 
         uint256 value = int256(_locked.amount).toUint256();
 
@@ -375,6 +382,12 @@ contract VotingEscrow is ReentrancyGuard {
         contractsWhitelist[addr] = false;
     }
 
+    /// @notice Unlock all locked balances
+    function unlock() external {
+        require(msg.sender == admin, "dev: admin only");
+        unlocked = true;
+    }
+
     // ============================================================================================
     // Internal functions
     // ============================================================================================
@@ -404,22 +417,22 @@ contract VotingEscrow is ReentrancyGuard {
     }
 
     /// @notice Calculate total voting power at some point in the past
-    /// @param point The point (bias/slope) to start search from
-    /// @param t Time to calculate the total voting power at
+    /// @param _point The point (bias/slope) to start search from
+    /// @param _t Time to calculate the total voting power at
     /// @return Total voting power at that time
-    function _supplyAt(Point memory point, uint256 t) internal view returns (uint256) {
-        Point memory _lastPoint = point;
+    function _supplyAt(Point memory _point, uint256 _t) internal view returns (uint256) {
+        Point memory _lastPoint = _point;
         uint256 _tI = (_lastPoint.ts / _WEEK) * _WEEK;
         for (uint256 i = 0; i < 255; ++i) {
             _tI += _WEEK;
             int128 _dSlope = 0;
-            if (_tI > t) {
-                _tI = t;
+            if (_tI > _t) {
+                _tI = _t;
             } else {
                 _dSlope = slopeChanges[_tI];
             }
             _lastPoint.bias -= _lastPoint.slope * (_tI - _lastPoint.ts).toInt256().toInt128();
-            if (_tI == t) {
+            if (_tI == _t) {
                 break;
             }
             _lastPoint.slope += _dSlope;
@@ -435,15 +448,15 @@ contract VotingEscrow is ReentrancyGuard {
 
     /// @notice Get the current voting power for `msg.sender`
     /// @dev Adheres to the ERC20 `balanceOf` interface
-    /// @param addr User wallet address
+    /// @param _addr User wallet address
     /// @param _t Epoch time to return voting power at
     /// @return User voting power
-    function _balanceOf(address addr, uint256 _t) internal view returns (uint256) {
-        uint256 _epoch = userPointEpoch[addr];
+    function _balanceOf(address _addr, uint256 _t) internal view returns (uint256) {
+        uint256 _epoch = userPointEpoch[_addr];
         if (_epoch == 0) {
             return 0;
         } else {
-            Point memory _lastPoint = userPointHistory[addr][_epoch];
+            Point memory _lastPoint = userPointHistory[_addr][_epoch];
             _lastPoint.bias -= _lastPoint.slope * (_t.toInt256() - _lastPoint.ts.toInt256()).toInt128();
             if (_lastPoint.bias < 0) {
                 _lastPoint.bias = 0;
