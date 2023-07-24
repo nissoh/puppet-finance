@@ -534,8 +534,10 @@ contract VotingEscrow is ReentrancyGuard {
             } else {
                 _dSlope = slopeChanges[_tI];
             }
+            
             _lastPoint.bias -= _lastPoint.slope * (_tI - _lastCheckpoint).toInt256().toInt128();
             _lastPoint.slope += _dSlope;
+            
             if (_lastPoint.bias < 0) {
                 // This can happen
                 _lastPoint.bias = 0;
@@ -583,15 +585,15 @@ contract VotingEscrow is ReentrancyGuard {
                 // _oldDslope was <something> - _uOld.slope, so we cancel that
                 _oldDslope += _uOld.slope;
                 if (_newLocked.end == _oldLocked.end) {
-                _oldDslope -= _uNew.slope; // It was a new deposit, not extension
+                    _oldDslope -= _uNew.slope; // It was a new deposit, not extension
                 }
                 slopeChanges[_oldLocked.end] = _oldDslope;
             }
 
             if (_newLocked.end > block.timestamp) {
                 if (_newLocked.end > _oldLocked.end) {
-                _newDslope -= _uNew.slope; // old slope disappeared at this point
-                slopeChanges[_newLocked.end] = _newDslope;
+                    _newDslope -= _uNew.slope; // old slope disappeared at this point
+                    slopeChanges[_newLocked.end] = _newDslope;
                 }
                 // else: we recorded it already in _oldDslope
             }
@@ -616,7 +618,8 @@ contract VotingEscrow is ReentrancyGuard {
         uint256 _supplyBefore = supply;
 
         supply = _supplyBefore + _value;
-        LockedBalance memory _oldLocked = _locked;
+        LockedBalance memory _oldLocked;
+        (_oldLocked.amount, _oldLocked.end) = (_locked.amount, _locked.end);
         // Adding to existing lock, or if a lock is expired - creating a new one
         _locked.amount += _value.toInt256().toInt128();
         if (_unlockTime != 0) _locked.end = _unlockTime;

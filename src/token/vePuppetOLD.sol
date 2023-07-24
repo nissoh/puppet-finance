@@ -39,8 +39,10 @@ struct LockedBalance {
   int128 amount;
   uint256 end;
 }
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
 // todo - add (1) auto-max-relock, (2) change Ownable for Auth
-contract vePuppet is Ownable, ReentrancyGuard {
+contract VePuppet is Ownable, ReentrancyGuard, Test {
 
     using SafeERC20 for IERC20;
 
@@ -265,6 +267,10 @@ contract vePuppet is Ownable, ReentrancyGuard {
         // But in such case we have 0 slope(s)
         last_point.slope += (u_new.slope - u_old.slope);
         last_point.bias += (u_new.bias - u_old.bias);
+        console.log("OLD: u_new.slope %s", uint256(int256(u_new.slope)));
+        console.log("OLD: u_old.slope %s", uint256(int256(u_old.slope)));
+        console.log("OLD: u_new.bias %s", uint256(int256(u_new.bias)));
+        console.log("OLD: u_old.bias %s", uint256(int256(u_old.bias)));
         if (last_point.slope < 0) {
             last_point.slope = 0;
         }
@@ -305,6 +311,11 @@ contract vePuppet is Ownable, ReentrancyGuard {
         u_new.blk = block.number;
         user_point_history[addr][user_epoch] = u_new;
         }
+
+        // last_point.slope += (u_new.slope - u_old.slope);
+        console.log("OLD: last_point.slope", uint256(int256(last_point.slope)));
+        // last_point.bias += (u_new.bias - u_old.bias);
+        console.log("OLD: last_point.bias", uint256(int256(last_point.bias)));
     }
 
     /// @notice Deposit and lock tokens for a user
