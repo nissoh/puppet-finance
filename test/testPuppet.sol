@@ -589,7 +589,7 @@ contract testPuppet is Test, DeployerUtilities {
         if (isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  49303267084287229186720991398763184564 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  44791672951203020406424972243138969070 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 2;
             _acceptablePrice = type(uint256).max;
             _amountInTrader = 0.1 ether;
@@ -597,7 +597,7 @@ contract testPuppet is Test, DeployerUtilities {
         } else {
             // TODO: short position
             // Available amount in USD: PositionRouter.maxGlobalShortSizes(indexToken) - Vault.globalShortSizes(indexToken)
-            _sizeDelta = 22793460367058138613345722013892012527 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
+            _sizeDelta = 25418460367058138613345722013892012527 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
             _sizeDelta = _sizeDelta / 2;
             _acceptablePrice = type(uint256).min;
             _amountInTrader = _sizeDelta / 5 / 1e24;
@@ -1089,7 +1089,7 @@ contract testPuppet is Test, DeployerUtilities {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 49303267084287229186720991398763184564 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 44791672951203020406424972243138969070 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
