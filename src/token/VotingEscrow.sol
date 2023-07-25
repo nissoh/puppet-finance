@@ -467,145 +467,305 @@ contract VotingEscrow is ReentrancyGuard {
 
     // mutated functions
 
-    /// @notice Record global and per-user data to checkpoint
-    /// @param _addr User's wallet address. No user checkpoint if 0x0
-    /// @param _oldLocked Pevious locked amount / end lock time for the user
-    /// @param _newLocked New locked amount / end lock time for the user
-    function _checkpoint(address _addr, LockedBalance memory _oldLocked, LockedBalance memory _newLocked) internal {
-        Point memory _uOld;
-        Point memory _uNew;
-        int128 _oldDslope = 0;
-        int128 _newDslope = 0;
+    // /// @notice Record global and per-user data to checkpoint
+    // /// @param _addr User's wallet address. No user checkpoint if 0x0
+    // /// @param _oldLocked Pevious locked amount / end lock time for the user
+    // /// @param _newLocked New locked amount / end lock time for the user
+    // function _checkpoint(address _addr, LockedBalance memory _oldLocked, LockedBalance memory _newLocked) internal {
+    //     Point memory _uOld;
+    //     Point memory _uNew;
+    //     int128 _oldDslope = 0;
+    //     int128 _newDslope = 0;
+    //     uint256 _epoch = epoch;
+
+    //     if (_addr != address(0x0)) {
+    //         // Calculate slopes and biases
+    //         // Kept at zero when they have to
+    //         if (_oldLocked.end > block.timestamp && _oldLocked.amount > 0) {
+    //             _uOld.slope = _oldLocked.amount / _MAXTIME;
+    //             _uOld.bias = _uOld.slope * (_oldLocked.end - block.timestamp).toInt256().toInt128();
+    //         }
+    //         if (_newLocked.end > block.timestamp && _newLocked.amount > 0) {
+    //             _uNew.slope = _newLocked.amount / _MAXTIME;
+    //             _uNew.bias = _uNew.slope * (_newLocked.end - block.timestamp).toInt256().toInt128();
+    //         }
+
+    //         // Read values of scheduled changes in the slope
+    //         // _oldLocked.end can be in the past and in the future
+    //         // _newLocked.end can ONLY by in the FUTURE unless everything expired: than zeros
+    //         _oldDslope = slopeChanges[_oldLocked.end];
+    //         if (_newLocked.end != 0) {
+    //             if (_newLocked.end == _oldLocked.end) {
+    //                 _newDslope = _oldDslope;
+    //             } else {
+    //                 _newDslope = slopeChanges[_newLocked.end];
+    //             }
+    //         }
+    //     }
+
+    //     Point memory _lastPoint = Point({bias: 0, slope: 0, ts: block.timestamp, blk: block.number});
+    //     if (_epoch > 0) {
+    //         _lastPoint = pointHistory[_epoch];
+    //     }
+    //     uint256 _lastCheckpoint = _lastPoint.ts;
+    //     // initial_last_point is used for extrapolation to calculate block number
+    //     // (approximately, for *At methods) and save them
+    //     // as we cannot figure that out exactly from inside the contract
+
+    //     uint256 _initialLastPointTs = _lastPoint.ts;
+    //     uint256 _initialLastPointBlk = _lastPoint.blk;
+
+    //     uint256 _blockSlope = 0; // dblock/dt
+    //     if (block.timestamp > _lastPoint.ts) {
+    //         _blockSlope = (_MULTIPLIER * (block.number - _lastPoint.blk)) / (block.timestamp - _lastPoint.ts);
+    //     }
+    //     // If last point is already recorded in this block, slope=0
+    //     // But that's ok b/c we know the block in such case
+
+    //     // Go over weeks to fill history and calculate what the current point is
+    //     uint256 _tI = (_lastCheckpoint / _WEEK) * _WEEK;
+    //     for (uint256 i = 0; i < 255; ++i) {
+    //         // Hopefully it won't happen that this won't get used in 5 years!
+    //         // If it does, users will be able to withdraw but vote weight will be broken
+    //         _tI += _WEEK;
+    //         int128 _dSlope = 0;
+    //         if (_tI > block.timestamp) {
+    //             _tI = block.timestamp;
+    //         } else {
+    //             _dSlope = slopeChanges[_tI];
+    //         }
+            
+    //         _lastPoint.bias -= _lastPoint.slope * (_tI - _lastCheckpoint).toInt256().toInt128();
+    //         _lastPoint.slope += _dSlope;
+            
+    //         if (_lastPoint.bias < 0) {
+    //             // This can happen
+    //             _lastPoint.bias = 0;
+    //         }
+    //         if (_lastPoint.slope < 0) {
+    //             // This cannot happen - just in case
+    //             _lastPoint.slope = 0;
+    //         }
+    //         _lastCheckpoint = _tI;
+    //         _lastPoint.ts = _tI;
+    //         _lastPoint.blk = _initialLastPointBlk + (_blockSlope * (_tI - _initialLastPointTs)) / _MULTIPLIER;
+    //         _epoch += 1;
+    //         if (_tI == block.timestamp) {
+    //             _lastPoint.blk = block.number;
+    //             break;
+    //         } else {
+    //             pointHistory[_epoch] = _lastPoint;
+    //         }
+    //     }
+
+    //     epoch = _epoch;
+    //     // Now pointHistory is filled until t=now
+
+    //     if (_addr != address(0x0)) {
+    //         // If last point was in this block, the slope change has been applied already
+    //         // But in such case we have 0 slope(s)
+    //         _lastPoint.slope += (_uNew.slope - _uOld.slope);
+    //         _lastPoint.bias += (_uNew.bias - _uOld.bias);
+    //         if (_lastPoint.slope < 0) {
+    //             _lastPoint.slope = 0;
+    //         }
+    //         if (_lastPoint.bias < 0) {
+    //             _lastPoint.bias = 0;
+    //         }
+    //     }
+
+    //     // Record the changed point into history
+    //     pointHistory[_epoch] = _lastPoint;
+
+    //     if (_addr != address(0x0)) {
+    //         // Schedule the slope changes (slope is going down)
+    //         // We subtract new_user_slope from [_newLocked.end]
+    //         // and add old_user_slope to [_oldLocked.end]
+    //         if (_oldLocked.end > block.timestamp) {
+    //             // _oldDslope was <something> - _uOld.slope, so we cancel that
+    //             _oldDslope += _uOld.slope;
+    //             if (_newLocked.end == _oldLocked.end) {
+    //                 _oldDslope -= _uNew.slope; // It was a new deposit, not extension
+    //             }
+    //             slopeChanges[_oldLocked.end] = _oldDslope;
+    //         }
+
+    //         if (_newLocked.end > block.timestamp) {
+    //             if (_newLocked.end > _oldLocked.end) {
+    //                 _newDslope -= _uNew.slope; // old slope disappeared at this point
+    //                 slopeChanges[_newLocked.end] = _newDslope;
+    //             }
+    //             // else: we recorded it already in _oldDslope
+    //         }
+    //         // Now handle user history
+    //         address addr = _addr;
+    //         uint256 _userEpoch = userPointEpoch[addr] + 1;
+
+    //         userPointEpoch[addr] = _userEpoch;
+    //         _uNew.ts = block.timestamp;
+    //         _uNew.blk = block.number;
+    //         userPointHistory[addr][_userEpoch] = _uNew;
+    //     }
+    // }
+    function _checkpoint(
+        address _addr,
+        LockedBalance memory old_locked,
+        LockedBalance memory new_locked
+    ) internal {
+        Point memory u_old;
+        Point memory u_new;
+        int128 old_dslope = 0;
+        int128 new_dslope = 0;
         uint256 _epoch = epoch;
 
         if (_addr != address(0x0)) {
-            // Calculate slopes and biases
-            // Kept at zero when they have to
-            if (_oldLocked.end > block.timestamp && _oldLocked.amount > 0) {
-                _uOld.slope = _oldLocked.amount / _MAXTIME;
-                _uOld.bias = _uOld.slope * (_oldLocked.end - block.timestamp).toInt256().toInt128();
-            }
-            if (_newLocked.end > block.timestamp && _newLocked.amount > 0) {
-                _uNew.slope = _newLocked.amount / _MAXTIME;
-                _uNew.bias = _uNew.slope * (_newLocked.end - block.timestamp).toInt256().toInt128();
-            }
-
-            // Read values of scheduled changes in the slope
-            // _oldLocked.end can be in the past and in the future
-            // _newLocked.end can ONLY by in the FUTURE unless everything expired: than zeros
-            _oldDslope = slopeChanges[_oldLocked.end];
-            if (_newLocked.end != 0) {
-                if (_newLocked.end == _oldLocked.end) {
-                    _newDslope = _oldDslope;
-                } else {
-                    _newDslope = slopeChanges[_newLocked.end];
-                }
-            }
+        // Calculate slopes and biases
+        // Kept at zero when they have to
+        if (old_locked.end > block.timestamp && old_locked.amount > 0) {
+            u_old.slope = old_locked.amount / _MAXTIME;
+            u_old.bias =
+            u_old.slope *
+            int128(int256(old_locked.end - block.timestamp));
+        }
+        if (new_locked.end > block.timestamp && new_locked.amount > 0) {
+            u_new.slope = new_locked.amount / _MAXTIME;
+            u_new.bias =
+            u_new.slope *
+            int128(int256(new_locked.end - block.timestamp));
         }
 
-        Point memory _lastPoint = Point({bias: 0, slope: 0, ts: block.timestamp, blk: block.number});
+        // Read values of scheduled changes in the slope
+        // old_locked.end can be in the past and in the future
+        // new_locked.end can ONLY by in the FUTURE unless everything expired: than zeros
+        old_dslope = slopeChanges[old_locked.end];
+        if (new_locked.end != 0) {
+            if (new_locked.end == old_locked.end) {
+            new_dslope = old_dslope;
+            } else {
+            new_dslope = slopeChanges[new_locked.end];
+            }
+        }
+        }
+
+        Point memory last_point = Point({
+        bias: 0,
+        slope: 0,
+        ts: block.timestamp,
+        blk: block.number
+        });
         if (_epoch > 0) {
-            _lastPoint = pointHistory[_epoch];
+        last_point = pointHistory[_epoch];
         }
-        uint256 _lastCheckpoint = _lastPoint.ts;
+        uint256 last_checkpoint = last_point.ts;
         // initial_last_point is used for extrapolation to calculate block number
         // (approximately, for *At methods) and save them
         // as we cannot figure that out exactly from inside the contract
 
-        uint256 _initialLastPointTs = _lastPoint.ts;
-        uint256 _initialLastPointBlk = _lastPoint.blk;
+        uint256 initial_last_point_ts = last_point.ts;
+        uint256 initial_last_point_blk = last_point.blk;
 
-        uint256 _blockSlope = 0; // dblock/dt
-        if (block.timestamp > _lastPoint.ts) {
-            _blockSlope = (_MULTIPLIER * (block.number - _lastPoint.blk)) / (block.timestamp - _lastPoint.ts);
+        uint256 block_slope = 0; // dblock/dt
+        if (block.timestamp > last_point.ts) {
+        block_slope =
+            (_MULTIPLIER * (block.number - last_point.blk)) /
+            (block.timestamp - last_point.ts);
         }
         // If last point is already recorded in this block, slope=0
         // But that's ok b/c we know the block in such case
 
         // Go over weeks to fill history and calculate what the current point is
-        uint256 _tI = (_lastCheckpoint / _WEEK) * _WEEK;
+        uint256 t_i = (last_checkpoint / _WEEK) * _WEEK;
         for (uint256 i = 0; i < 255; ++i) {
-            // Hopefully it won't happen that this won't get used in 5 years!
-            // If it does, users will be able to withdraw but vote weight will be broken
-            _tI += _WEEK;
-            int128 _dSlope = 0;
-            if (_tI > block.timestamp) {
-                _tI = block.timestamp;
-            } else {
-                _dSlope = slopeChanges[_tI];
-            }
-            
-            _lastPoint.bias -= _lastPoint.slope * (_tI - _lastCheckpoint).toInt256().toInt128();
-            _lastPoint.slope += _dSlope;
-            
-            if (_lastPoint.bias < 0) {
-                // This can happen
-                _lastPoint.bias = 0;
-            }
-            if (_lastPoint.slope < 0) {
-                // This cannot happen - just in case
-                _lastPoint.slope = 0;
-            }
-            _lastCheckpoint = _tI;
-            _lastPoint.ts = _tI;
-            _lastPoint.blk = _initialLastPointBlk + (_blockSlope * (_tI - _initialLastPointTs)) / _MULTIPLIER;
-            _epoch += 1;
-            if (_tI == block.timestamp) {
-                _lastPoint.blk = block.number;
-                break;
-            } else {
-                pointHistory[_epoch] = _lastPoint;
-            }
+        // Hopefully it won't happen that this won't get used in 5 years!
+        // If it does, users will be able to withdraw but vote weight will be broken
+        t_i += _WEEK;
+        int128 d_slope = 0;
+        if (t_i > block.timestamp) {
+            t_i = block.timestamp;
+        } else {
+            d_slope = slopeChanges[t_i];
+        }
+        last_point.bias -=
+            last_point.slope *
+            int128(int256(t_i - last_checkpoint));
+        last_point.slope += d_slope;
+        if (last_point.bias < 0) {
+            // This can happen
+            last_point.bias = 0;
+        }
+        if (last_point.slope < 0) {
+            // This cannot happen - just in case
+            last_point.slope = 0;
+        }
+        last_checkpoint = t_i;
+        last_point.ts = t_i;
+        last_point.blk =
+            initial_last_point_blk +
+            (block_slope * (t_i - initial_last_point_ts)) /
+            _MULTIPLIER;
+
+        _epoch += 1;
+        if (t_i == block.timestamp) {
+            last_point.blk = block.number;
+            break;
+        } else {
+            pointHistory[_epoch] = last_point;
+        }
         }
 
         epoch = _epoch;
-        // Now pointHistory is filled until t=now
+        // Now point_history is filled until t=now
 
         if (_addr != address(0x0)) {
-            // If last point was in this block, the slope change has been applied already
-            // But in such case we have 0 slope(s)
-            _lastPoint.slope += (_uNew.slope - _uOld.slope);
-            _lastPoint.bias += (_uNew.bias - _uOld.bias);
-            if (_lastPoint.slope < 0) {
-                _lastPoint.slope = 0;
-            }
-            if (_lastPoint.bias < 0) {
-                _lastPoint.bias = 0;
-            }
+        // If last point was in this block, the slope change has been applied already
+        // But in such case we have 0 slope(s)
+        last_point.slope += (u_new.slope - u_old.slope);
+        last_point.bias += (u_new.bias - u_old.bias);
+        if (last_point.slope < 0) {
+            last_point.slope = 0;
+        }
+        if (last_point.bias < 0) {
+            last_point.bias = 0;
+        }
         }
 
         // Record the changed point into history
-        pointHistory[_epoch] = _lastPoint;
+        pointHistory[_epoch] = last_point;
 
         if (_addr != address(0x0)) {
-            // Schedule the slope changes (slope is going down)
-            // We subtract new_user_slope from [_newLocked.end]
-            // and add old_user_slope to [_oldLocked.end]
-            if (_oldLocked.end > block.timestamp) {
-                // _oldDslope was <something> - _uOld.slope, so we cancel that
-                _oldDslope += _uOld.slope;
-                if (_newLocked.end == _oldLocked.end) {
-                    _oldDslope -= _uNew.slope; // It was a new deposit, not extension
-                }
-                slopeChanges[_oldLocked.end] = _oldDslope;
+        // Schedule the slope changes (slope is going down)
+        // We subtract new_user_slope from [new_locked.end]
+        // and add old_user_slope to [old_locked.end]
+        if (old_locked.end > block.timestamp) {
+            // old_dslope was <something> - u_old.slope, so we cancel that
+            old_dslope += u_old.slope;
+            if (new_locked.end == old_locked.end) {
+            old_dslope -= u_new.slope; // It was a new deposit, not extension
             }
-
-            if (_newLocked.end > block.timestamp) {
-                if (_newLocked.end > _oldLocked.end) {
-                    _newDslope -= _uNew.slope; // old slope disappeared at this point
-                    slopeChanges[_newLocked.end] = _newDslope;
-                }
-                // else: we recorded it already in _oldDslope
-            }
-            // Now handle user history
-            address addr = _addr;
-            uint256 _userEpoch = userPointEpoch[addr] + 1;
-
-            userPointEpoch[addr] = _userEpoch;
-            _uNew.ts = block.timestamp;
-            _uNew.blk = block.number;
-            userPointHistory[addr][_userEpoch] = _uNew;
+            slopeChanges[old_locked.end] = old_dslope;
         }
+
+        if (new_locked.end > block.timestamp) {
+            if (new_locked.end > old_locked.end) {
+            new_dslope -= u_new.slope; // old slope disappeared at this point
+            slopeChanges[new_locked.end] = new_dslope;
+            }
+            // else: we recorded it already in old_dslope
+        }
+        // Now handle user history
+        address addr = _addr;
+        uint256 user_epoch = userPointEpoch[addr] + 1;
+
+        userPointEpoch[addr] = user_epoch;
+        u_new.ts = block.timestamp;
+        u_new.blk = block.number;
+        userPointHistory[addr][user_epoch] = u_new;
+        }
+
+        // last_point.slope += (u_new.slope - u_old.slope);
+        // console.log("OLD: last_point.slope", uint256(int256(last_point.slope)));
+        // // last_point.bias += (u_new.bias - u_old.bias);
+        // console.log("OLD: last_point.bias", uint256(int256(last_point.bias)));
     }
 
     /// @notice Deposit and lock tokens for a user

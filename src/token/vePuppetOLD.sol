@@ -267,10 +267,6 @@ contract VePuppet is Ownable, ReentrancyGuard, Test {
         // But in such case we have 0 slope(s)
         last_point.slope += (u_new.slope - u_old.slope);
         last_point.bias += (u_new.bias - u_old.bias);
-        console.log("OLD: u_new.slope %s", uint256(int256(u_new.slope)));
-        console.log("OLD: u_old.slope %s", uint256(int256(u_old.slope)));
-        console.log("OLD: u_new.bias %s", uint256(int256(u_new.bias)));
-        console.log("OLD: u_old.bias %s", uint256(int256(u_old.bias)));
         if (last_point.slope < 0) {
             last_point.slope = 0;
         }
@@ -313,9 +309,9 @@ contract VePuppet is Ownable, ReentrancyGuard, Test {
         }
 
         // last_point.slope += (u_new.slope - u_old.slope);
-        console.log("OLD: last_point.slope", uint256(int256(last_point.slope)));
-        // last_point.bias += (u_new.bias - u_old.bias);
-        console.log("OLD: last_point.bias", uint256(int256(last_point.bias)));
+        // console.log("OLD: last_point.slope", uint256(int256(last_point.slope)));
+        // // last_point.bias += (u_new.bias - u_old.bias);
+        // console.log("OLD: last_point.bias", uint256(int256(last_point.bias)));
     }
 
     /// @notice Deposit and lock tokens for a user
@@ -324,12 +320,7 @@ contract VePuppet is Ownable, ReentrancyGuard, Test {
     /// @param unlock_time New time when to unlock the tokens, or 0 if unchanged
     /// @param locked_balance Previous locked amount / timestamp
     /// @param deposit_type The type of deposit
-    function _deposit_for(
-        address _addr,
-        uint256 _value,
-        uint256 unlock_time,
-        LockedBalance memory locked_balance,
-        DepositType deposit_type
+    function _deposit_for(address _addr, uint256 _value, uint256 unlock_time, LockedBalance memory locked_balance, DepositType deposit_type
     ) internal {
         LockedBalance memory _locked = locked_balance;
         uint256 supply_before = supply;

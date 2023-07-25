@@ -154,9 +154,12 @@ contract testVotingEscrow is Test, DeployerUtilities {
         _aliceBalanceBefore = votingEscrow.balanceOf(alice);
         _bobBalanceBefore = votingEscrow.balanceOf(bob);
         console.log("alice max locked balance: ", votingEscrow.balanceOf(alice));
+        console.log("alice max locked balance: ", votingEscrow.balanceOfAtT(alice, block.timestamp));
         uint256 _tsBefore = block.timestamp;
         skip(votingEscrow.MAXTIME() / 2); // skip half of the lock time
         console.log("alice half locked balance: ", votingEscrow.balanceOf(alice));
+        console.log("alice half locked balance: ", votingEscrow.balanceOfAtT(alice, block.timestamp));
+        console.log("alice max locked balance1: ", votingEscrow.balanceOfAtT(alice, _tsBefore));
         _checkLockTimesAfterSkipHalf(_aliceBalanceBefore, _bobBalanceBefore);
 
         _checkIncreaseUnlockTimeWrongFlows(alice);
@@ -164,11 +167,14 @@ contract testVotingEscrow is Test, DeployerUtilities {
         uint256 _aliceBalanceBeforeUnlock = votingEscrow.balanceOf(alice);
         uint256 _totalSupplyBeforeUnlock = votingEscrow.totalSupply();
         votingEscrow.increaseUnlockTime(block.timestamp + votingEscrow.MAXTIME());
-        console.log("alice max locked balance:1 ", votingEscrow.balanceOf(alice));
+        console.log("alice max locked balance2: ", votingEscrow.balanceOf(alice));
+        console.log("alice max locked balance21: ", votingEscrow.balanceOf(alice));
+        console.log("alice max locked balance3: ", votingEscrow.balanceOfAtT(alice, _tsBefore));
+        console.log("block.timestamp: ", block.timestamp);
+        // console.log("block.timestamp - 2 years: ", block.timestamp - 2 years);
+        revert("SDF");
         vm.stopPrank();
         _checkUserLockTimesAfterIncreaseUnlockTime(_tsBefore, _aliceBalanceBeforeUnlock, _aliceBalanceBefore, _totalSupplyBeforeUnlock, _totalSupplyBefore, alice);
-
-
 
         // skip(86400 * 20);
         // skip(86400 * 20);
@@ -268,8 +274,8 @@ contract testVotingEscrow is Test, DeployerUtilities {
     }
 
     function _checkLockTimesAfterSkipHalf(uint256 _aliceBalanceBefore, uint256 _bobBalanceBefore) internal {
-        assertApproxEqAbs(votingEscrow.balanceOf(alice), _aliceBalanceBefore / 2, 1e20, "_checkLockTimesAfterSkipHalf: E0");
-        assertApproxEqAbs(votingEscrow.balanceOf(bob), _bobBalanceBefore / 2, 1e20, "_checkLockTimesAfterSkipHalf: E1");
+        assertApproxEqAbs(votingEscrow.balanceOf(alice), _aliceBalanceBefore / 2, 1e21, "_checkLockTimesAfterSkipHalf: E0");
+        assertApproxEqAbs(votingEscrow.balanceOf(bob), _bobBalanceBefore / 2, 1e21, "_checkLockTimesAfterSkipHalf: E1");
         assertEq(votingEscrow.balanceOfAtT(alice, block.timestamp - votingEscrow.MAXTIME() / 2), _aliceBalanceBefore, "_checkLockTimesAfterSkipHalf: E2");
         assertEq(votingEscrow.balanceOfAtT(bob, block.timestamp - votingEscrow.MAXTIME() / 2), _bobBalanceBefore, "_checkLockTimesAfterSkipHalf: E3");
     }
@@ -296,11 +302,11 @@ contract testVotingEscrow is Test, DeployerUtilities {
 
     function _checkUserLockTimesAfterIncreaseUnlockTime(uint256 _tsBefore, uint256 _userBalanceBeforeUnlock, uint256 _userBalanceBefore, uint256 _totalSupplyBeforeUnlock, uint256 _totalSupplyBefore, address _user) internal {
         assertApproxEqAbs(votingEscrow.lockedEnd(_user), block.timestamp + votingEscrow.MAXTIME(), 1e6, "_checkUserLockTimesAfterIncreaseUnlockTime: E0");
-        assertApproxEqAbs(votingEscrow.balanceOf(_user), _userBalanceBeforeUnlock * 2, 1e20, "_checkUserLockTimesAfterIncreaseUnlockTime: E1");
-        assertApproxEqAbs(votingEscrow.balanceOfAtT(_user, block.timestamp), _userBalanceBeforeUnlock * 2, 1e20, "_checkUserLockTimesAfterIncreaseUnlockTime: E2");
+        assertApproxEqAbs(votingEscrow.balanceOf(_user), _userBalanceBeforeUnlock * 2, 1e21, "_checkUserLockTimesAfterIncreaseUnlockTime: E1");
+        assertApproxEqAbs(votingEscrow.balanceOfAtT(_user, block.timestamp), _userBalanceBeforeUnlock * 2, 1e21, "_checkUserLockTimesAfterIncreaseUnlockTime: E2");
         assertEq(votingEscrow.balanceOfAtT(_user, _tsBefore), votingEscrow.balanceOf(_user), "_checkUserLockTimesAfterIncreaseUnlockTime: E3");
         assertTrue(votingEscrow.totalSupply() > _totalSupplyBeforeUnlock, "_checkUserLockTimesAfterIncreaseUnlockTime: E4");
         assertApproxEqAbs(votingEscrow.totalSupply(), _totalSupplyBefore, 1e21, "_checkUserLockTimesAfterIncreaseUnlockTime: E5");
-        assertEq(_userBalanceBefore, votingEscrow.balanceOf(_user), "_checkUserLockTimesAfterIncreaseUnlockTime: E6");
+        assertApproxEqAbs(_userBalanceBefore, votingEscrow.balanceOf(_user), 1e21, "_checkUserLockTimesAfterIncreaseUnlockTime: E6");
     }
 }

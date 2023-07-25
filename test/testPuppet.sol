@@ -929,7 +929,8 @@ contract testPuppet is Test, DeployerUtilities {
         });
 
         vm.startPrank(trader);
-        _approve(address(route), _params.swapParams.path[0], type(uint256).max);
+        // _approve(address(route), _params.swapParams.path[0], type(uint256).max);
+        _approve(address(orchestrator), _params.swapParams.path[0], type(uint256).max);
         _requestKey = orchestrator.requestPosition{ value: _params.executionFee }(_params.adjustPositionParams, _params.swapParams, _params.routeTypeKey, _params.executionFee, true);
         vm.stopPrank();
 
@@ -1122,7 +1123,8 @@ contract testPuppet is Test, DeployerUtilities {
         vm.startPrank(address(trader));
         _dealERC20(_frax, trader, _amountInTrader);
         uint256 _traderFraxBalanceBefore = IERC20(_frax).balanceOf(trader);
-        _approve(address(route), _frax, type(uint256).max);
+        // _approve(address(route), _frax, type(uint256).max);
+        _approve(address(orchestrator), _frax, type(uint256).max);
         
         {
             address[] memory _path = new address[](1);

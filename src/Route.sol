@@ -396,8 +396,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         } else {
             if (msg.value != _executionFee) revert InvalidExecutionFee();
 
-            // slither-disable-next-line arbitrary-send-erc20
-            IERC20(_swapParams.path[0]).safeTransferFrom(route.trader, address(this), _swapParams.amount);
+            orchestrator.transferRouteFunds(_swapParams.amount, _swapParams.path[0], address(this));
         }
 
         if (_swapParams.path[0] == route.collateralToken) {
@@ -776,16 +775,6 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         positionIndex += 1;
 
         emit Reset();
-    }
-
-    /// @notice The ```_approve``` function is used to approve a spender to spend a token
-    /// @dev This function is called by ```_getTraderAssets``` and ```_requestIncreasePosition```
-    /// @param _spender The address of the spender
-    /// @param _token The address of the token
-    /// @param _amount The amount of the token to approve
-    function _approve(address _spender, address _token, uint256 _amount) internal {
-        IERC20(_token).safeApprove(_spender, 0);
-        IERC20(_token).safeApprove(_spender, _amount);
     }
 
     // ============================================================================================

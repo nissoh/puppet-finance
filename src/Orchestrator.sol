@@ -300,6 +300,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bool _isLong
     ) external payable returns (bytes32 _routeKey, bytes32 _requestKey) {
         _routeKey = createRoute(_collateralToken, _indexToken, _isLong);
+
         _requestKey = requestPosition(
             _adjustPositionParams,
             _swapParams,
@@ -320,6 +321,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bytes32 _routeKey = getRouteKey(msg.sender, _routeTypeKey);
         IRoute _route = IRoute(_routeInfo[_routeKey].route);
         if (address(_route) == address(0)) revert RouteNotRegistered();
+
+        if (_isIncrease && (msg.value == _executionFee)) {
+            address _token = _swapParams.path[0];
+            IERC20(_token).safeTransferFrom(msg.sender, address(this), _swapParams.amount);
+        }
 
         _requestKey = _route.requestPosition{ value: msg.value }(
             _adjustPositionParams,
