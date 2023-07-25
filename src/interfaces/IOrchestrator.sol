@@ -338,11 +338,11 @@ interface IOrchestrator {
     // Events
     // ============================================================================================
 
-    event CreateRoute(address indexed trader, address route, bytes32 routeTypeKey);
+    event CreateRoute(address indexed trader, address indexed route, bytes32 routeTypeKey);
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
 
     event ApprovePlugin(address indexed caller, bytes32 routeTypeKey);
-    event SubscribeRoute(uint256 allowance, address indexed trader, address indexed puppet, bytes32 routeTypeKey, bool subscribe);
+    event SubscribeRoute(uint256 allowance, address indexed trader, address indexed puppet, address indexed route, bytes32 routeTypeKey, bool subscribe);
     event SetThrottleLimit(address indexed puppet, bytes32 routeType, uint256 throttleLimit);
 
     event UpdateOpenTimestamp(address indexed puppet, bytes32 routeType, uint256 timestamp);
@@ -350,12 +350,12 @@ interface IOrchestrator {
     event Deposit(uint256 amount, address asset, address caller, address indexed puppet);
     event Withdraw(uint256 amount, address asset, address indexed receiver, address indexed puppet);
 
-    event AdjustPosition(address indexed trader, address route, bool isIncrease, bytes32 requestKey, bytes32 routeTypeKey, bytes32 positionKey); 
-    event OpenPosition(address[] puppets, address indexed trader, address route, bool isIncrease, bytes32 requestKey, bytes32 routeTypeKey, bytes32 positionKey);
-    event ExecutePosition(address route, bytes32 requestKey, bool isExecuted, bool isIncrease);
+    event AdjustPosition(address indexed trader, address indexed route, bool isIncrease, bytes32 requestKey, bytes32 routeTypeKey, bytes32 positionKey); 
+    event OpenPosition(address[] puppets, address indexed trader, address indexed route, bool isIncrease, bytes32 requestKey, bytes32 routeTypeKey, bytes32 positionKey);
+    event ExecutePosition(address indexed route, bytes32 requestKey, bool isExecuted, bool isIncrease);
     event SharesIncrease(uint256[] puppetsShares, uint256 traderShares, uint256 totalSupply, bytes32 positionKey);
-    event AdjustTargetLeverage(address route, bytes32 requestKey, bytes32 routeKey, bytes32 positionKey);
-    event LiquidatePosition(address route, bytes32 routeKey, bytes32 positionKey);
+    event AdjustTargetLeverage(address indexed route, bytes32 requestKey, bytes32 routeKey, bytes32 positionKey);
+    event LiquidatePosition(address indexed route, bytes32 routeKey, bytes32 positionKey);
 
     event DebitPuppet(uint256 amount, address asset, address indexed puppet, address indexed caller);
     event CreditPuppet(uint256 amount, address asset, address indexed puppet, address indexed caller);
@@ -367,9 +367,9 @@ interface IOrchestrator {
     event SetReferralCode(bytes32 referralCode);
     event SetRouteFactory(address factory);
     event SetKeeper(address keeper);
-    event RescueRouteFunds(uint256 amount, address token, address indexed receiver, address route);
+    event RescueRouteFunds(uint256 amount, address token, address indexed receiver, address indexed route);
     event Rescue(uint256 amount, address token, address indexed receiver);
-    event FreezeRoute(address route, bool freeze);
+    event FreezeRoute(address indexed route, bool freeze);
 
     // ============================================================================================
     // Errors

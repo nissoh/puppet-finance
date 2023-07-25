@@ -129,6 +129,73 @@ contract testPuppet is Test, DeployerUtilities {
         vm.stopPrank();
     }
 
+    // function testNoPuppets() public { // TODO
+    //     uint256 _amountInTrader = 7000000000000000;
+
+    //     IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
+    //         collateralDelta: _amountInTrader,
+    //         sizeDelta: 423187392160214960286443333131327,
+    //         acceptablePrice: 1901049187695085547550000000000000,
+    //         minOut: 0
+    //     });
+
+    //     address[] memory _path = new address[](1);
+    //     _path[0] = _weth;
+
+    //     IRoute.SwapParams memory _swapParams = IRoute.SwapParams({
+    //         path: _path,
+    //         amount: _amountInTrader,
+    //         minOut: 0
+    //     });
+
+    //     uint256 _execFee = 180000000000000;
+
+    //     vm.startPrank(alice);
+    //     // _approve(address(route), _weth, type(uint256).max);
+    //     orchestrator.registerRouteAndRequestPosition{ value: _amountInTrader + _execFee }(
+    //         _adjustPositionParams,
+    //         _swapParams,
+    //         _execFee,
+    //         _weth,
+    //         _weth,
+    //         true
+    //     );
+    //     vm.stopPrank();
+
+    //     vm.startPrank(GMXPositionRouterKeeper); // keeper
+    //     IGMXPositionRouter(_gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
+    //     vm.stopPrank();
+    //     _adjustPositionParams = IRoute.AdjustPositionParams({
+    //         collateralDelta: 0,
+    //         sizeDelta: 423187392160214960286443333131327,
+    //         acceptablePrice: 1845828860145553655600000000000000,
+    //         minOut: 0
+    //     });
+
+    //     _swapParams = IRoute.SwapParams({
+    //         path: _path,
+    //         amount: 0,
+    //         minOut: 0
+    //     });
+
+    //     bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(_weth, _weth, true);
+
+    //     vm.startPrank(alice);
+    //     orchestrator.requestPosition{ value: _execFee }(
+    //         _adjustPositionParams,
+    //         _swapParams,
+    //         _routeTypeKey,
+    //         _execFee,
+    //         false
+    //     );
+    //     vm.stopPrank();
+
+    //     vm.startPrank(GMXPositionRouterKeeper); // keeper
+    //     IGMXPositionRouter(_gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
+    //     vm.stopPrank();
+        
+    // }
+
     function testCorrectFlow() public {
         uint256 _assets = 1 ether;
 
@@ -589,10 +656,10 @@ contract testPuppet is Test, DeployerUtilities {
         if (isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  44791672951203020406424972243138969070 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  46091672951203020406424972243138969070 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 2;
             _acceptablePrice = type(uint256).max;
-            _amountInTrader = 0.1 ether;
+            _amountInTrader = 10 ether;
             // _amountInTrader = _sizeDelta / 2000 
         } else {
             // TODO: short position
@@ -1089,7 +1156,7 @@ contract testPuppet is Test, DeployerUtilities {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 44791672951203020406424972243138969070 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 46091672951203020406424972243138969070 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;

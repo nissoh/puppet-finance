@@ -368,7 +368,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             EnumerableSet.remove(_route.puppets, msg.sender);
         }
 
-        emit SubscribeRoute(_allowance, _trader, msg.sender, _routeTypeKey, _subscribe);
+        emit SubscribeRoute(_allowance, _trader, msg.sender, _route.route, _routeTypeKey, _subscribe);
     }
 
     /// @inheritdoc IOrchestrator

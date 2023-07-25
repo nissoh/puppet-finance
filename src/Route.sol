@@ -721,20 +721,12 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         uint256 _totalAssets = IERC20(_route.collateralToken).balanceOf(address(this));
         if (_totalAssets > 0) {
             uint256 _puppetsAssets = 0;
-            uint256 _totalSupply = 0;
+            uint256 _totalSupply = _isExecuted ? _position.totalSupply : _request.totalSupply;
             uint256 _balance = _totalAssets;
             address[] memory _puppets = _position.puppets;
             for (uint256 i = 0; i < _puppets.length; i++) {
-                uint256 _shares;
                 address _puppet = _puppets[i];
-                if (!_isExecuted) {
-                    if (i == 0) _totalSupply = _request.totalSupply;
-                    _shares = _request.puppetsShares[i];
-                } else {
-                    if (i == 0) _totalSupply = _position.totalSupply;
-                    _shares = _position.puppetsShares[i];
-                }
-
+                uint256 _shares = _isExecuted ? _position.puppetsShares[i] : _request.puppetsShares[i];
                 if (_shares > 0) {
                     uint256 _assets = _convertToAssets(_balance, _totalSupply, _shares);
 
