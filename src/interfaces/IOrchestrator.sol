@@ -114,6 +114,12 @@ interface IOrchestrator {
     /// @return _allowance The allowance percentage
     function puppetAllowancePercentage(address _puppet, address _route) external view returns (uint256 _allowance);
 
+    /// @notice The ```puppetSubscriptionExpiry``` function returns the subscription expiry for a given Puppet and Route
+    /// @param _puppet The address of the Puppet
+    /// @param _route The address of the Route
+    /// @return _expiry The subscription expiry
+    function puppetSubscriptionExpiry(address _puppet, address _route) external view returns (uint256);
+
     /// @notice The ```puppetAccountBalance``` function returns the account balance for a given Puppet and Asset
     /// @param _puppet The address of the Puppet
     /// @param _asset The address of the Asset
@@ -168,21 +174,12 @@ interface IOrchestrator {
 
     // Trader
 
-    /// @notice The ```createRoute``` function is called by a Trader to create a new Route
+    /// @notice The ```registerRouteAccount``` function is called by a Trader to register a new Route Account
     /// @param _collateralToken The address of the Collateral Token
     /// @param _indexToken The address of the Index Token
     /// @param _isLong The boolean value of the position
     /// @return bytes32 The Route key
-    function createRoute(address _collateralToken, address _indexToken, bool _isLong) external returns (bytes32);
-
-    /// @notice The ```registerRouteAndRequestPosition``` function is called by a Trader to register a new Route and create an Increase Position Request
-    /// @param _adjustPositionParams The adjusment params for the position
-    /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
-    /// @param _executionFee The total execution fee, paid by the Trader in ETH
-    /// @param _collateralToken The address of the Collateral Token
-    /// @param _indexToken The address of the Index Token
-    /// @param _isLong The boolean value of the position
-    function registerRouteAndRequestPosition(IRoute.AdjustPositionParams memory _adjustPositionParams, IRoute.SwapParams memory _swapParams, uint256 _executionFee, address _collateralToken, address _indexToken, bool _isLong) external payable returns (bytes32 _routeKey, bytes32 _requestKey);
+    function registerRouteAccount(address _collateralToken, address _indexToken, bool _isLong) external returns (bytes32);
 
     /// @notice The ```requestPosition``` function creates a new position request
     /// @param _adjustPositionParams The adjusment params for the position
@@ -193,6 +190,15 @@ interface IOrchestrator {
     /// @return _requestKey The request key
     function requestPosition(IRoute.AdjustPositionParams memory _adjustPositionParams, IRoute.SwapParams memory _swapParams, bytes32 _routeTypeKey, uint256 _executionFee, bool _isIncrease) external payable returns (bytes32 _requestKey);
 
+    /// @notice The ```registerRouteAccountAndRequestPosition``` function is called by a Trader to register a new Route Account and create an Increase Position Request
+    /// @param _adjustPositionParams The adjusment params for the position
+    /// @param _swapParams The swap data of the Trader, enables the Trader to add collateral with a non-collateral token
+    /// @param _executionFee The total execution fee, paid by the Trader in ETH
+    /// @param _collateralToken The address of the Collateral Token
+    /// @param _indexToken The address of the Index Token
+    /// @param _isLong The boolean value of the position
+    function registerRouteAccountAndRequestPosition(IRoute.AdjustPositionParams memory _adjustPositionParams, IRoute.SwapParams memory _swapParams, uint256 _executionFee, address _collateralToken, address _indexToken, bool _isLong) external payable returns (bytes32 _routeKey, bytes32 _requestKey);
+
     /// @notice The ```approvePlugin``` function is used to approve the GMX plugin in case we change the gmxPositionRouter address
     /// @param _routeTypeKey The RouteType key
     function approvePlugin(bytes32 _routeTypeKey) external;
@@ -201,17 +207,19 @@ interface IOrchestrator {
 
     /// @notice The ```subscribeRoute``` function is called by a Puppet to update his subscription to a Route
     /// @param _allowance The allowance percentage
+    /// @param _subscriptionPeriod The subscription period
     /// @param _trader The address of the Trader
     /// @param _routeTypeKey The RouteType key
     /// @param _subscribe Whether to subscribe or unsubscribe
-    function subscribeRoute(uint256 _allowance, address _trader, bytes32 _routeTypeKey, bool _subscribe) external;
+    function subscribeRoute(uint256 _allowance, uint256 _subscriptionPeriod, address _trader, bytes32 _routeTypeKey, bool _subscribe) external;
 
     /// @notice The ```batchSubscribeRoute``` function is called by a Puppet to update his subscription to a list of Routes
     /// @param _allowances The allowance percentage array
+    /// @param _subscriptionPeriods The subscription period array
     /// @param _traders The address array of Traders
     /// @param _routeTypeKeys The RouteType key array
     /// @param _subscribe Whether to subscribe or unsubscribe
-    function batchSubscribeRoute(uint256[] memory _allowances, address[] memory _traders, bytes32[] memory _routeTypeKeys, bool[] memory _subscribe) external;
+    function batchSubscribeRoute(uint256[] memory _allowances, uint256[] memory _subscriptionPeriods, address[] memory _traders, bytes32[] memory _routeTypeKeys, bool[] memory _subscribe) external;
 
     /// @notice The ```deposit``` function is called by a Puppet to deposit funds into his deposit account
     /// @param _amount The amount to deposit
@@ -338,7 +346,7 @@ interface IOrchestrator {
     // Events
     // ============================================================================================
 
-    event CreateRoute(address indexed trader, address indexed route, bytes32 routeTypeKey);
+    event RegisterRouteAccount(address indexed trader, address indexed route, bytes32 routeTypeKey);
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
 
     event ApprovePlugin(address indexed caller, bytes32 routeTypeKey);
@@ -381,6 +389,7 @@ interface IOrchestrator {
     error MismatchedInputArrays();
     error RouteNotRegistered();
     error InvalidAllowancePercentage();
+    error InvalidSubscriptionPeriod();
     error ZeroAddress();
     error ZeroAmount();
     error InvalidAmount();

@@ -30,9 +30,9 @@ import {Route} from "./Route.sol";
 contract RouteFactory is IRouteFactory {
 
     /// @inheritdoc IRouteFactory
-    function createRoute(address _orchestrator, address _trader, address _collateralToken, address _indexToken, bool _isLong) external returns (address _route) {
+    function registerRouteAccount(address _orchestrator, address _trader, address _collateralToken, address _indexToken, bool _isLong) external returns (address _route) {
         _route = address(new Route(_orchestrator, _trader, _collateralToken, _indexToken, _isLong));
 
-        emit RouteCreated(msg.sender, _route, _orchestrator, _trader, _collateralToken, _indexToken, _isLong);
+        emit RegisterRouteAccount(msg.sender, _route, _orchestrator, _trader, _collateralToken, _indexToken, _isLong);
     }
 }

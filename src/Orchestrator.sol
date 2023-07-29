@@ -46,6 +46,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     struct PuppetInfo {
+        mapping(bytes32 => uint256) subscriptionExpiry; // routeKey => expiration
         mapping(bytes32 => uint256) throttleLimits; // routeType => throttle limit (in seconds)
         mapping(bytes32 => uint256) lastPositionOpenedTimestamp; // routeType => timestamp
         mapping(address => uint256) depositAccount; // collateralToken => balance
@@ -167,7 +168,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _puppets = new address[](EnumerableSet.length(_puppetsSet));
 
         for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
-            _puppets[i] = EnumerableSet.at(_puppetsSet, i);
+            address _puppet = EnumerableSet.at(_puppetsSet, i);
+            if (_puppetInfo[_puppet].subscriptionExpiry[_routeKey] > block.timestamp) _puppets[i] = _puppet;
         }
     }
 
@@ -188,18 +190,37 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     /// @inheritdoc IOrchestrator
     function puppetSubscriptions(address _puppet) external view returns (address[] memory _subscriptions) {
-        EnumerableMap.AddressToUintMap storage _allowances = _puppetInfo[_puppet].allowances;
+        PuppetInfo storage __puppetInfo = _puppetInfo[_puppet];
+        EnumerableMap.AddressToUintMap storage _allowances = __puppetInfo.allowances;
 
         uint256 _subscriptionCount = EnumerableMap.length(_allowances);
         _subscriptions = new address[](_subscriptionCount);
         for (uint256 i = 0; i < _subscriptionCount; i++) {
-            (_subscriptions[i],) = EnumerableMap.at(_allowances, i);
+            (address _route,) = EnumerableMap.at(_allowances, i);
+            if (__puppetInfo.subscriptionExpiry[IRoute(_route).routeKey()] > block.timestamp) {
+                _subscriptions[i] = _route;
+            }
+            // (_subscriptions[i],) = EnumerableMap.at(_allowances, i);
         }
     }
 
     /// @inheritdoc IOrchestrator
     function puppetAllowancePercentage(address _puppet, address _route) external view returns (uint256) {
-        return EnumerableMap.get(_puppetInfo[_puppet].allowances, _route);
+        if (_puppetInfo[_puppet].subscriptionExpiry[IRoute(_route).routeKey()] > block.timestamp) {
+            return EnumerableMap.get(_puppetInfo[_puppet].allowances, _route);
+        } else {
+            return 0;
+        }
+    }
+
+    /// @inheritdoc IOrchestrator
+    function puppetSubscriptionExpiry(address _puppet, address _route) external view returns (uint256) {
+        uint256 _expiry = _puppetInfo[_puppet].subscriptionExpiry[IRoute(_route).routeKey()];
+        if (_expiry > block.timestamp) {
+            return _expiry;
+        } else {
+            return 0;
+        }
     }
 
     /// @inheritdoc IOrchestrator
@@ -260,7 +281,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     /// @inheritdoc IOrchestrator
     // slither-disable-next-line reentrancy-no-eth
-    function createRoute(address _collateralToken, address _indexToken, bool _isLong) public nonReentrant returns (bytes32 _routeKey) {
+    function registerRouteAccount(address _collateralToken, address _indexToken, bool _isLong) public nonReentrant returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
 
         bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
@@ -269,7 +290,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _routeKey = getRouteKey(msg.sender, _routeTypeKey);
         if (_routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
-        address _routeAddr = IRouteFactory(routeFactory).createRoute(address(this), msg.sender, _collateralToken, _indexToken, _isLong);
+        address _routeAddr = IRouteFactory(routeFactory).registerRouteAccount(address(this), msg.sender, _collateralToken, _indexToken, _isLong);
 
         RouteType memory _routeType = RouteType({
             collateralToken: _collateralToken,
@@ -287,27 +308,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         isRoute[_routeAddr] = true;
         _routes.push(_routeAddr);
 
-        emit CreateRoute(msg.sender, _routeAddr, _routeTypeKey);
-    }
-
-    /// @inheritdoc IOrchestrator
-    function registerRouteAndRequestPosition(
-        IRoute.AdjustPositionParams memory _adjustPositionParams,
-        IRoute.SwapParams memory _swapParams,
-        uint256 _executionFee,
-        address _collateralToken,
-        address _indexToken,
-        bool _isLong
-    ) external payable returns (bytes32 _routeKey, bytes32 _requestKey) {
-        _routeKey = createRoute(_collateralToken, _indexToken, _isLong);
-
-        _requestKey = requestPosition(
-            _adjustPositionParams,
-            _swapParams,
-            getRouteTypeKey(_collateralToken, _indexToken, _isLong),
-            _executionFee,
-            true
-        );
+        emit RegisterRouteAccount(msg.sender, _routeAddr, _routeTypeKey);
     }
 
     /// @inheritdoc IOrchestrator
@@ -321,6 +322,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bytes32 _routeKey = getRouteKey(msg.sender, _routeTypeKey);
         IRoute _route = IRoute(_routeInfo[_routeKey].route);
         if (address(_route) == address(0)) revert RouteNotRegistered();
+
+        _removeExpiredSubscriptions(_routeKey); // todo
 
         if (_isIncrease && (msg.value == _executionFee)) {
             address _token = _swapParams.path[0];
@@ -342,6 +345,26 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
+    function registerRouteAccountAndRequestPosition(
+        IRoute.AdjustPositionParams memory _adjustPositionParams,
+        IRoute.SwapParams memory _swapParams,
+        uint256 _executionFee,
+        address _collateralToken,
+        address _indexToken,
+        bool _isLong
+    ) external payable returns (bytes32 _routeKey, bytes32 _requestKey) {
+        _routeKey = registerRouteAccount(_collateralToken, _indexToken, _isLong);
+
+        _requestKey = requestPosition(
+            _adjustPositionParams,
+            _swapParams,
+            getRouteTypeKey(_collateralToken, _indexToken, _isLong),
+            _executionFee,
+            true
+        );
+    }
+
+    /// @inheritdoc IOrchestrator
     function approvePlugin(bytes32 _routeTypeKey) external {
         address _route = _routeInfo[getRouteKey(msg.sender, _routeTypeKey)].route;
         if (_route == address(0)) revert RouteNotRegistered();
@@ -356,7 +379,13 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // ============================================================================================
 
     /// @inheritdoc IOrchestrator
-    function subscribeRoute(uint256 _allowance, address _trader, bytes32 _routeTypeKey, bool _subscribe) public nonReentrant {
+    function subscribeRoute(
+        uint256 _allowance,
+        uint256 _subscriptionPeriod,
+        address _trader,
+        bytes32 _routeTypeKey, 
+        bool _subscribe
+    ) public nonReentrant {
         bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
         RouteInfo storage _route = _routeInfo[_routeKey];
         PuppetInfo storage _puppet = _puppetInfo[msg.sender];
@@ -366,10 +395,15 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         if (_subscribe) {
             if (_allowance > _BASIS_POINTS_DIVISOR || _allowance == 0) revert InvalidAllowancePercentage();
+            if (_subscriptionPeriod == 0) revert InvalidSubscriptionPeriod();
+
+            _puppet.subscriptionExpiry[_routeKey] = block.timestamp + _subscriptionPeriod;
 
             EnumerableMap.set(_puppet.allowances, _route.route, _allowance);
             EnumerableSet.add(_route.puppets, msg.sender);
         } else {
+            delete _puppet.subscriptionExpiry[_routeKey];
+
             EnumerableMap.remove(_puppet.allowances, _route.route);
             EnumerableSet.remove(_route.puppets, msg.sender);
         }
@@ -380,16 +414,18 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @inheritdoc IOrchestrator
     function batchSubscribeRoute(
         uint256[] memory _allowances,
+        uint256[] memory _subscriptionPeriods,
         address[] memory _traders,
         bytes32[] memory _routeTypeKeys,
         bool[] memory _subscribe
     ) external {
         if (_traders.length != _allowances.length) revert MismatchedInputArrays();
+        if (_traders.length != _subscriptionPeriods.length) revert MismatchedInputArrays();
         if (_traders.length != _subscribe.length) revert MismatchedInputArrays();
         if (_traders.length != _routeTypeKeys.length) revert MismatchedInputArrays();
 
         for (uint256 i = 0; i < _traders.length; i++) {
-            subscribeRoute(_allowances[i], _traders[i], _routeTypeKeys[i], _subscribe[i]);
+            subscribeRoute(_allowances[i], _subscriptionPeriods[i], _traders[i], _routeTypeKeys[i], _subscribe[i]);
         }
     }
 
@@ -601,6 +637,22 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _paused = _pause;
 
         emit Pause(_pause);
+    }
+
+    // ============================================================================================
+    // Internal Function
+    // ============================================================================================
+
+    /// @notice Remove Puppets with expired subscriptions from the Route's Puppets Set
+    /// @param _routeKey Route Key
+    function _removeExpiredSubscriptions(bytes32 _routeKey) internal {
+        EnumerableSet.AddressSet storage _puppetsSet = _routeInfo[_routeKey].puppets;
+        for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
+            address _puppet = EnumerableSet.at(_puppetsSet, i);
+            if (_puppetInfo[_puppet].subscriptionExpiry[_routeKey] <= block.timestamp) {
+                EnumerableSet.remove(_puppetsSet, _puppet);
+            }
+        }
     }
 
     // ============================================================================================

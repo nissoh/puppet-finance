@@ -111,10 +111,14 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @return _puppets The address array of puppets
     function puppets() external view returns (address[] memory _puppets);
 
-    /// @notice The ```participantShares``` function returns the shares of a participant in the current position
-    /// @param _participant The participant address
-    /// @return _shares The shares of the participant
-    function participantShares(address _participant) external view returns (uint256 _shares);
+    /// @notice The ```traderShares``` function returns the shares of the trader in the current position
+    /// @return _shares The shares of the trader
+    function traderShares() external view returns (uint256 _shares);
+
+    /// @notice The ```puppetShares``` function returns the shares of a puppet in the current position
+    /// @param _puppet The puppet address
+    /// @return _shares The shares of the puppet    
+    function puppetShares(address _puppet) external view returns (uint256 _shares);
 
     /// @notice The ```lastAmountIn``` function returns the latest collateral amount added by a participant to the current position
     /// @param _participant The participant address
@@ -235,4 +239,5 @@ interface IRoute is IPositionRouterCallbackReceiver {
     error NotWaitingForKeeperAdjustment();
     error ZeroAmount();
     error KeeperAdjustmentDisabled();
+    error PuppetsArrayChangedWithoutExecution();
 }

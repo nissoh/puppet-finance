@@ -149,13 +149,16 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     }
 
     /// @inheritdoc IRoute
-    function participantShares(address _participant) external view returns (uint256 _shares) {
+    function traderShares() external view returns (uint256 _shares) {
+        return positions[positionIndex].traderShares;
+    }
+
+    /// @inheritdoc IRoute
+    function puppetShares(address _puppet) external view returns (uint256 _shares) {
         Position storage _position = positions[positionIndex];
 
-        if (_participant == route.trader) return _position.traderShares;
-
         for (uint256 i = 0; i < _position.puppets.length; i++) {
-            if (_position.puppets[i] == _participant) {
+            if (_position.puppets[i] == _puppet) {
                 return _position.puppetsShares[i];
             }
         }
@@ -427,7 +430,6 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     ) internal returns (bytes memory _puppetsRequestData, bool _isAdjustmentRequired) {
         bool _isOI = _isOpenInterest();
         uint256 _traderAmountIn = _totalAssets;
-        // uint256 _increaseRatio = _isOI ? _traderAmountIn * _PRECISION / positions[positionIndex].latestAmountIn[route.trader] : 0;
         uint256 _increaseRatio = _isOI ? _traderAmountIn * _PRECISION / positions[positionIndex].lastTraderAmountIn : 0;
 
         uint256 _puppetsAmountIn = 0;
@@ -484,6 +486,9 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
             _puppets = _position.puppets;
         } else {
             _puppets = orchestrator.subscribedPuppets(orchestrator.getRouteKey(route.trader, _routeTypeKey));
+
+            _checkPuppets(_puppets);
+
             _position.lastPuppetsAmountsIn = new uint256[](_puppets.length);
             _position.puppetsShares = new uint256[](_puppets.length);
             _position.puppets = _puppets;
@@ -780,6 +785,19 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     // ============================================================================================
     // Internal View Functions
     // ============================================================================================
+
+    /// @notice The ```_checkPuppets``` function is used to check whether the puppets array has changed between two requests
+    /// @dev This function is called by ```_getRelevantPuppets```
+    /// @param _puppets The puppets array to check
+    function _checkPuppets(address[] memory _puppets) internal {
+        Position storage _position = positions[positionIndex];
+
+        if (_puppets.length != _position.puppets.length) revert PuppetsArrayChangedWithoutExecution();
+
+        for (uint256 i = 0; i < _puppets.length; i++) {
+            if (_puppets[i] != _position.puppets[i]) revert PuppetsArrayChangedWithoutExecution();
+        }
+    }
 
     /// @notice The ```_isOpenInterest``` function is used to indicate whether the Route has open interest
     /// @dev This function is called by ```liquidate```, ```_getPuppetsAssetsAndAllocateRequestShares``` and ```_repayBalance```

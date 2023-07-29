@@ -3,6 +3,8 @@ pragma solidity 0.8.19;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+import {ICRVVotingEscrow} from "../interfaces/ICRVVotingEscrow.sol";
+
 import {DeployerUtilities} from "script/utilities/DeployerUtilities.sol";
 
 import {Puppet} from "src/token/Puppet.sol";
@@ -23,6 +25,8 @@ contract testVotingEscrow is Test, DeployerUtilities {
     Puppet public puppetERC20;
     VotingEscrow public votingEscrow;
     VePuppet public vePuppet;
+
+    ICRVVotingEscrow public crvVotingEscrow = ICRVVotingEscrow(0x5f3b5DfEb7B28CDbD7FAba78963EE202a494e2A2);
 
     function setUp() public {
 
@@ -155,11 +159,15 @@ contract testVotingEscrow is Test, DeployerUtilities {
         _bobBalanceBefore = votingEscrow.balanceOf(bob);
         console.log("alice max locked balance: ", votingEscrow.balanceOf(alice));
         console.log("alice max locked balance: ", votingEscrow.balanceOfAtT(alice, block.timestamp));
+        console.log("total supply: ", votingEscrow.totalSupply());
+        console.log("total supply: ", votingEscrow.totalSupplyAtT(block.timestamp));
         uint256 _tsBefore = block.timestamp;
         skip(votingEscrow.MAXTIME() / 2); // skip half of the lock time
         console.log("alice half locked balance: ", votingEscrow.balanceOf(alice));
         console.log("alice half locked balance: ", votingEscrow.balanceOfAtT(alice, block.timestamp));
         console.log("alice max locked balance1: ", votingEscrow.balanceOfAtT(alice, _tsBefore));
+        console.log("total supply: ", votingEscrow.totalSupply());
+        console.log("total supply: ", votingEscrow.totalSupplyAtT(_tsBefore));
         _checkLockTimesAfterSkipHalf(_aliceBalanceBefore, _bobBalanceBefore);
 
         _checkIncreaseUnlockTimeWrongFlows(alice);
@@ -170,6 +178,8 @@ contract testVotingEscrow is Test, DeployerUtilities {
         console.log("alice max locked balance2: ", votingEscrow.balanceOf(alice));
         console.log("alice max locked balance21: ", votingEscrow.balanceOf(alice));
         console.log("alice max locked balance3: ", votingEscrow.balanceOfAtT(alice, _tsBefore));
+        console.log("total supply at block.timestamp: ", votingEscrow.totalSupplyAtT(block.timestamp));
+        console.log("total supply at _tsBefore: ", votingEscrow.totalSupplyAtT(_tsBefore));
         console.log("block.timestamp: ", block.timestamp);
         // console.log("block.timestamp - 2 years: ", block.timestamp - 2 years);
         revert("SDF");
@@ -191,6 +201,17 @@ contract testVotingEscrow is Test, DeployerUtilities {
 
         // --- WITHDRAW ---
     }
+
+    // function testMutatedOnCRV() public {
+    //     uint256 mainnetFork = vm.createFork(vm.envString("MAINNET_RPC_URL"));
+    //     vm.selectFork(mainnetFork);
+
+    //     // vm.startPrank(alice);
+    //     // _totalSupplyBefore = crvVotingEscrow.totalSupply();
+    //     // IERC20(CRV).approve(address(crvVotingEscrow), _aliceAmountLocked);
+    //     // votingEscrow.create_lock(_aliceAmountLocked, block.timestamp + votingEscrow.MAXTIME());
+    //     // vm.stopPrank();
+    // }
 
     // =======================================================
     // Internal functions
