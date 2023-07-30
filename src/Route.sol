@@ -318,9 +318,21 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
         _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey]);
 
+        if (!_isExecuted && !_isPositionOpen) _resetPuppetsArray();
+
         orchestrator.emitExecutionCallback(_requestKey, _isExecuted, _isIncrease);
 
         emit Callback(_requestKey, _isExecuted, _isIncrease);
+    }
+
+    /// @notice The ```_resetPuppetsArray``` function is used to reset the current Position's Puppets array
+    /// @dev This function is called by ```gmxPositionCallback```
+    function _resetPuppetsArray() internal {
+        Position storage _position = positions[positionIndex];
+
+        delete _position.lastPuppetsAmountsIn;
+        delete _position.puppetsShares;
+        delete _position.puppets;
     }
 
     // ============================================================================================
@@ -792,10 +804,12 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     function _checkPuppets(address[] memory _puppets) internal {
         Position storage _position = positions[positionIndex];
 
-        if (_puppets.length != _position.puppets.length) revert PuppetsArrayChangedWithoutExecution();
+        if (_position.puppets.length > 0) {
+            if (_puppets.length != _position.puppets.length) revert PuppetsArrayChangedWithoutExecution();
 
-        for (uint256 i = 0; i < _puppets.length; i++) {
-            if (_puppets[i] != _position.puppets[i]) revert PuppetsArrayChangedWithoutExecution();
+            for (uint256 i = 0; i < _puppets.length; i++) {
+                if (_puppets[i] != _position.puppets[i]) revert PuppetsArrayChangedWithoutExecution();
+            }
         }
     }
 

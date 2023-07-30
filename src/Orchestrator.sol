@@ -323,7 +323,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         IRoute _route = IRoute(_routeInfo[_routeKey].route);
         if (address(_route) == address(0)) revert RouteNotRegistered();
 
-        _removeExpiredSubscriptions(_routeKey); // todo
+        _removeExpiredSubscriptions(_routeKey);
 
         if (_isIncrease && (msg.value == _executionFee)) {
             address _token = _swapParams.path[0];

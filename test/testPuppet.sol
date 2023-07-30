@@ -297,12 +297,12 @@ contract testPuppet is Test, DeployerUtilities {
         vm.startPrank(GMXPositionRouterKeeper); // keeper
         IGMXPositionRouter(_gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
         vm.stopPrank();
-        revert("Asd");
+
         vm.startPrank(trader);
         orchestrator.requestPosition{ value: _executionFee + 1 ether }(_adjustPositionParams, _swapParams, routeTypeKey, _executionFee, true);
         vm.stopPrank();
 
-        assertEq(route.puppets()[0], address(0), "puppetSubscriptions: E018");
+        assertEq(route.puppets()[0], address(0), "puppetSubscriptions: E019");
 
         vm.startPrank(GMXPositionRouterKeeper); // keeper
         IGMXPositionRouter(_gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
