@@ -123,8 +123,15 @@ interface IOrchestrator {
     /// @notice The ```puppetAccountBalance``` function returns the account balance for a given Puppet and Asset
     /// @param _puppet The address of the Puppet
     /// @param _asset The address of the Asset
-    /// @return _balance The account balance
+    /// @param _balance The address of the Puppet
     function puppetAccountBalance(address _puppet, address _asset) external view returns (uint256 _balance);
+
+    /// @notice The ```puppetAccountBalanceAfterFee``` function returns the account balance for a given Puppet and Asset
+    /// @param _puppet The address of the Puppet
+    /// @param _asset The address of the Asset
+    /// @param _isWithdraw The boolean value of the withdrawal
+    /// @return _balance The account balance
+    function puppetAccountBalanceAfterFee(address _puppet, address _asset, bool _isWithdraw) external view returns (uint256 _balance);
 
     /// @notice The ```puppetThrottleLimit``` function returns the throttle limit for a given Puppet and RouteType
     /// @param _puppet The address of the Puppet
@@ -334,6 +341,11 @@ interface IOrchestrator {
     /// @param _refCode The new referral code
     function setReferralCode(bytes32 _refCode) external;
 
+    /// @notice The ```setFees``` function is called by the Authority to set the management and withdrawal fees
+    /// @param _managmentFee The new management fee
+    /// @param _withdrawalFee The new withdrawal fee
+    function setFees(uint256 _managmentFee, uint256 _withdrawalFee) external;
+
     /// @notice The ```setRouteFactory``` function is called by the Authority to set the Route Factory address
     /// @param _factory The address of the new Route Factory
     function setRouteFactory(address _factory) external;
@@ -374,6 +386,7 @@ interface IOrchestrator {
     event Pause(bool paused);
     event SetReferralCode(bytes32 referralCode);
     event SetRouteFactory(address factory);
+    event SetFees(uint256 managmentFee, uint256 withdrawalFee);
     event SetKeeper(address keeper);
     event RescueRouteFunds(uint256 amount, address token, address indexed receiver, address indexed route);
     event Rescue(uint256 amount, address token, address indexed receiver);
@@ -390,10 +403,11 @@ interface IOrchestrator {
     error RouteNotRegistered();
     error InvalidAllowancePercentage();
     error InvalidSubscriptionPeriod();
-    error ZeroAddress();
-    error ZeroAmount();
     error InvalidAmount();
     error InvalidAsset();
+    error ZeroAddress();
+    error ZeroAmount();
+    error FeeExceedsMax();
     error ZeroBytes32();
     error RouteWaitingForCallback();
 }

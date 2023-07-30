@@ -525,7 +525,9 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         Position storage _position = positions[positionIndex];
 
         uint256 _allowancePercentage = orchestrator.puppetAllowancePercentage(_puppet, address(this));
-        uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / _BASIS_POINTS_DIVISOR;
+        uint256 _allowanceAmount = 
+            (orchestrator.puppetAccountBalanceAfterFee(_puppet, route.collateralToken, false) * _allowancePercentage) 
+            / _BASIS_POINTS_DIVISOR;
 
         if (_context.isOI) {
             uint256 _requiredAdditionalCollateral = _position.lastPuppetsAmountsIn[_puppetIndex] * _context.increaseRatio / _PRECISION;
@@ -801,7 +803,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     /// @notice The ```_checkPuppets``` function is used to check whether the puppets array has changed between two requests
     /// @dev This function is called by ```_getRelevantPuppets```
     /// @param _puppets The puppets array to check
-    function _checkPuppets(address[] memory _puppets) internal {
+    function _checkPuppets(address[] memory _puppets) internal view {
         Position storage _position = positions[positionIndex];
 
         if (_position.puppets.length > 0) {

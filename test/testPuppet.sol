@@ -113,11 +113,13 @@ contract testPuppet is Test, DeployerUtilities {
         decreaseSizeResolver = new DecreaseSizeResolver(_dictator, orchestrator);
 
         bytes4 setRouteTypeSig = orchestrator.setRouteType.selector;
+        bytes4 setFeesPositionSig = orchestrator.setFees.selector;
         bytes4 adjustTargetLeverageSig = orchestrator.adjustTargetLeverage.selector;
         bytes4 liquidatePositionSig = orchestrator.liquidatePosition.selector;
 
         vm.startPrank(owner);
         _setRoleCapability(_dictator, 0, address(orchestrator), setRouteTypeSig, true);
+        _setRoleCapability(_dictator, 0, address(orchestrator), setFeesPositionSig, true);
         _setRoleCapability(_dictator, 1, address(orchestrator), adjustTargetLeverageSig, true);
         _setRoleCapability(_dictator, 1, address(orchestrator), liquidatePositionSig, true);
 
@@ -215,6 +217,8 @@ contract testPuppet is Test, DeployerUtilities {
         _testPuppetDeposit(_assets);
         _testUpdateRoutesSubscription();
         _testSetThrottleLimit();
+        _testWithdrawalFee();
+        _testManagmenetFee();
         _testPuppetWithdraw(_assets);
 
         // route
@@ -234,78 +238,49 @@ contract testPuppet is Test, DeployerUtilities {
         _testRemoveRouteSubscription();
     }
 
-    function _testPuppetSubscriptionExpired() internal {
-        assertEq(orchestrator.puppetSubscriptionExpiry(alice, address(route)), block.timestamp + 4 weeks, "puppetSubscriptionExpiry: E1");
-        assertEq(orchestrator.puppetSubscriptionExpiry(bob, address(route)), block.timestamp + 4 weeks, "puppetSubscriptionExpiry: E2");
-        assertEq(orchestrator.puppetSubscriptionExpiry(yossi, address(route)), block.timestamp + 2 weeks, "puppetSubscriptionExpiry: E3");
-        assertEq(orchestrator.subscribedPuppets(routeKey)[0], alice, "subscribedPuppets: E03");
-        assertEq(orchestrator.subscribedPuppets(routeKey)[1], bob, "subscribedPuppets: E04");
-        assertEq(orchestrator.subscribedPuppets(routeKey)[2], yossi, "subscribedPuppets: E05");
-        assertTrue(orchestrator.puppetAllowancePercentage(alice, address(route)) > 0, "puppetAllowancePercentage: E5");
-        assertTrue(orchestrator.puppetAllowancePercentage(bob, address(route)) > 0, "puppetAllowancePercentage: E6");
-        assertTrue(orchestrator.puppetAllowancePercentage(yossi, address(route)) > 0, "puppetAllowancePercentage: E7");
-        assertEq(orchestrator.puppetSubscriptions(alice)[0], address(route), "puppetSubscriptions: E06");
-        assertEq(orchestrator.puppetSubscriptions(bob)[0], address(route), "puppetSubscriptions: E07");
-        assertEq(orchestrator.puppetSubscriptions(yossi)[0], address(route), "puppetSubscriptions: E08");
-        assertEq(route.puppets().length, 0, "puppets: E008");
+    function _testWithdrawalFee() internal {
+        assertEq(orchestrator.withdrawalFee(), 0);
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setWithdrawalFee: E0");
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setWithdrawalFee: E1");
 
-        skip(3 weeks); // After 3 weeks, Yossi's subscription should expire, but Alice and Bob's should still be active
+        vm.startPrank(owner);
 
-        assertEq(orchestrator.puppetSubscriptionExpiry(alice, address(route)), block.timestamp + 1 weeks, "puppetSubscriptionExpiry: E8");
-        assertEq(orchestrator.puppetSubscriptionExpiry(bob, address(route)), block.timestamp + 1 weeks, "puppetSubscriptionExpiry: E9");
-        assertEq(orchestrator.puppetSubscriptionExpiry(yossi, address(route)), 0, "puppetSubscriptionExpiry: E10");
-        assertEq(orchestrator.subscribedPuppets(routeKey)[0], alice, "subscribedPuppets: E11");
-        assertEq(orchestrator.subscribedPuppets(routeKey)[1], bob, "subscribedPuppets: E12");
-        assertEq(orchestrator.subscribedPuppets(routeKey)[2], address(0), "subscribedPuppets: E13");
-        assertTrue(orchestrator.puppetAllowancePercentage(alice, address(route)) > 0, "puppetAllowancePercentage: E14");
-        assertTrue(orchestrator.puppetAllowancePercentage(bob, address(route)) > 0, "puppetAllowancePercentage: E15");
-        assertEq(orchestrator.puppetAllowancePercentage(yossi, address(route)), 0, "puppetAllowancePercentage: E16");
-        assertEq(orchestrator.puppetSubscriptions(alice)[0], address(route), "puppetSubscriptions: E012");
-        assertEq(orchestrator.puppetSubscriptions(bob)[0], address(route), "puppetSubscriptions: E013");
-        assertEq(orchestrator.puppetSubscriptions(yossi)[0], address(0), "puppetSubscriptions: E014");
+        vm.expectRevert(); // reverts with ```FeeExceedsMax()```
+        orchestrator.setFees(0, 1001);
+        
+        orchestrator.setFees(0, 500); // 5%
 
-        uint256 _executionFee = 180000000000000;
-        address[] memory _path = new address[](1);
-        _path[0] = _weth;
+        assertEq(orchestrator.withdrawalFee(), 500);
+        assertTrue(orchestrator.puppetAccountBalance(alice, _weth) > orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setWithdrawalFee: E2");
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setWithdrawalFee: E3");
 
-        IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
-            collateralDelta: 0,
-            sizeDelta: 0,
-            acceptablePrice: 0,
-            minOut: 0
-        });
+        uint256 _puppetBalanceAfterFee = orchestrator.puppetAccountBalance(alice, _weth) * 95 / 100;
+        assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), _puppetBalanceAfterFee, "_setWithdrawalFee: E4");
 
-        IRoute.SwapParams memory _swapParams = IRoute.SwapParams({
-            path: _path,
-            amount: 1 ether,
-            minOut: 0
-        });
-
-        vm.startPrank(trader);
-        orchestrator.requestPosition{ value: _executionFee + 1 ether }(_adjustPositionParams, _swapParams, routeTypeKey, _executionFee, true);
-
-        assertEq(route.puppets().length, 2, "puppetSubscriptions: E015");
-        assertEq(route.puppets()[0], alice, "puppetSubscriptions: E016");
-        assertEq(route.puppets()[1], bob, "puppetSubscriptions: E017");
-
-        skip(2 weeks); // After another 2 weeks, Alice and Bob's subscriptions should expire
-
-        vm.expectRevert(); // reverts with ```PuppetsArrayChangedWithoutExecution```
-        orchestrator.requestPosition{ value: _executionFee + 1 ether }(_adjustPositionParams, _swapParams, routeTypeKey, _executionFee, true);
+        orchestrator.setFees(0, 0);
         vm.stopPrank();
+    }
 
-        vm.startPrank(GMXPositionRouterKeeper); // keeper
-        IGMXPositionRouter(_gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
-        vm.stopPrank();
+    function _testManagmenetFee() internal {
+        assertEq(orchestrator.managementFee(), 0);
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setManagementFee: E0");
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setManagementFee: E1");
 
-        vm.startPrank(trader);
-        orchestrator.requestPosition{ value: _executionFee + 1 ether }(_adjustPositionParams, _swapParams, routeTypeKey, _executionFee, true);
-        vm.stopPrank();
+        vm.startPrank(owner);
 
-        assertEq(route.puppets()[0], address(0), "puppetSubscriptions: E019");
+        vm.expectRevert(); // reverts with ```FeeExceedsMax()```
+        orchestrator.setFees(1001, 0);
+        
+        orchestrator.setFees(500, 0); // 5%
 
-        vm.startPrank(GMXPositionRouterKeeper); // keeper
-        IGMXPositionRouter(_gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
+        assertEq(orchestrator.managementFee(), 500);
+        assertTrue(orchestrator.puppetAccountBalance(alice, _weth) > orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setManagementFee: E2");
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setManagementFee: E3");
+
+        uint256 _puppetBalanceAfterFee = orchestrator.puppetAccountBalance(alice, _weth) * 95 / 100;
+        assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), _puppetBalanceAfterFee, "_setManagementFee: E4");
+
+        // orchestrator.setFees(0, 0); // todo
         vm.stopPrank();
     }
 
@@ -1068,7 +1043,15 @@ contract testPuppet is Test, DeployerUtilities {
             assertEq(_puppetsShares.length, 3, "_testCreatePosition: E22");
             assertEq(_puppetsAmounts.length, 3, "_testCreatePosition: E23");
             assertEq(_puppets.length, 3, "_testCreatePosition: E24");
-            assertEq(_createPositionFirst.aliceDepositAccountBalanceBefore - _puppetsAmounts[0], orchestrator.puppetAccountBalance(alice, collateralToken), "_testCreatePosition: E25");
+            assertEq(_createPositionFirst.aliceDepositAccountBalanceBefore - _puppetsAmounts[0] - (_createPositionFirst.aliceDepositAccountBalanceBefore * 5 / 100), orchestrator.puppetAccountBalance(alice, collateralToken), "_testCreatePosition: E25");
+            console.log("aliceDepositAccountBalanceBefore: %s", _createPositionFirst.aliceDepositAccountBalanceBefore);
+            console.log("puppetsAmounts[0]: %s", _puppetsAmounts[0]);
+            console.log("fee: %s", _createPositionFirst.aliceDepositAccountBalanceBefore * 5 / 100);
+            console.log("aliceDepositAccountBalanceAfter: %s", orchestrator.puppetAccountBalance(alice, collateralToken));
+            // aliceDepositAccountBalanceBefore: 1,000,000
+            // puppetsAmounts[0]: 95,000
+            // fee: 5,000
+            // aliceDepositAccountBalanceAfter: 90,025
             assertEq(_createPositionFirst.bobDepositAccountBalanceBefore - _puppetsAmounts[1], orchestrator.puppetAccountBalance(bob, collateralToken), "_testCreatePosition: E26");
             assertEq(_createPositionFirst.yossiDepositAccountBalanceBefore - _puppetsAmounts[2], orchestrator.puppetAccountBalance(yossi, collateralToken), "_testCreatePosition: E27");
             assertEq(_puppetsShares[0], _puppetsShares[1], "_testCreatePosition: E28");
@@ -1429,6 +1412,81 @@ contract testPuppet is Test, DeployerUtilities {
 
         (bool _canExec,) = decreaseSizeResolver.checker();
         assertTrue(!_canExec, "_keeperDecreaseSize: E06");
+    }
+
+    function _testPuppetSubscriptionExpired() internal {
+        assertEq(orchestrator.puppetSubscriptionExpiry(alice, address(route)), block.timestamp + 4 weeks, "puppetSubscriptionExpiry: E1");
+        assertEq(orchestrator.puppetSubscriptionExpiry(bob, address(route)), block.timestamp + 4 weeks, "puppetSubscriptionExpiry: E2");
+        assertEq(orchestrator.puppetSubscriptionExpiry(yossi, address(route)), block.timestamp + 2 weeks, "puppetSubscriptionExpiry: E3");
+        assertEq(orchestrator.subscribedPuppets(routeKey)[0], alice, "subscribedPuppets: E03");
+        assertEq(orchestrator.subscribedPuppets(routeKey)[1], bob, "subscribedPuppets: E04");
+        assertEq(orchestrator.subscribedPuppets(routeKey)[2], yossi, "subscribedPuppets: E05");
+        assertTrue(orchestrator.puppetAllowancePercentage(alice, address(route)) > 0, "puppetAllowancePercentage: E5");
+        assertTrue(orchestrator.puppetAllowancePercentage(bob, address(route)) > 0, "puppetAllowancePercentage: E6");
+        assertTrue(orchestrator.puppetAllowancePercentage(yossi, address(route)) > 0, "puppetAllowancePercentage: E7");
+        assertEq(orchestrator.puppetSubscriptions(alice)[0], address(route), "puppetSubscriptions: E06");
+        assertEq(orchestrator.puppetSubscriptions(bob)[0], address(route), "puppetSubscriptions: E07");
+        assertEq(orchestrator.puppetSubscriptions(yossi)[0], address(route), "puppetSubscriptions: E08");
+        assertEq(route.puppets().length, 0, "puppets: E008");
+
+        skip(3 weeks); // After 3 weeks, Yossi's subscription should expire, but Alice and Bob's should still be active
+
+        assertEq(orchestrator.puppetSubscriptionExpiry(alice, address(route)), block.timestamp + 1 weeks, "puppetSubscriptionExpiry: E8");
+        assertEq(orchestrator.puppetSubscriptionExpiry(bob, address(route)), block.timestamp + 1 weeks, "puppetSubscriptionExpiry: E9");
+        assertEq(orchestrator.puppetSubscriptionExpiry(yossi, address(route)), 0, "puppetSubscriptionExpiry: E10");
+        assertEq(orchestrator.subscribedPuppets(routeKey)[0], alice, "subscribedPuppets: E11");
+        assertEq(orchestrator.subscribedPuppets(routeKey)[1], bob, "subscribedPuppets: E12");
+        assertEq(orchestrator.subscribedPuppets(routeKey)[2], address(0), "subscribedPuppets: E13");
+        assertTrue(orchestrator.puppetAllowancePercentage(alice, address(route)) > 0, "puppetAllowancePercentage: E14");
+        assertTrue(orchestrator.puppetAllowancePercentage(bob, address(route)) > 0, "puppetAllowancePercentage: E15");
+        assertEq(orchestrator.puppetAllowancePercentage(yossi, address(route)), 0, "puppetAllowancePercentage: E16");
+        assertEq(orchestrator.puppetSubscriptions(alice)[0], address(route), "puppetSubscriptions: E012");
+        assertEq(orchestrator.puppetSubscriptions(bob)[0], address(route), "puppetSubscriptions: E013");
+        assertEq(orchestrator.puppetSubscriptions(yossi)[0], address(0), "puppetSubscriptions: E014");
+
+        uint256 _executionFee = 180000000000000;
+        address[] memory _path = new address[](1);
+        _path[0] = _weth;
+
+        IRoute.AdjustPositionParams memory _adjustPositionParams = IRoute.AdjustPositionParams({
+            collateralDelta: 0,
+            sizeDelta: 0,
+            acceptablePrice: 0,
+            minOut: 0
+        });
+
+        IRoute.SwapParams memory _swapParams = IRoute.SwapParams({
+            path: _path,
+            amount: 1 ether,
+            minOut: 0
+        });
+
+        vm.startPrank(trader);
+        orchestrator.requestPosition{ value: _executionFee + 1 ether }(_adjustPositionParams, _swapParams, routeTypeKey, _executionFee, true);
+
+        assertEq(route.puppets().length, 2, "puppetSubscriptions: E015");
+        assertEq(route.puppets()[0], alice, "puppetSubscriptions: E016");
+        assertEq(route.puppets()[1], bob, "puppetSubscriptions: E017");
+
+        skip(2 weeks); // After another 2 weeks, Alice and Bob's subscriptions should expire
+
+        vm.expectRevert(); // reverts with ```PuppetsArrayChangedWithoutExecution```
+        orchestrator.requestPosition{ value: _executionFee + 1 ether }(_adjustPositionParams, _swapParams, routeTypeKey, _executionFee, true);
+        vm.stopPrank();
+
+        vm.startPrank(GMXPositionRouterKeeper); // keeper
+        IGMXPositionRouter(_gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
+        vm.stopPrank();
+
+        vm.startPrank(trader);
+        orchestrator.requestPosition{ value: _executionFee + 1 ether }(_adjustPositionParams, _swapParams, routeTypeKey, _executionFee, true);
+        vm.stopPrank();
+
+        assertEq(route.puppets()[0], address(0), "puppetSubscriptions: E019");
+
+        vm.startPrank(GMXPositionRouterKeeper); // keeper
+        IGMXPositionRouter(_gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
+        vm.stopPrank();
     }
 
     function _dealERC20(address _token, address _recipient , uint256 _amount) internal {

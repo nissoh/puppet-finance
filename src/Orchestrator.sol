@@ -54,6 +54,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     // settings
+    uint256 public managementFee = 0;
+    uint256 public withdrawalFee = 0;
+
+    uint256 public constant MAX_FEE = 1000; // 10%
+
     address public routeFactory;
 
     address private _keeper;
@@ -200,7 +205,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             if (__puppetInfo.subscriptionExpiry[IRoute(_route).routeKey()] > block.timestamp) {
                 _subscriptions[i] = _route;
             }
-            // (_subscriptions[i],) = EnumerableMap.at(_allowances, i);
         }
     }
 
@@ -226,6 +230,12 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @inheritdoc IOrchestrator
     function puppetAccountBalance(address _puppet, address _asset) external view returns (uint256) {
         return _puppetInfo[_puppet].depositAccount[_asset];
+    }
+
+    /// @inheritdoc IOrchestrator
+    function puppetAccountBalanceAfterFee(address _puppet, address _asset, bool _isWithdraw) external view returns (uint256) {
+        uint256 _amount = _puppetInfo[_puppet].depositAccount[_asset];
+        return _amount -= (_isWithdraw ? (_amount * withdrawalFee) : (_amount * managementFee)) / _BASIS_POINTS_DIVISOR;
     }
 
     /// @inheritdoc IOrchestrator
@@ -439,7 +449,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             if (_asset != _WETH) revert InvalidAsset();
         }
 
-        _puppetInfo[_puppet].depositAccount[_asset] += _amount;
+        _creditPuppetAccount(_amount, _asset, msg.sender);
 
         if (msg.value > 0) {
             payable(_asset).functionCallWithValue(abi.encodeWithSignature("deposit()"), _amount);
@@ -457,7 +467,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         if (_asset == address(0)) revert ZeroAddress();
         if (_isETH && _asset != _WETH) revert InvalidAsset();
  
-        _puppetInfo[msg.sender].depositAccount[_asset] -= _amount;
+        _debitPuppetAccount(_amount, _asset, msg.sender, true);
 
         if (_isETH) {
             IWETH(_asset).withdraw(_amount);
@@ -482,16 +492,12 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     /// @inheritdoc IOrchestrator
     function debitPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
-        _puppetInfo[_puppet].depositAccount[_asset] -= _amount;
-
-        emit DebitPuppet(_amount, _asset, _puppet, msg.sender);
-    }
+        _debitPuppetAccount(_amount, _asset, _puppet, false);
+    } 
 
     /// @inheritdoc IOrchestrator
     function creditPuppetAccount(uint256 _amount, address _asset, address _puppet) external onlyRoute {
-        _puppetInfo[_puppet].depositAccount[_asset] += _amount;
-
-        emit CreditPuppet(_amount, _asset, _puppet, msg.sender);
+        _creditPuppetAccount(_amount, _asset, _puppet);
     }
 
     /// @inheritdoc IOrchestrator
@@ -633,6 +639,16 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
+    function setFees(uint256 _managmentFee, uint256 _withdrawalFee) external requiresAuth nonReentrant {
+        if (_managmentFee > MAX_FEE || _withdrawalFee > MAX_FEE) revert FeeExceedsMax();
+
+        managementFee = _managmentFee;
+        withdrawalFee = _withdrawalFee;
+
+        emit SetFees(_managmentFee, _withdrawalFee);
+    }
+
+    /// @inheritdoc IOrchestrator
     function pause(bool _pause) external requiresAuth nonReentrant {
         _paused = _pause;
 
@@ -640,7 +656,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     // ============================================================================================
-    // Internal Function
+    // Internal Functions
     // ============================================================================================
 
     /// @notice Remove Puppets with expired subscriptions from the Route's Puppets Set
@@ -653,6 +669,22 @@ contract Orchestrator is Auth, Base, IOrchestrator {
                 EnumerableSet.remove(_puppetsSet, _puppet);
             }
         }
+    }
+
+    function _debitPuppetAccount(uint256 _amount, address _asset, address _puppet, bool _isWithdraw) internal {
+        // _puppetInfo[_puppet].depositAccount[_asset] -= 
+        //     (_amount += (_isWithdraw ? (_amount * withdrawalFee) : (_amount * managementFee)) / _BASIS_POINTS_DIVISOR);
+        uint256 _feeAmount = (_isWithdraw ? (_amount * withdrawalFee) : (_amount * managementFee)) / _BASIS_POINTS_DIVISOR;
+        _puppetInfo[_puppet].depositAccount[_asset] -= (_amount + _feeAmount);
+        // platformAccount[_asset] += _feeAmount; // todo
+
+        emit DebitPuppet(_amount, _asset, _puppet, msg.sender);
+    }
+
+    function _creditPuppetAccount(uint256 _amount, address _asset, address _puppet) internal {
+        _puppetInfo[_puppet].depositAccount[_asset] += _amount;
+
+        emit CreditPuppet(_amount, _asset, _puppet, msg.sender);
     }
 
     // ============================================================================================
