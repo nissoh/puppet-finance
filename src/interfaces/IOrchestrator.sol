@@ -421,6 +421,7 @@ interface IOrchestrator {
     error InvalidAsset();
     error ZeroAddress();
     error ZeroAmount();
+    error Paused();
     error FeeExceedsMax();
     error ZeroBytes32();
     error RouteWaitingForCallback();

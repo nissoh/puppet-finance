@@ -43,6 +43,8 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     bool private _isPositionOpen;
     bool private _enableKeeperAdjustment;
 
+    int256 public totalPuppetsProfit; // todo
+
     uint256 public positionIndex;
     uint256 public targetLeverage;
 
@@ -241,9 +243,9 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         SwapParams memory _swapParams,
         uint256 _executionFee,
         bool _isIncrease
-    ) external payable onlyOrchestrator notFrozen waitForAdjustment nonReentrant returns (bytes32 _requestKey) {
+    ) external payable onlyOrchestrator waitForAdjustment nonReentrant returns (bytes32 _requestKey) {
 
-        _repayBalance(bytes32(0), msg.value, true, false);
+        _repayBalance(bytes32(0), msg.value, true, false, true);
 
         if (_isIncrease) {
             (
@@ -261,7 +263,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     }
 
     /// @inheritdoc IRoute
-    function approvePlugin() external onlyOrchestrator notFrozen waitForAdjustment nonReentrant {
+    function approvePlugin() external onlyOrchestrator waitForAdjustment nonReentrant {
         IGMXRouter(orchestrator.gmxRouter()).approvePlugin(orchestrator.gmxPositionRouter());
 
         emit PluginApproval();
@@ -289,7 +291,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         if (_isOpenInterest()) revert PositionStillAlive();
         if (!_isPositionOpen) revert PositionNotOpen();
 
-        _repayBalance(bytes32(0), 0, true, false);
+        _repayBalance(bytes32(0), 0, true, false, true);
 
         emit Liquidate();
     }
@@ -324,23 +326,13 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
         if (_isExecuted && _isIncrease) _allocateShares(_requestKey);
 
-        _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey]);
+        _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey], _isIncrease);
 
         if (!_isExecuted && !_isPositionOpen) _resetPuppetsArray();
 
         orchestrator.emitExecutionCallback(_requestKey, _isExecuted, _isIncrease);
 
         emit Callback(_requestKey, _isExecuted, _isIncrease);
-    }
-
-    /// @notice The ```_resetPuppetsArray``` function is used to reset the current Position's Puppets array
-    /// @dev This function is called by ```gmxPositionCallback```
-    function _resetPuppetsArray() internal {
-        Position storage _position = positions[positionIndex];
-
-        delete _position.lastPuppetsAmountsIn;
-        delete _position.puppetsShares;
-        delete _position.puppets;
     }
 
     // ============================================================================================
@@ -568,7 +560,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         AdjustPositionParams memory _adjustPositionParams,
         uint256 _amountIn,
         uint256 _executionFee
-    ) internal returns (bytes32 _requestKey) {
+    ) internal notFrozen returns (bytes32 _requestKey) {
         address[] memory _path = new address[](1);
         _path[0] = route.collateralToken;
 
@@ -705,9 +697,11 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
                     _totalSupply = _totalSupply + _newPuppetShares;
                     _totalAssets = _totalAssets + _puppetAmountIn;
+
+                    totalPuppetsProfit += int256(_puppetAmountIn); // todo
                 }
             }
-
+ 
             _isPositionOpen = true;
 
             uint256 _newTraderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
@@ -732,12 +726,21 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     /// @param _traderAmountIn The amount ETH paid by the trader before this function is called
     /// @param _isExecuted A boolean indicating whether the request was executed
     /// @param _isKeeperRequest A boolean indicating whether the request was made by a keeper
-    function _repayBalance(bytes32 _requestKey, uint256 _traderAmountIn, bool _isExecuted, bool _isKeeperRequest) internal {
+    /// @param _isIncrease A boolean indicating whether the request is an increase request
+    function _repayBalance(
+        bytes32 _requestKey,
+        uint256 _traderAmountIn,
+        bool _isExecuted,
+        bool _isKeeperRequest,
+        bool _isIncrease
+    ) internal {
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         Position storage _position = positions[positionIndex];
         Route memory _route = route;
 
+        bool _isClosingPosition;
         if (!_isOpenInterest() && _isPositionOpen) {
+            _isClosingPosition = true;
             _resetRoute();
         }
 
@@ -761,6 +764,14 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
                     _balance -= _assets;
 
                     _puppetsAssets += _assets;
+                }
+            }
+
+            if (_isExecuted && !_isIncrease) {
+                totalPuppetsProfit -= int256(_puppetsAssets); // todo
+                if (_isClosingPosition && (totalPuppetsProfit < 0)) {
+                    _puppetsAssets -= uint256(totalPuppetsProfit * -1) * 5 / 100;
+                    revert("asdasd");
                 }
             }
 
@@ -794,9 +805,20 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         }
     }
 
+    /// @notice The ```_resetPuppetsArray``` function is used to reset the current Position's Puppets array
+    /// @dev This function is called by ```gmxPositionCallback```
+    function _resetPuppetsArray() internal {
+        Position storage _position = positions[positionIndex];
+
+        delete _position.lastPuppetsAmountsIn;
+        delete _position.puppetsShares;
+        delete _position.puppets;
+    }
+
     /// @notice The ```_resetRoute``` function is used to increment the position index, which is used to track the current position
     /// @dev This function is called by ```_repayBalance```, only if there's no open interest
-    function _resetRoute() internal {
+    /// @return _puppetsAssets The amount of assets to send to the orchestrator after a performance fee is paid
+    function _resetRoute() internal returns (uint256 _puppetsAssets) {
         _isPositionOpen = false;
         positionIndex += 1;
 

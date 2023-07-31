@@ -130,6 +130,12 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _;
     }
 
+    /// @notice Modifier that ensures the contract is not paused
+    modifier notPaused() {
+        if (_paused) revert Paused();
+        _;
+    }
+
     // ============================================================================================
     // View Functions
     // ============================================================================================
@@ -301,7 +307,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     /// @inheritdoc IOrchestrator
     // slither-disable-next-line reentrancy-no-eth
-    function registerRouteAccount(address _collateralToken, address _indexToken, bool _isLong) public nonReentrant returns (bytes32 _routeKey) {
+    function registerRouteAccount(
+        address _collateralToken,
+        address _indexToken,
+        bool _isLong
+    ) public nonReentrant notPaused returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
 
         bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
@@ -345,7 +355,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bytes32 _routeTypeKey,
         uint256 _executionFee,
         bool _isIncrease
-    ) public payable nonReentrant returns (bytes32 _requestKey) {
+    ) public payable nonReentrant notPaused returns (bytes32 _requestKey) {
         bytes32 _routeKey = getRouteKey(msg.sender, _routeTypeKey);
         IRoute _route = IRoute(_routeInfo[_routeKey].route);
         if (address(_route) == address(0)) revert RouteNotRegistered();
@@ -412,7 +422,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         address _trader,
         bytes32 _routeTypeKey, 
         bool _subscribe
-    ) public nonReentrant {
+    ) public nonReentrant notPaused {
         bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
         RouteInfo storage _route = _routeInfo[_routeKey];
         PuppetInfo storage _puppet = _puppetInfo[msg.sender];
@@ -457,7 +467,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function deposit(uint256 _amount, address _asset, address _puppet) external payable nonReentrant {
+    function deposit(uint256 _amount, address _asset, address _puppet) external payable nonReentrant notPaused {
         if (_amount == 0) revert ZeroAmount();
         if (_puppet == address(0)) revert ZeroAddress();
         if (_asset == address(0)) revert ZeroAddress();
@@ -497,7 +507,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function setThrottleLimit(uint256 _throttleLimit, bytes32 _routeType) external {
+    function setThrottleLimit(uint256 _throttleLimit, bytes32 _routeType) external nonReentrant notPaused {
         _puppetInfo[msg.sender].throttleLimits[_routeType] = _throttleLimit;
 
         emit SetThrottleLimit(msg.sender, _routeType, _throttleLimit);
