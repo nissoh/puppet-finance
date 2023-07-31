@@ -60,6 +60,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     uint256 public constant MAX_FEE = 1000; // 10%
 
     address public routeFactory;
+    address public platformFeeRecipient;
 
     address private _keeper;
 
@@ -71,6 +72,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     // routes info
     mapping(address => bool) public isRoute; // Route => isRoute
+    mapping(address => uint256) public platformAccount; // asset => fees balance
     mapping(bytes32 => RouteType) public routeType; // routeTypeKey => RouteType
 
     mapping(bytes32 => RouteInfo) private _routeInfo; // routeKey => RouteInfo
@@ -528,6 +530,23 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // Authority Functions
     // ============================================================================================
 
+    // called by anyone
+
+    /// @inheritdoc IOrchestrator
+    function withdrawPlatformFees(address _asset) external nonReentrant returns (uint256 _amount) {
+        if (_asset == address(0)) revert ZeroAddress();
+
+        _amount = platformAccount[_asset];
+        if (_amount == 0) revert ZeroAmount();
+
+        platformAccount[_asset] = 0;
+
+        address _platformFeeRecipient = platformFeeRecipient;
+        IERC20(_asset).safeTransfer(_platformFeeRecipient, _amount);
+
+        emit WithdrawPlatformFees(_amount, _asset, msg.sender, _platformFeeRecipient);
+    }
+
     // called by keeper
 
     /// @inheritdoc IOrchestrator
@@ -649,6 +668,15 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
+    function setPlatformFeesRecipient(address _recipient) external requiresAuth nonReentrant {
+        if (_recipient == address(0)) revert ZeroAddress();
+
+        platformFeeRecipient = _recipient;
+
+        emit SetFeesRecipient(_recipient);
+    }
+
+    /// @inheritdoc IOrchestrator
     function pause(bool _pause) external requiresAuth nonReentrant {
         _paused = _pause;
 
@@ -672,11 +700,9 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     function _debitPuppetAccount(uint256 _amount, address _asset, address _puppet, bool _isWithdraw) internal {
-        // _puppetInfo[_puppet].depositAccount[_asset] -= 
-        //     (_amount += (_isWithdraw ? (_amount * withdrawalFee) : (_amount * managementFee)) / _BASIS_POINTS_DIVISOR);
         uint256 _feeAmount = (_isWithdraw ? (_amount * withdrawalFee) : (_amount * managementFee)) / _BASIS_POINTS_DIVISOR;
         _puppetInfo[_puppet].depositAccount[_asset] -= (_amount + _feeAmount);
-        // platformAccount[_asset] += _feeAmount; // todo
+        platformAccount[_asset] += _feeAmount;
 
         emit DebitPuppet(_amount, _asset, _puppet, msg.sender);
     }

@@ -116,10 +116,12 @@ contract testPuppet is Test, DeployerUtilities {
         bytes4 setFeesPositionSig = orchestrator.setFees.selector;
         bytes4 adjustTargetLeverageSig = orchestrator.adjustTargetLeverage.selector;
         bytes4 liquidatePositionSig = orchestrator.liquidatePosition.selector;
+        bytes4 setPlatformFeesRecipientSig = orchestrator.setPlatformFeesRecipient.selector;
 
         vm.startPrank(owner);
         _setRoleCapability(_dictator, 0, address(orchestrator), setRouteTypeSig, true);
         _setRoleCapability(_dictator, 0, address(orchestrator), setFeesPositionSig, true);
+        _setRoleCapability(_dictator, 0, address(orchestrator), setPlatformFeesRecipientSig, true);
         _setRoleCapability(_dictator, 1, address(orchestrator), adjustTargetLeverageSig, true);
         _setRoleCapability(_dictator, 1, address(orchestrator), liquidatePositionSig, true);
 
@@ -128,6 +130,7 @@ contract testPuppet is Test, DeployerUtilities {
 
         orchestrator.setRouteType(_weth, _weth, true);
         orchestrator.setRouteType(_usdc, _weth, false);
+        orchestrator.setPlatformFeesRecipient(owner);
         vm.stopPrank();
     }
 
@@ -236,6 +239,33 @@ contract testPuppet is Test, DeployerUtilities {
         // puppet
         _testPuppetSubscriptionExpired();
         _testRemoveRouteSubscription();
+
+        // platform
+        _testPlatformFeesWithdrawal();
+    }
+
+    function _testPlatformFeesWithdrawal() internal {
+        assertTrue(orchestrator.platformAccount(_weth) > 0, "_testPlatformFeesWithdrawal: E0");
+        
+        uint256 _ownerWethBalanceBefore = IERC20(_weth).balanceOf(owner);
+        uint256 _platformAccoutWethBalanceBefore = orchestrator.platformAccount(_weth);
+
+        vm.startPrank(owner);
+        uint256 _amount = orchestrator.withdrawPlatformFees(_weth);
+
+        vm.expectRevert();
+        orchestrator.withdrawPlatformFees(_weth);
+
+        vm.expectRevert();
+        orchestrator.withdrawPlatformFees(_frax);
+
+        vm.expectRevert();
+        orchestrator.withdrawPlatformFees(address(0));
+        vm.stopPrank();
+
+        assertEq(_amount, _platformAccoutWethBalanceBefore, "_testPlatformFeesWithdrawal: E1");
+        assertEq(IERC20(_weth).balanceOf(owner), _ownerWethBalanceBefore + _amount, "_testPlatformFeesWithdrawal: E2");
+        assertEq(orchestrator.platformAccount(_weth), 0, "_testPlatformFeesWithdrawal: E3");
     }
 
     function _testWithdrawalFee() internal {
@@ -1033,7 +1063,6 @@ contract testPuppet is Test, DeployerUtilities {
 
     function _testCreatePositionExtAssertionsSecond(CreatePositionFirst memory _createPositionFirst, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts, uint256 _puppetsAmountIn, uint256 _addCollateralRequestsIndexBefore, uint256 _addCollateralRequestsIndexAfter) internal {
             address[] memory _puppets = route.puppets();
-            // bytes32 _routeTypeKey = orchestrator.getRouteTypeKey(_weth, _weth, true);
             assertEq(IERC20(_weth).balanceOf(address(route)), 0, "_testCreatePosition: E14");
             assertEq(orchestrator.lastPositionOpenedTimestamp(alice, routeTypeKey), block.timestamp, "_testCreatePosition: E16");
             assertEq(orchestrator.lastPositionOpenedTimestamp(bob, routeTypeKey), block.timestamp, "_testCreatePosition: E17");
@@ -1043,40 +1072,32 @@ contract testPuppet is Test, DeployerUtilities {
             assertEq(_puppetsShares.length, 3, "_testCreatePosition: E22");
             assertEq(_puppetsAmounts.length, 3, "_testCreatePosition: E23");
             assertEq(_puppets.length, 3, "_testCreatePosition: E24");
-            assertEq(_createPositionFirst.aliceDepositAccountBalanceBefore - _puppetsAmounts[0] - (_createPositionFirst.aliceDepositAccountBalanceBefore * 5 / 100), orchestrator.puppetAccountBalance(alice, collateralToken), "_testCreatePosition: E25");
-            console.log("aliceDepositAccountBalanceBefore: %s", _createPositionFirst.aliceDepositAccountBalanceBefore);
-            console.log("puppetsAmounts[0]: %s", _puppetsAmounts[0]);
-            console.log("fee: %s", _createPositionFirst.aliceDepositAccountBalanceBefore * 5 / 100);
-            console.log("aliceDepositAccountBalanceAfter: %s", orchestrator.puppetAccountBalance(alice, collateralToken));
-            // aliceDepositAccountBalanceBefore: 1,000,000
-            // puppetsAmounts[0]: 95,000
-            // fee: 5,000
-            // aliceDepositAccountBalanceAfter: 90,025
-            assertEq(_createPositionFirst.bobDepositAccountBalanceBefore - _puppetsAmounts[1], orchestrator.puppetAccountBalance(bob, collateralToken), "_testCreatePosition: E26");
-            assertEq(_createPositionFirst.yossiDepositAccountBalanceBefore - _puppetsAmounts[2], orchestrator.puppetAccountBalance(yossi, collateralToken), "_testCreatePosition: E27");
+            assertEq(_createPositionFirst.aliceDepositAccountBalanceBefore - _puppetsAmounts[0] - (_puppetsAmounts[0] * 5 / 100), orchestrator.puppetAccountBalance(alice, collateralToken), "_testCreatePosition: E25");
+            assertEq(_createPositionFirst.bobDepositAccountBalanceBefore - _puppetsAmounts[1] - (_puppetsAmounts[1] * 5 / 100), orchestrator.puppetAccountBalance(bob, collateralToken), "_testCreatePosition: E26");
+            assertEq(_createPositionFirst.yossiDepositAccountBalanceBefore - _puppetsAmounts[2] - (_puppetsAmounts[2] * 5 / 100), orchestrator.puppetAccountBalance(yossi, collateralToken), "_testCreatePosition: E27");
             assertEq(_puppetsShares[0], _puppetsShares[1], "_testCreatePosition: E28");
             assertEq(_puppetsAmounts[0], _puppetsAmounts[1], "_testCreatePosition: E30");
         }
 
     function _testCreatePositionExtAssertionsFirst(CreatePositionParams memory _params, bool _addCollateralToAnExistingPosition, uint256 _totalSupply, uint256 _totalAssets, uint256[] memory _puppetsShares, uint256[] memory _puppetsAmounts) internal {
-            if (_addCollateralToAnExistingPosition) {
-                assertEq(route.positionIndex(), _params.positionIndexBefore, "_testCreatePosition: E10");
-                assertTrue(_totalSupply > 0, "_testCreatePosition: E011");
-                assertTrue(_totalAssets > 0, "_testCreatePosition: E012");
-                assertEq(_puppetsShares[0], 0, "_testCreatePosition: E032");
-                assertEq(_puppetsShares[1], 0, "_testCreatePosition: E033");
-                assertTrue(_puppetsShares[2] > 0, "_testCreatePosition: E034"); // we increased Yossi's balance so he can join on the increase
-            } else {
-                assertEq(route.positionIndex(), _params.positionIndexBefore, "_testCreatePosition: E66910");
-                assertEq(_totalSupply, 0, "_testCreatePosition: E11");
-                assertEq(_totalAssets, 0, "_testCreatePosition: E12");
-                assertTrue(_puppetsShares[0] > 0, "_testCreatePosition: E32");
-                assertTrue(_puppetsShares[1] > 0, "_testCreatePosition: E33");
-                assertTrue(_puppetsShares[2] > 0, "_testCreatePosition: E34");
-                assertEq(_puppetsShares[0], _puppetsShares[2], "_testCreatePosition: E29");
-                assertEq(_puppetsAmounts[0], _puppetsAmounts[2], "_testCreatePosition: E31");
-            }
+        if (_addCollateralToAnExistingPosition) {
+            assertEq(route.positionIndex(), _params.positionIndexBefore, "_testCreatePosition: E10");
+            assertTrue(_totalSupply > 0, "_testCreatePosition: E011");
+            assertTrue(_totalAssets > 0, "_testCreatePosition: E012");
+            assertEq(_puppetsShares[0], 0, "_testCreatePosition: E032");
+            assertEq(_puppetsShares[1], 0, "_testCreatePosition: E033");
+            assertTrue(_puppetsShares[2] > 0, "_testCreatePosition: E034"); // we increased Yossi's balance so he can join on the increase
+        } else {
+            assertEq(route.positionIndex(), _params.positionIndexBefore, "_testCreatePosition: E66910");
+            assertEq(_totalSupply, 0, "_testCreatePosition: E11");
+            assertEq(_totalAssets, 0, "_testCreatePosition: E12");
+            assertTrue(_puppetsShares[0] > 0, "_testCreatePosition: E32");
+            assertTrue(_puppetsShares[1] > 0, "_testCreatePosition: E33");
+            assertTrue(_puppetsShares[2] > 0, "_testCreatePosition: E34");
+            assertEq(_puppetsShares[0], _puppetsShares[2], "_testCreatePosition: E29");
+            assertEq(_puppetsAmounts[0], _puppetsAmounts[2], "_testCreatePosition: E31");
         }
+    }
 
     function _testClosePosition(bool _isAuth) internal {
         assertTrue(_isOpenInterest(address(route)), "_testClosePosition: E1");

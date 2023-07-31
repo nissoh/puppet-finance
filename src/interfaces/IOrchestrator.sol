@@ -285,6 +285,13 @@ interface IOrchestrator {
 
     // Authority
 
+    // called by anyone
+
+    /// @notice The ```withdrawPlatformFees``` function is called by anyone to withdraw platform fees
+    /// @param _asset The address of the Asset
+    /// @return _amount The amount withdrawn
+    function withdrawPlatformFees(address _asset) external returns (uint256 _amount);
+
     // called by keeper
 
     /// @notice The ```adjustTargetLeverage``` function is called by a keeper to adjust mirrored position to target leverage to match trader leverage
@@ -346,6 +353,10 @@ interface IOrchestrator {
     /// @param _withdrawalFee The new withdrawal fee
     function setFees(uint256 _managmentFee, uint256 _withdrawalFee) external;
 
+    /// @notice The ```setPlatformFeesRecipient``` function is called by the Authority to set the platform fees recipient
+    /// @param _recipient The new platform fees recipient
+    function setPlatformFeesRecipient(address _recipient) external;
+
     /// @notice The ```setRouteFactory``` function is called by the Authority to set the Route Factory address
     /// @param _factory The address of the new Route Factory
     function setRouteFactory(address _factory) external;
@@ -386,7 +397,9 @@ interface IOrchestrator {
     event Pause(bool paused);
     event SetReferralCode(bytes32 referralCode);
     event SetRouteFactory(address factory);
+    event WithdrawPlatformFees(uint256 amount, address asset, address caller, address platformFeeRecipient);
     event SetFees(uint256 managmentFee, uint256 withdrawalFee);
+    event SetFeesRecipient(address recipient);
     event SetKeeper(address keeper);
     event RescueRouteFunds(uint256 amount, address token, address indexed receiver, address indexed route);
     event Rescue(uint256 amount, address token, address indexed receiver);

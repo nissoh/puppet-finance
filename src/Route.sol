@@ -525,9 +525,8 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         Position storage _position = positions[positionIndex];
 
         uint256 _allowancePercentage = orchestrator.puppetAllowancePercentage(_puppet, address(this));
-        uint256 _allowanceAmount = 
-            (orchestrator.puppetAccountBalanceAfterFee(_puppet, route.collateralToken, false) * _allowancePercentage) 
-            / _BASIS_POINTS_DIVISOR;
+        uint256 _allowanceAmount = (orchestrator.puppetAccountBalance(_puppet, route.collateralToken) * _allowancePercentage) / _BASIS_POINTS_DIVISOR;
+        bool _canPayFee = orchestrator.puppetAccountBalanceAfterFee(_puppet, route.collateralToken, false) >= _allowanceAmount;
 
         if (_context.isOI) {
             uint256 _requiredAdditionalCollateral = _position.lastPuppetsAmountsIn[_puppetIndex] * _context.increaseRatio / _PRECISION;
@@ -535,7 +534,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
                 if (_requiredAdditionalCollateral > _allowanceAmount) {
                     waitForKeeperAdjustment = true;
                     _puppetRequestInfo.isAdjustmentRequired = true;
-                    if(_allowanceAmount == 0) return _puppetRequestInfo;
+                    if(_allowanceAmount == 0 || !_canPayFee) return _puppetRequestInfo;
                     _puppetRequestInfo.additionalAmount = _allowanceAmount;
                 } else {
                     _puppetRequestInfo.additionalAmount = _requiredAdditionalCollateral;
@@ -543,7 +542,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
                 _puppetRequestInfo.additionalShares = _convertToShares(_totalAssets, _totalSupply, _puppetRequestInfo.additionalAmount);
             }
         } else {
-            if (_allowanceAmount > 0 && orchestrator.isBelowThrottleLimit(_puppet, _routeTypeKey)) {
+            if (_allowanceAmount > 0 && _canPayFee && orchestrator.isBelowThrottleLimit(_puppet, _routeTypeKey)) {
                 _puppetRequestInfo.additionalAmount = _allowanceAmount > _context.traderAmountIn ? _context.traderAmountIn : _allowanceAmount;
                 _puppetRequestInfo.additionalShares = _convertToShares(_totalAssets, _totalSupply, _puppetRequestInfo.additionalAmount);
                 orchestrator.updateLastPositionOpenedTimestamp(_puppet, _routeTypeKey);
