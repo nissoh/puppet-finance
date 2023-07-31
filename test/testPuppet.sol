@@ -244,76 +244,6 @@ contract testPuppet is Test, DeployerUtilities {
         _testPlatformFeesWithdrawal();
     }
 
-    function _testPlatformFeesWithdrawal() internal {
-        assertTrue(orchestrator.platformAccount(_weth) > 0, "_testPlatformFeesWithdrawal: E0");
-        
-        uint256 _ownerWethBalanceBefore = IERC20(_weth).balanceOf(owner);
-        uint256 _platformAccoutWethBalanceBefore = orchestrator.platformAccount(_weth);
-
-        vm.startPrank(owner);
-        uint256 _amount = orchestrator.withdrawPlatformFees(_weth);
-
-        vm.expectRevert();
-        orchestrator.withdrawPlatformFees(_weth);
-
-        vm.expectRevert();
-        orchestrator.withdrawPlatformFees(_frax);
-
-        vm.expectRevert();
-        orchestrator.withdrawPlatformFees(address(0));
-        vm.stopPrank();
-
-        assertEq(_amount, _platformAccoutWethBalanceBefore, "_testPlatformFeesWithdrawal: E1");
-        assertEq(IERC20(_weth).balanceOf(owner), _ownerWethBalanceBefore + _amount, "_testPlatformFeesWithdrawal: E2");
-        assertEq(orchestrator.platformAccount(_weth), 0, "_testPlatformFeesWithdrawal: E3");
-    }
-
-    function _testWithdrawalFee() internal {
-        assertEq(orchestrator.withdrawalFee(), 0);
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setWithdrawalFee: E0");
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setWithdrawalFee: E1");
-
-        vm.startPrank(owner);
-
-        vm.expectRevert(); // reverts with ```FeeExceedsMax()```
-        orchestrator.setFees(0, 1001);
-        
-        orchestrator.setFees(0, 500); // 5%
-
-        assertEq(orchestrator.withdrawalFee(), 500);
-        assertTrue(orchestrator.puppetAccountBalance(alice, _weth) > orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setWithdrawalFee: E2");
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setWithdrawalFee: E3");
-
-        uint256 _puppetBalanceAfterFee = orchestrator.puppetAccountBalance(alice, _weth) * 95 / 100;
-        assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), _puppetBalanceAfterFee, "_setWithdrawalFee: E4");
-
-        orchestrator.setFees(0, 0);
-        vm.stopPrank();
-    }
-
-    function _testManagmenetFee() internal {
-        assertEq(orchestrator.managementFee(), 0);
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setManagementFee: E0");
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setManagementFee: E1");
-
-        vm.startPrank(owner);
-
-        vm.expectRevert(); // reverts with ```FeeExceedsMax()```
-        orchestrator.setFees(1001, 0);
-        
-        orchestrator.setFees(500, 0); // 5%
-
-        assertEq(orchestrator.managementFee(), 500);
-        assertTrue(orchestrator.puppetAccountBalance(alice, _weth) > orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setManagementFee: E2");
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setManagementFee: E3");
-
-        uint256 _puppetBalanceAfterFee = orchestrator.puppetAccountBalance(alice, _weth) * 95 / 100;
-        assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), _puppetBalanceAfterFee, "_setManagementFee: E4");
-
-        // orchestrator.setFees(0, 0); // todo
-        vm.stopPrank();
-    }
-
     function testNonCollateralAmountIn() public {
         uint256 _assets = 1 ether;
 
@@ -1507,6 +1437,76 @@ contract testPuppet is Test, DeployerUtilities {
 
         vm.startPrank(GMXPositionRouterKeeper); // keeper
         IGMXPositionRouter(_gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
+        vm.stopPrank();
+    }
+
+    function _testPlatformFeesWithdrawal() internal {
+        assertTrue(orchestrator.platformAccount(_weth) > 0, "_testPlatformFeesWithdrawal: E0");
+        
+        uint256 _ownerWethBalanceBefore = IERC20(_weth).balanceOf(owner);
+        uint256 _platformAccoutWethBalanceBefore = orchestrator.platformAccount(_weth);
+
+        vm.startPrank(owner);
+        uint256 _amount = orchestrator.withdrawPlatformFees(_weth);
+
+        vm.expectRevert();
+        orchestrator.withdrawPlatformFees(_weth);
+
+        vm.expectRevert();
+        orchestrator.withdrawPlatformFees(_frax);
+
+        vm.expectRevert();
+        orchestrator.withdrawPlatformFees(address(0));
+        vm.stopPrank();
+
+        assertEq(_amount, _platformAccoutWethBalanceBefore, "_testPlatformFeesWithdrawal: E1");
+        assertEq(IERC20(_weth).balanceOf(owner), _ownerWethBalanceBefore + _amount, "_testPlatformFeesWithdrawal: E2");
+        assertEq(orchestrator.platformAccount(_weth), 0, "_testPlatformFeesWithdrawal: E3");
+        assertTrue(_amount > 0, "_testPlatformFeesWithdrawal: E4");
+    }
+
+    function _testWithdrawalFee() internal {
+        assertEq(orchestrator.withdrawalFee(), 0);
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setWithdrawalFee: E0");
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setWithdrawalFee: E1");
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(); // reverts with ```FeeExceedsMax()```
+        orchestrator.setFees(0, 1001);
+        
+        orchestrator.setFees(0, 500); // 5%
+
+        assertEq(orchestrator.withdrawalFee(), 500);
+        assertTrue(orchestrator.puppetAccountBalance(alice, _weth) > orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setWithdrawalFee: E2");
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setWithdrawalFee: E3");
+
+        uint256 _puppetBalanceAfterFee = orchestrator.puppetAccountBalance(alice, _weth) * 95 / 100;
+        assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), _puppetBalanceAfterFee, "_setWithdrawalFee: E4");
+
+        // orchestrator.setFees(0, 0);
+        vm.stopPrank();
+    }
+
+    function _testManagmenetFee() internal {
+        assertEq(orchestrator.managementFee(), 0);
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true) + (orchestrator.puppetAccountBalance(alice, _weth) * 5 / 100), "_setManagementFee: E0");
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setManagementFee: E1");
+
+        vm.startPrank(owner);
+
+        vm.expectRevert(); // reverts with ```FeeExceedsMax()```
+        orchestrator.setFees(1001, 0);
+        
+        orchestrator.setFees(500, 0); // 5%
+
+        assertEq(orchestrator.managementFee(), 500);
+        assertTrue(orchestrator.puppetAccountBalance(alice, _weth) > orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setManagementFee: E2");
+        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setManagementFee: E3");
+
+        uint256 _puppetBalanceAfterFee = orchestrator.puppetAccountBalance(alice, _weth) * 95 / 100;
+        assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), _puppetBalanceAfterFee, "_setManagementFee: E4");
+
         vm.stopPrank();
     }
 
