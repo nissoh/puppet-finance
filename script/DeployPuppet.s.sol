@@ -22,11 +22,13 @@ contract DeployPuppet is DeployerUtilities {
     function run() public {
         vm.startBroadcast(_deployerPrivateKey);
 
+        address _platformFeeRecipient = vm.envAddress("GBC_DEPLOYER_ADDRESS");
+
         Dictator _dictator = Dictator(_dictatorAddr);
 
         RouteFactory _routeFactory = new RouteFactory();
 
-        Orchestrator _orchestrator = new Orchestrator(_dictator, address(_routeFactory), _keeperAddr, _referralCode, _gmxInfo);
+        Orchestrator _orchestrator = new Orchestrator(_dictator, address(_routeFactory), _keeperAddr, _platformFeeRecipient, _weth, _referralCode, _gmxInfo);
 
         bytes4 functionSig = _orchestrator.setRouteType.selector;
 

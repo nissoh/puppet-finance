@@ -108,7 +108,8 @@ contract testPuppet is Test, DeployerUtilities {
 
         bytes memory _gmxInfo = abi.encode(_gmxVaultPriceFeed, _gmxRouter, _gmxVault, _gmxPositionRouter, false, false);
 
-        orchestrator = new Orchestrator(_dictator, address(_routeFactory), address(0), bytes32(0), _gmxInfo);
+        address _platformFeeRecipient = owner;
+        orchestrator = new Orchestrator(_dictator, address(_routeFactory), address(0), _platformFeeRecipient, _weth, bytes32(0), _gmxInfo);
 
         decreaseSizeResolver = new DecreaseSizeResolver(_dictator, orchestrator);
 
@@ -220,8 +221,8 @@ contract testPuppet is Test, DeployerUtilities {
         _testPuppetDeposit(_assets);
         _testUpdateRoutesSubscription();
         _testSetThrottleLimit();
-        _testWithdrawalFee();
-        _testManagmenetFee();
+        _testWithdrawalFee(_weth);
+        _testManagmenetFee(_weth);
         _testPuppetWithdraw(_assets);
 
         // route
@@ -263,6 +264,8 @@ contract testPuppet is Test, DeployerUtilities {
         _testPuppetDeposit(_assets);
         _testUpdateRoutesSubscription();
         _testSetThrottleLimit();
+        _testWithdrawalFee(_weth);
+        _testManagmenetFee(_weth);
         _testPuppetWithdraw(_assets);
 
         // route
@@ -295,6 +298,8 @@ contract testPuppet is Test, DeployerUtilities {
         // puppet
         _testPuppetDeposit(_assets);
         _testUpdateRoutesSubscription();
+        _testWithdrawalFee(_weth);
+        _testManagmenetFee(_weth);
 
         // route
         _prePositionAsserts();
@@ -334,6 +339,8 @@ contract testPuppet is Test, DeployerUtilities {
         _testPuppetDeposit(_assets);
         _testUpdateRoutesSubscription();
         _testSetThrottleLimit();
+        _testWithdrawalFee(_usdc);
+        _testManagmenetFee(_usdc);
         _testPuppetWithdraw(_assets);
 
         // route
@@ -685,7 +692,7 @@ contract testPuppet is Test, DeployerUtilities {
         if (isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  45285580330546351132904934067280286335 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  47185580330546351132904934067280286335 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 10;
             _acceptablePrice = type(uint256).max;
             _amountInTrader = 10 ether;
@@ -693,7 +700,7 @@ contract testPuppet is Test, DeployerUtilities {
         } else {
             // TODO: short position
             // Available amount in USD: PositionRouter.maxGlobalShortSizes(indexToken) - Vault.globalShortSizes(indexToken)
-            _sizeDelta = 25793460367058138613345722013892012527 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
+            _sizeDelta = 26618460367058138613345722013892012527 - IVault(orchestrator.gmxVault()).globalShortSizes(indexToken);
             _sizeDelta = _sizeDelta / 2;
             _acceptablePrice = type(uint256).min;
             _amountInTrader = _sizeDelta / 5 / 1e24;
@@ -1188,7 +1195,7 @@ contract testPuppet is Test, DeployerUtilities {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 45285580330546351132904934067280286335 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 47185580330546351132904934067280286335 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
@@ -1465,10 +1472,10 @@ contract testPuppet is Test, DeployerUtilities {
         assertTrue(_amount > 0, "_testPlatformFeesWithdrawal: E4");
     }
 
-    function _testWithdrawalFee() internal {
+    function _testWithdrawalFee(address _token) internal {
         assertEq(orchestrator.withdrawalFee(), 0);
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setWithdrawalFee: E0");
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setWithdrawalFee: E1");
+        assertEq(orchestrator.puppetAccountBalance(alice, _token), orchestrator.puppetAccountBalanceAfterFee(alice, _token, true), "_setWithdrawalFee: E0");
+        assertEq(orchestrator.puppetAccountBalance(alice, _token), orchestrator.puppetAccountBalanceAfterFee(alice, _token, false), "_setWithdrawalFee: E1");
 
         vm.startPrank(owner);
 
@@ -1478,20 +1485,20 @@ contract testPuppet is Test, DeployerUtilities {
         orchestrator.setFees(0, 500); // 5%
 
         assertEq(orchestrator.withdrawalFee(), 500);
-        assertTrue(orchestrator.puppetAccountBalance(alice, _weth) > orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setWithdrawalFee: E2");
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setWithdrawalFee: E3");
+        assertTrue(orchestrator.puppetAccountBalance(alice, _token) > orchestrator.puppetAccountBalanceAfterFee(alice, _token, true), "_setWithdrawalFee: E2");
+        assertEq(orchestrator.puppetAccountBalance(alice, _token), orchestrator.puppetAccountBalanceAfterFee(alice, _token, false), "_setWithdrawalFee: E3");
 
-        uint256 _puppetBalanceAfterFee = orchestrator.puppetAccountBalance(alice, _weth) * 95 / 100;
-        assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), _puppetBalanceAfterFee, "_setWithdrawalFee: E4");
+        uint256 _puppetBalanceAfterFee = orchestrator.puppetAccountBalance(alice, _token) * 95 / 100;
+        assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _token, true), _puppetBalanceAfterFee, "_setWithdrawalFee: E4");
 
         // orchestrator.setFees(0, 0);
         vm.stopPrank();
     }
 
-    function _testManagmenetFee() internal {
+    function _testManagmenetFee(address _token) internal {
         assertEq(orchestrator.managementFee(), 0);
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true) + (orchestrator.puppetAccountBalance(alice, _weth) * 5 / 100), "_setManagementFee: E0");
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setManagementFee: E1");
+        assertEq(orchestrator.puppetAccountBalance(alice, _token), orchestrator.puppetAccountBalanceAfterFee(alice, _token, true) + (orchestrator.puppetAccountBalance(alice, _token) * 5 / 100), "_setManagementFee: E0");
+        assertEq(orchestrator.puppetAccountBalance(alice, _token), orchestrator.puppetAccountBalanceAfterFee(alice, _token, false), "_setManagementFee: E1");
 
         vm.startPrank(owner);
 
@@ -1501,11 +1508,11 @@ contract testPuppet is Test, DeployerUtilities {
         orchestrator.setFees(500, 0); // 5%
 
         assertEq(orchestrator.managementFee(), 500);
-        assertTrue(orchestrator.puppetAccountBalance(alice, _weth) > orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), "_setManagementFee: E2");
-        assertEq(orchestrator.puppetAccountBalance(alice, _weth), orchestrator.puppetAccountBalanceAfterFee(alice, _weth, true), "_setManagementFee: E3");
+        assertTrue(orchestrator.puppetAccountBalance(alice, _token) > orchestrator.puppetAccountBalanceAfterFee(alice, _token, false), "_setManagementFee: E2");
+        assertEq(orchestrator.puppetAccountBalance(alice, _token), orchestrator.puppetAccountBalanceAfterFee(alice, _token, true), "_setManagementFee: E3");
 
-        uint256 _puppetBalanceAfterFee = orchestrator.puppetAccountBalance(alice, _weth) * 95 / 100;
-        assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _weth, false), _puppetBalanceAfterFee, "_setManagementFee: E4");
+        uint256 _puppetBalanceAfterFee = orchestrator.puppetAccountBalance(alice, _token) * 95 / 100;
+        assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _token, false), _puppetBalanceAfterFee, "_setManagementFee: E4");
 
         vm.stopPrank();
     }

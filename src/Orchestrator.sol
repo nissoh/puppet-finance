@@ -90,17 +90,25 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @param _authority The Authority contract instance
     /// @param _routeFactory The RouteFactory contract address
     /// @param _keeperAddr The address of the keeper
+    /// @param _platformFeeRecipient The address of the platform fee recipient
+    /// @param _wethAddr The WETH contract address
     /// @param _refCode The GMX referral code
     /// @param _gmx The GMX contract addresses
     constructor(
         Authority _authority,
         address _routeFactory,
         address _keeperAddr,
+        address _platformFeeRecipient,
+        address _wethAddr,
         bytes32 _refCode,
         bytes memory _gmx
-    ) Auth(address(0), _authority) {
+    ) Auth(address(0), _authority) Base(_wethAddr) {
+        if (_platformFeeRecipient == address(0)) revert ZeroAddress();
+        if (_wethAddr == address(0)) revert ZeroAddress();
+
         routeFactory = _routeFactory;
         _keeper = _keeperAddr;
+        platformFeeRecipient = _platformFeeRecipient;
 
         (
             _gmxInfo.vaultPriceFeed,
@@ -302,7 +310,14 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _routeKey = getRouteKey(msg.sender, _routeTypeKey);
         if (_routeInfo[_routeKey].isRegistered) revert RouteAlreadyRegistered();
 
-        address _routeAddr = IRouteFactory(routeFactory).registerRouteAccount(address(this), msg.sender, _collateralToken, _indexToken, _isLong);
+        address _routeAddr = IRouteFactory(routeFactory).registerRouteAccount(
+            address(this),
+            _weth,
+            msg.sender,
+            _collateralToken,
+            _indexToken,
+            _isLong
+        );
 
         RouteType memory _routeType = RouteType({
             collateralToken: _collateralToken,
@@ -448,7 +463,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         if (_asset == address(0)) revert ZeroAddress();
         if (msg.value > 0) {
             if (_amount != msg.value) revert InvalidAmount();
-            if (_asset != _WETH) revert InvalidAsset();
+            if (_asset != _weth) revert InvalidAsset();
         }
 
         _creditPuppetAccount(_amount, _asset, msg.sender);
@@ -467,7 +482,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         if (_amount == 0) revert ZeroAmount();
         if (_receiver == address(0)) revert ZeroAddress();
         if (_asset == address(0)) revert ZeroAddress();
-        if (_isETH && _asset != _WETH) revert InvalidAsset();
+        if (_isETH && _asset != _weth) revert InvalidAsset();
  
         _debitPuppetAccount(_amount, _asset, msg.sender, true);
 
@@ -701,10 +716,12 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     function _debitPuppetAccount(uint256 _amount, address _asset, address _puppet, bool _isWithdraw) internal {
         uint256 _feeAmount = (_isWithdraw ? (_amount * withdrawalFee) : (_amount * managementFee)) / _BASIS_POINTS_DIVISOR;
+
         _puppetInfo[_puppet].depositAccount[_asset] -= (_amount + _feeAmount);
         platformAccount[_asset] += _feeAmount;
 
         emit DebitPuppet(_amount, _asset, _puppet, msg.sender);
+        emit CreditPlatform(_feeAmount, _asset, _puppet, msg.sender, _isWithdraw);
     }
 
     function _creditPuppetAccount(uint256 _amount, address _asset, address _puppet) internal {

@@ -389,6 +389,7 @@ interface IOrchestrator {
     event LiquidatePosition(address indexed route, bytes32 routeKey, bytes32 positionKey);
 
     event DebitPuppet(uint256 amount, address asset, address indexed puppet, address indexed caller);
+    event CreditPlatform(uint256 amount, address asset, address puppet, address caller, bool isWithdraw);
     event CreditPuppet(uint256 amount, address asset, address indexed puppet, address indexed caller);
 
     event TransferRouteFunds(uint256 amount, address asset, address indexed receiver, address indexed caller);

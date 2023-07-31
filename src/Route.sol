@@ -68,11 +68,19 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
     /// @notice The ```constructor``` function is called on deployment
     /// @param _orchestrator The address of the ```Orchestrator``` contract
+    /// @param _wethAddr The address of the WETH token
     /// @param _trader The address of the trader
     /// @param _collateralToken The address of the collateral token
     /// @param _indexToken The address of the index token
     /// @param _isLong Whether the route is long or short
-    constructor(address _orchestrator, address _trader, address _collateralToken, address _indexToken, bool _isLong) {
+    constructor(
+        address _orchestrator,
+        address _wethAddr,
+        address _trader,
+        address _collateralToken,
+        address _indexToken,
+        bool _isLong
+    ) Base(_wethAddr) {
         orchestrator = IOrchestrator(_orchestrator);
 
         route.trader = _trader;
@@ -405,9 +413,9 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     function _getTraderAssets(SwapParams memory _swapParams, uint256 _executionFee) internal returns (uint256 _traderAmountIn) {
         if (msg.value - _executionFee > 0) {
             if (msg.value - _executionFee != _swapParams.amount) revert InvalidExecutionFee();
-            if (_swapParams.path[0] != _WETH) revert InvalidPath();
+            if (_swapParams.path[0] != _weth) revert InvalidPath();
 
-            payable(_WETH).functionCallWithValue(abi.encodeWithSignature("deposit()"), _swapParams.amount);
+            payable(_weth).functionCallWithValue(abi.encodeWithSignature("deposit()"), _swapParams.amount);
         } else {
             if (msg.value != _executionFee) revert InvalidExecutionFee();
 

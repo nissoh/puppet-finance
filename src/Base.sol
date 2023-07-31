@@ -33,9 +33,15 @@ abstract contract Base is ReentrancyGuard {
 
     using SafeERC20 for IERC20;
 
-    address internal constant _WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
+    address internal immutable _weth;
 
     uint256 internal constant _BASIS_POINTS_DIVISOR = 10000;
+
+    /// @notice The ```constructor``` function is called on deployment
+    /// @param _wethAddr The address of the WETH token
+    constructor(address _wethAddr) {
+        _weth = _wethAddr;
+    }
 
     /// @notice The ```_approve``` function is used to approve a spender to spend a token
     /// @dev This function is called by ```_getTraderAssets``` and ```_requestIncreasePosition```
