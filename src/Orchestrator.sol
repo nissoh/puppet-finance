@@ -57,6 +57,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     uint256 public managementFee = 0;
     uint256 public withdrawalFee = 0;
 
+    uint256 internal _performanceFee = 0;
+
     uint256 public constant MAX_FEE = 1000; // 10%
 
     address public routeFactory;
@@ -141,6 +143,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // ============================================================================================
 
     // global
+
+    /// @inheritdoc IOrchestrator
+    function performanceFee() external view returns (uint256) {
+        return _performanceFee;
+    }
 
     /// @inheritdoc IOrchestrator
     function keeper() external view returns (address) {
@@ -542,8 +549,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function emitExecutionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external onlyRoute {
-        emit ExecutePosition(msg.sender, _requestKey, _isExecuted, _isIncrease);
+    function emitExecutionCallback(uint256 _performanceFeePaid, bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external onlyRoute {
+        emit ExecutePosition(_performanceFeePaid, msg.sender, _requestKey, _isExecuted, _isIncrease);
     }
 
     /// @inheritdoc IOrchestrator
@@ -683,13 +690,15 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function setFees(uint256 _managmentFee, uint256 _withdrawalFee) external requiresAuth nonReentrant {
-        if (_managmentFee > MAX_FEE || _withdrawalFee > MAX_FEE) revert FeeExceedsMax();
+    function setFees(uint256 _managmentFee, uint256 _withdrawalFee, uint256 _perfFee) external requiresAuth nonReentrant {
+        if (_managmentFee > MAX_FEE || _withdrawalFee > MAX_FEE || _perfFee > MAX_FEE) revert FeeExceedsMax();
 
         managementFee = _managmentFee;
         withdrawalFee = _withdrawalFee;
 
-        emit SetFees(_managmentFee, _withdrawalFee);
+        _performanceFee = _perfFee;
+
+        emit SetFees(_managmentFee, _withdrawalFee, _perfFee);
     }
 
     /// @inheritdoc IOrchestrator

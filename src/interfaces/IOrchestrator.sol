@@ -46,6 +46,10 @@ interface IOrchestrator {
 
     // global
 
+    /// @notice The ```performanceFee``` function returns the performance fee
+    /// @return _performanceFee The performance fee
+    function performanceFee() external view returns (uint256 _performanceFee);
+
     /// @notice The ```keeper``` function returns the address of the Keeper
     /// @return _keeper The address of the Keeper
     function keeper() external view returns (address _keeper);
@@ -272,10 +276,11 @@ interface IOrchestrator {
     function transferRouteFunds(uint256 _amount, address _asset, address _receiver) external;
 
     /// @notice The ```emitExecutionCallback``` function is called by a Route to emit an event on a GMX position execution callback
+    /// @param performanceFeePaid The performance fee paid to Trader
     /// @param _requestKey The request key
     /// @param _isExecuted The boolean indicating if the request is executed
     /// @param _isIncrease The boolean indicating if the request is an increase or decrease request
-    function emitExecutionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external;
+    function emitExecutionCallback(uint256 performanceFeePaid, bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external;
 
     /// @notice The ```emitSharesIncrease``` function is called by a Route to emit an event on a successful add collateral request
     /// @param _puppetsShares The array of Puppets shares, corresponding to the Route's subscribed Puppets, as stored in the Route Position struct
@@ -351,7 +356,8 @@ interface IOrchestrator {
     /// @notice The ```setFees``` function is called by the Authority to set the management and withdrawal fees
     /// @param _managmentFee The new management fee
     /// @param _withdrawalFee The new withdrawal fee
-    function setFees(uint256 _managmentFee, uint256 _withdrawalFee) external;
+    /// @param _perfFee The new performance fee
+    function setFees(uint256 _managmentFee, uint256 _withdrawalFee, uint256 _perfFee) external;
 
     /// @notice The ```setPlatformFeesRecipient``` function is called by the Authority to set the platform fees recipient
     /// @param _recipient The new platform fees recipient
@@ -383,7 +389,7 @@ interface IOrchestrator {
 
     event AdjustPosition(address indexed trader, address indexed route, bool isIncrease, bytes32 requestKey, bytes32 routeTypeKey, bytes32 positionKey); 
     event OpenPosition(address[] puppets, address indexed trader, address indexed route, bool isIncrease, bytes32 requestKey, bytes32 routeTypeKey, bytes32 positionKey);
-    event ExecutePosition(address indexed route, bytes32 requestKey, bool isExecuted, bool isIncrease);
+    event ExecutePosition(uint256 performanceFeePaid, address indexed route, bytes32 requestKey, bool isExecuted, bool isIncrease);
     event SharesIncrease(uint256[] puppetsShares, uint256 traderShares, uint256 totalSupply, bytes32 positionKey);
     event AdjustTargetLeverage(address indexed route, bytes32 requestKey, bytes32 routeKey, bytes32 positionKey);
     event LiquidatePosition(address indexed route, bytes32 routeKey, bytes32 positionKey);
@@ -399,7 +405,7 @@ interface IOrchestrator {
     event SetReferralCode(bytes32 referralCode);
     event SetRouteFactory(address factory);
     event WithdrawPlatformFees(uint256 amount, address asset, address caller, address platformFeeRecipient);
-    event SetFees(uint256 managmentFee, uint256 withdrawalFee);
+    event SetFees(uint256 managmentFee, uint256 withdrawalFee, uint256 performanceFee);
     event SetFeesRecipient(address recipient);
     event SetKeeper(address keeper);
     event RescueRouteFunds(uint256 amount, address token, address indexed receiver, address indexed route);

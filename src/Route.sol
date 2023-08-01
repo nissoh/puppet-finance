@@ -20,6 +20,8 @@ pragma solidity 0.8.19;
 
 // ==============================================================
 
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+
 import {IGMXRouter} from "./interfaces/IGMXRouter.sol";
 import {IGMXPositionRouter} from "./interfaces/IGMXPositionRouter.sol";
 import {IGMXVault} from "./interfaces/IGMXVault.sol";
@@ -35,6 +37,8 @@ import "./Base.sol";
 contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
     using SafeERC20 for IERC20;
+    using SafeCast for uint256;
+    using SafeCast for int256;
     using Address for address payable;
 
     bool public waitForKeeperAdjustment;
@@ -43,7 +47,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     bool private _isPositionOpen;
     bool private _enableKeeperAdjustment;
 
-    int256 public totalPuppetsProfit; // todo
+    int256 public totalPuppetsProfit;
 
     uint256 public positionIndex;
     uint256 public targetLeverage;
@@ -326,11 +330,11 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
         if (_isExecuted && _isIncrease) _allocateShares(_requestKey);
 
-        _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey], _isIncrease);
+        uint256 _performanceFeePaid = _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey], _isIncrease);
 
         if (!_isExecuted && !_isPositionOpen) _resetPuppetsArray();
 
-        orchestrator.emitExecutionCallback(_requestKey, _isExecuted, _isIncrease);
+        orchestrator.emitExecutionCallback(_performanceFeePaid, _requestKey, _isExecuted, _isIncrease);
 
         emit Callback(_requestKey, _isExecuted, _isIncrease);
     }
@@ -695,10 +699,10 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
                     _position.lastPuppetsAmountsIn[i] = _puppetAmountIn;
 
-                    _totalSupply = _totalSupply + _newPuppetShares;
-                    _totalAssets = _totalAssets + _puppetAmountIn;
+                    _totalSupply += _newPuppetShares;
+                    _totalAssets += _puppetAmountIn;
 
-                    totalPuppetsProfit += int256(_puppetAmountIn); // todo
+                    totalPuppetsProfit += _puppetAmountIn.toInt256();
                 }
             }
  
@@ -710,8 +714,8 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
             _position.lastTraderAmountIn = _traderAmountIn;
 
-            _totalSupply = _totalSupply + _newTraderShares;
-            _totalAssets = _totalAssets + _traderAmountIn;
+            _totalSupply += _newTraderShares;
+            _totalAssets += _traderAmountIn;
 
             _position.totalSupply = _totalSupply;
             _position.totalAssets = _totalAssets;
@@ -733,16 +737,12 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         bool _isExecuted,
         bool _isKeeperRequest,
         bool _isIncrease
-    ) internal {
+    ) internal returns (uint256 _performanceFeePaid) {
         AddCollateralRequest memory _request = addCollateralRequests[requestKeyToAddCollateralRequestsIndex[_requestKey]];
         Position storage _position = positions[positionIndex];
         Route memory _route = route;
 
-        bool _isClosingPosition;
-        if (!_isOpenInterest() && _isPositionOpen) {
-            _isClosingPosition = true;
-            _resetRoute();
-        }
+        if (!_isOpenInterest() && _isPositionOpen) _resetRoute();
 
         _setAdjustmentFlags(_request.isAdjustmentRequired, _isExecuted, _isKeeperRequest);
 
@@ -767,16 +767,17 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
                 }
             }
 
-            if (_isExecuted && !_isIncrease) {
-                totalPuppetsProfit -= int256(_puppetsAssets); // todo
-                if (_isClosingPosition && (totalPuppetsProfit < 0)) {
-                    _puppetsAssets -= uint256(totalPuppetsProfit * -1) * 5 / 100;
-                    revert("asdasd");
-                }
-            }
-
             uint256 _traderShares = _isExecuted ? _position.traderShares : _request.traderShares;
             uint256 _traderAssets = _convertToAssets(_balance, _totalSupply, _traderShares);
+
+            if (_isExecuted && !_isIncrease) {
+                totalPuppetsProfit -= _puppetsAssets.toInt256();
+                if (totalPuppetsProfit < 0) {
+                    _performanceFeePaid = (totalPuppetsProfit * -1).toUint256() * orchestrator.performanceFee() / _BASIS_POINTS_DIVISOR;
+                    _puppetsAssets -= _performanceFeePaid;
+                    _traderAssets += _performanceFeePaid;
+                }
+            }
 
             IERC20(_route.collateralToken).safeTransfer(address(orchestrator), _puppetsAssets);
             IERC20(_route.collateralToken).safeTransfer(_route.trader, _traderAssets);
@@ -788,7 +789,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
             payable(_executionFeeReceiver).sendValue(_ethBalance - _traderAmountIn);
         }
 
-        emit Repay(_totalAssets);
+        emit Repay(_totalAssets, _performanceFeePaid);
     }
 
     /// @notice The ```_setAdjustmentFlags``` function sets the adjustment flags, used by the Keeper to determine whether to adjust the position
@@ -817,8 +818,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
     /// @notice The ```_resetRoute``` function is used to increment the position index, which is used to track the current position
     /// @dev This function is called by ```_repayBalance```, only if there's no open interest
-    /// @return _puppetsAssets The amount of assets to send to the orchestrator after a performance fee is paid
-    function _resetRoute() internal returns (uint256 _puppetsAssets) {
+    function _resetRoute() internal {
         _isPositionOpen = false;
         positionIndex += 1;
 

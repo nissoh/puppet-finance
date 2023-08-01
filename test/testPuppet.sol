@@ -1100,6 +1100,9 @@ contract testPuppet is Test, DeployerUtilities {
             orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, routeTypeKey, _executionFee, false);
             vm.stopPrank();
 
+            // todo - artifically add funds to Route, as if position was closed in profit
+            _dealERC20(route.collateralToken(), address(route), 100 ether);
+
             vm.startPrank(GMXPositionRouterKeeper); // keeper
             IGMXPositionRouter(_gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
             vm.stopPrank();
@@ -1480,9 +1483,9 @@ contract testPuppet is Test, DeployerUtilities {
         vm.startPrank(owner);
 
         vm.expectRevert(); // reverts with ```FeeExceedsMax()```
-        orchestrator.setFees(0, 1001);
+        orchestrator.setFees(0, 1001, 0);
         
-        orchestrator.setFees(0, 500); // 5%
+        orchestrator.setFees(0, 500, 500); // 5%
 
         assertEq(orchestrator.withdrawalFee(), 500);
         assertTrue(orchestrator.puppetAccountBalance(alice, _token) > orchestrator.puppetAccountBalanceAfterFee(alice, _token, true), "_setWithdrawalFee: E2");
@@ -1503,9 +1506,9 @@ contract testPuppet is Test, DeployerUtilities {
         vm.startPrank(owner);
 
         vm.expectRevert(); // reverts with ```FeeExceedsMax()```
-        orchestrator.setFees(1001, 0);
+        orchestrator.setFees(1001, 0, 500);
         
-        orchestrator.setFees(500, 0); // 5%
+        orchestrator.setFees(500, 0, 500); // 5%
 
         assertEq(orchestrator.managementFee(), 500);
         assertTrue(orchestrator.puppetAccountBalance(alice, _token) > orchestrator.puppetAccountBalanceAfterFee(alice, _token, false), "_setManagementFee: E2");

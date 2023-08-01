@@ -216,7 +216,7 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event PluginApproval();
     event IncreaseRequest(bytes32 requestKey, uint256 amountIn, uint256 minOut, uint256 sizeDelta, uint256 acceptablePrice);
     event DecreaseRequest(bytes32 requestKey, uint256 minOut, uint256 collateralDelta, uint256 sizeDelta, uint256 acceptablePrice);
-    event Repay(uint256 totalAssets);
+    event Repay(uint256 totalAssets, uint256 performanceFeePaid);
     event Reset();
     event RescueTokenFunds(uint256 amount, address token, address receiver);
     event Freeze(bool freeze);
