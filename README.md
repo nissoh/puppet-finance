@@ -52,16 +52,16 @@ slither .
 ```
 ## 📜 Contract Addresses
 
-[Deployed Addresses](TODO-URL).
+[Deployed Addresses](TODO-URL)
 
 ## 📖 Documentation
 
-[Documentation](TODO-URL).
+[Documentation](TODO-URL)
 
 
 ## 💗 Contributing
 
 Contributions are always welcome!
 
-Come say hey in our [Discord server](TODO-URL).
+Come say hey in our [Discord server](TODO-URL)
 

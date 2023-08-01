@@ -26,6 +26,7 @@ contract Puppet {
     address public admin;
 
     uint256 public decimals;
+
     uint256 private _totalSupply;
 
     mapping(address => uint256) public balanceOf;
