@@ -18,16 +18,16 @@ This is the main Puppet Finance public smart contract repository.
 ### Local Setup Steps
 
 ```sh
-# Clone the repository
+# clone repo
 git clone https://github.com/GMX-Blueberry-Club/puppet-contracts.git
 
-# Change directory into the cloned repo
+# cd into cloned repo
 cd puppet-contracts
 
-# Create a .env file
+# create a .env file
 touch .env
 
-# Add your Arbitrum RPC URL to the .env file
+# add your Arbitrum RPC URL to the .env file
 echo "ARBITRUM_RPC_URL=<YOUR_ARBITRUM_RPC_URL_LINK>" >> .env
 
 # build the docker image
