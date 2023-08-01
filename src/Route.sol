@@ -731,6 +731,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     /// @param _isExecuted A boolean indicating whether the request was executed
     /// @param _isKeeperRequest A boolean indicating whether the request was made by a keeper
     /// @param _isIncrease A boolean indicating whether the request is an increase request
+    /// @return _performanceFeePaid The amount of performance fee paid to the Trader
     function _repayBalance(
         bytes32 _requestKey,
         uint256 _traderAmountIn,

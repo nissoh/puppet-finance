@@ -28,7 +28,7 @@ import {IOrchestrator, IRoute} from "./interfaces/IOrchestrator.sol";
 
 /// @title Base
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
-/// @notice An abstract contract that contains common libraries, and constants
+/// @notice An abstract contract that contains common dependencies and functions
 abstract contract Base is ReentrancyGuard {
 
     using SafeERC20 for IERC20;

@@ -22,7 +22,7 @@ contract DeployPuppet is DeployerUtilities {
     function run() public {
         vm.startBroadcast(_deployerPrivateKey);
 
-        address _platformFeeRecipient = vm.envAddress("GBC_DEPLOYER_ADDRESS");
+        address _platformFeeRecipient = _deployer;
 
         Dictator _dictator = Dictator(_dictatorAddr);
 
