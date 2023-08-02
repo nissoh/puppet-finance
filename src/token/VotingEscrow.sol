@@ -465,7 +465,7 @@ contract VotingEscrow is ReentrancyGuard {
             return 0;
         } else {
             Point memory _lastPoint = userPointHistory[_addr][_epoch];
-            _lastPoint.bias -= _lastPoint.slope * (_t.toInt256() - _lastPoint.ts.toInt256()).toInt128();
+            _lastPoint.bias -= _lastPoint.slope * (_t - _lastPoint.ts).toInt256().toInt128();
             if (_lastPoint.bias < 0) {
                 _lastPoint.bias = 0;
             }

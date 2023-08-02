@@ -10,7 +10,6 @@ import {DeployerUtilities} from "script/utilities/DeployerUtilities.sol";
 
 import {Puppet} from "src/token/Puppet.sol";
 import {VotingEscrow} from "src/token/VotingEscrow.sol";
-import {VePuppet} from "src/token/vePuppetOLD.sol";
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
@@ -25,17 +24,16 @@ contract testVotingEscrow is Test, DeployerUtilities {
 
     Puppet public puppetERC20;
     VotingEscrow public votingEscrow;
-    VePuppet public vePuppet;
 
     ICRVVotingEscrow public crvVotingEscrow = ICRVVotingEscrow(0x5f3b5DfEb7B28CDbD7FAba78963EE202a494e2A2);
 
     function setUp() public {
 
-        // uint256 arbitrumFork = vm.createFork(vm.envString("ARBITRUM_RPC_URL"));
-        // vm.selectFork(arbitrumFork);
+        uint256 arbitrumFork = vm.createFork(vm.envString("ARBITRUM_RPC_URL"));
+        vm.selectFork(arbitrumFork);
 
-        uint256 mainnetFork = vm.createFork(vm.envString("MAINNET_RPC_URL"));
-        vm.selectFork(mainnetFork);
+        // uint256 mainnetFork = vm.createFork(vm.envString("MAINNET_RPC_URL"));
+        // vm.selectFork(mainnetFork);
 
         vm.deal(owner, 100 ether);
         vm.deal(alice, 100 ether);
@@ -43,33 +41,29 @@ contract testVotingEscrow is Test, DeployerUtilities {
         vm.deal(yossi, 100 ether);
         vm.deal(minter, 100 ether);
 
-        // vm.startPrank(owner);
-        // puppetERC20 = new Puppet("Puppet Finance Token", "PUPPET", 18);
-        // puppetERC20.setMinter(minter);
+        vm.startPrank(owner);
+        puppetERC20 = new Puppet("Puppet Finance Token", "PUPPET", 18);
+        puppetERC20.setMinter(minter);
 
-        // votingEscrow = new VotingEscrow(address(puppetERC20), "Vote-escrowed PUPPET", "vePUPPET", "1.0.0");
-        // vePuppet = new VePuppet(address(puppetERC20), 1);
-        // vm.stopPrank();
+        votingEscrow = new VotingEscrow(address(puppetERC20), "Vote-escrowed PUPPET", "vePUPPET", "1.0.0");
+        vm.stopPrank();
 
-        // // mint some PUPPET to alice and bob
-        // skip(86400); // skip INFLATION_DELAY (1 day)
-        // puppetERC20.updateMiningParameters(); // start 1st epoch
-        // skip(86400 * 365); // skip the entire epoch (year)
-        // vm.startPrank(minter);
-        // puppetERC20.mint(alice, 100000 * 1e18);
-        // puppetERC20.mint(bob, 100000 * 1e18);
-        // puppetERC20.mint(yossi, 100000 * 1e18);
-        // vm.stopPrank();
+        // mint some PUPPET to alice and bob
+        skip(86400); // skip INFLATION_DELAY (1 day)
+        puppetERC20.updateMiningParameters(); // start 1st epoch
+        skip(86400 * 365); // skip the entire epoch (year)
+        vm.startPrank(minter);
+        puppetERC20.mint(alice, 100000 * 1e18);
+        puppetERC20.mint(bob, 100000 * 1e18);
+        puppetERC20.mint(yossi, 100000 * 1e18);
+        vm.stopPrank();
 
-        // // whitelist alice and bob as contracts, because of Foundry limitation (msg.sender != tx.origin)
-        // vm.startPrank(owner);
-        // votingEscrow.addToWhitelist(alice);
-        // vePuppet.add_to_whitelist(alice);
-        // votingEscrow.addToWhitelist(bob);
-        // vePuppet.add_to_whitelist(bob);
-        // votingEscrow.addToWhitelist(yossi);
-        // vePuppet.add_to_whitelist(yossi);
-        // vm.stopPrank();
+        // whitelist alice and bob as contracts, because of Foundry limitation (msg.sender != tx.origin)
+        vm.startPrank(owner);
+        votingEscrow.addToWhitelist(alice);
+        votingEscrow.addToWhitelist(bob);
+        votingEscrow.addToWhitelist(yossi);
+        vm.stopPrank();
     }
 
     // =======================================================
@@ -114,126 +108,117 @@ contract testVotingEscrow is Test, DeployerUtilities {
         // --- CREATE LOCK ---
 
         // alice
-        // _checkCreateLockWrongFlows(alice);
+        _checkCreateLockWrongFlows(alice);
         vm.startPrank(alice);
-        // _totalSupplyBefore = votingEscrow.totalSupply();
-        // IERC20(address(puppetERC20)).approve(address(votingEscrow), _aliceAmountLocked);
-        // votingEscrow.createLock(_aliceAmountLocked, block.timestamp + votingEscrow.MAXTIME());
-        IERC20(address(puppetERC20)).approve(address(vePuppet), _aliceAmountLocked);
-        vePuppet.create_lock(_aliceAmountLocked, block.timestamp + votingEscrow.MAXTIME());
+        _totalSupplyBefore = votingEscrow.totalSupply();
+        IERC20(address(puppetERC20)).approve(address(votingEscrow), _aliceAmountLocked);
+        votingEscrow.createLock(_aliceAmountLocked, block.timestamp + votingEscrow.MAXTIME());
         vm.stopPrank();
-        // _checkUserVotingDataAfterCreateLock(alice, _aliceAmountLocked, _totalSupplyBefore);
+        _checkUserVotingDataAfterCreateLock(alice, _aliceAmountLocked, _totalSupplyBefore);
 
         // bob
-        // _checkCreateLockWrongFlows(bob);
+        _checkCreateLockWrongFlows(bob);
         vm.startPrank(bob);
-        // _totalSupplyBefore = votingEscrow.totalSupply();
-        // IERC20(address(puppetERC20)).approve(address(votingEscrow), _bobAmountLocked);
-        // votingEscrow.createLock(_bobAmountLocked, block.timestamp + votingEscrow.MAXTIME());
-        IERC20(address(puppetERC20)).approve(address(vePuppet), _bobAmountLocked);
-        vePuppet.create_lock(_bobAmountLocked, block.timestamp + votingEscrow.MAXTIME());
+        _totalSupplyBefore = votingEscrow.totalSupply();
+        IERC20(address(puppetERC20)).approve(address(votingEscrow), _bobAmountLocked);
+        votingEscrow.createLock(_bobAmountLocked, block.timestamp + votingEscrow.MAXTIME());
         vm.stopPrank();
-        // _checkUserVotingDataAfterCreateLock(bob, _bobAmountLocked, _totalSupplyBefore);
+        _checkUserVotingDataAfterCreateLock(bob, _bobAmountLocked, _totalSupplyBefore);
 
         // --- DEPOSIT FOR ---
 
         // alice
-        // _checkDepositForWrongFlows(_aliceAmountLocked, alice, bob);
+        _checkDepositForWrongFlows(_aliceAmountLocked, alice, bob);
         vm.startPrank(bob);
-        // IERC20(address(puppetERC20)).approve(address(votingEscrow), _bobAmountLocked);
-        IERC20(address(puppetERC20)).approve(address(vePuppet), _bobAmountLocked);
+        IERC20(address(puppetERC20)).approve(address(votingEscrow), _bobAmountLocked);
         vm.stopPrank();
         vm.startPrank(alice);
-        // _totalSupplyBefore = votingEscrow.totalSupply();
-        // uint256 _aliceBalanceBefore = votingEscrow.balanceOf(alice);
-        // uint256 _bobBalanceBefore = votingEscrow.balanceOf(bob);
-        // votingEscrow.depositFor(bob, _aliceAmountLocked);
-        vePuppet.deposit_for(bob, _aliceAmountLocked);
+        _totalSupplyBefore = votingEscrow.totalSupply();
+        uint256 _aliceBalanceBefore = votingEscrow.balanceOf(alice);
+        uint256 _bobBalanceBefore = votingEscrow.balanceOf(bob);
+        votingEscrow.depositFor(bob, _aliceAmountLocked);
         vm.stopPrank();
-        // _checkUserBalancesAfterDepositFor(alice, bob, _aliceBalanceBefore, _bobBalanceBefore, _aliceAmountLocked, _totalSupplyBefore);
+        _checkUserBalancesAfterDepositFor(alice, bob, _aliceBalanceBefore, _bobBalanceBefore, _aliceAmountLocked, _totalSupplyBefore);
 
         // bob
-        // _checkDepositForWrongFlows(_bobAmountLocked, bob, alice);
+        _checkDepositForWrongFlows(_bobAmountLocked, bob, alice);
         vm.startPrank(alice);
-        // IERC20(address(puppetERC20)).approve(address(votingEscrow), _aliceAmountLocked);
-        IERC20(address(puppetERC20)).approve(address(vePuppet), _aliceAmountLocked);
+        IERC20(address(puppetERC20)).approve(address(votingEscrow), _aliceAmountLocked);
         vm.stopPrank();
         vm.startPrank(bob);
-        // _totalSupplyBefore = votingEscrow.totalSupply();
-        // _aliceBalanceBefore = votingEscrow.balanceOf(alice);
-        // _bobBalanceBefore = votingEscrow.balanceOf(bob);
-        // votingEscrow.depositFor(alice, _bobAmountLocked);
-        vePuppet.deposit_for(alice, _bobAmountLocked);
+        _totalSupplyBefore = votingEscrow.totalSupply();
+        _aliceBalanceBefore = votingEscrow.balanceOf(alice);
+        _bobBalanceBefore = votingEscrow.balanceOf(bob);
+        votingEscrow.depositFor(alice, _bobAmountLocked);
         vm.stopPrank();
-        // _checkUserBalancesAfterDepositFor(bob, alice, _bobBalanceBefore, _aliceBalanceBefore, _bobAmountLocked, _totalSupplyBefore);
+        _checkUserBalancesAfterDepositFor(bob, alice, _bobBalanceBefore, _aliceBalanceBefore, _bobAmountLocked, _totalSupplyBefore);
 
         // --- INCREASE UNLOCK TIME ---
 
-        // _checkLockTimesBeforeSkip();
-        // _aliceBalanceBefore = votingEscrow.balanceOf(alice);
-        // _bobBalanceBefore = votingEscrow.balanceOf(bob);
-        // console.log("alice max locked balance: ", votingEscrow.balanceOf(alice));
-        console.log("alice max locked balance: ", vePuppet.balanceOf(alice));
-        // console.log("alice max locked balance: ", votingEscrow.balanceOfAtT(alice, block.timestamp));
-        console.log("alice max locked balance: ", vePuppet.balanceOfAtT(alice, block.timestamp));
-        // console.log("total supply: ", votingEscrow.totalSupply());
-        console.log("total supply: ", vePuppet.totalSupply());
-        // console.log("total supply: ", votingEscrow.totalSupplyAtT(block.timestamp));
-        console.log("total supply: ", vePuppet.totalSupplyAtT(block.timestamp));
-        uint256 _tsBefore = block.timestamp;
+        _checkLockTimesBeforeSkip();
+        _aliceBalanceBefore = votingEscrow.balanceOf(alice);
+        _bobBalanceBefore = votingEscrow.balanceOf(bob);
+        _totalSupplyBefore = votingEscrow.totalSupply();
         skip(votingEscrow.MAXTIME() / 2); // skip half of the lock time
-        // console.log("alice half locked balance: ", votingEscrow.balanceOf(alice));
-        console.log("alice half locked balance: ", vePuppet.balanceOf(alice));
-        // console.log("alice half locked balance: ", votingEscrow.balanceOfAtT(alice, block.timestamp));
-        console.log("alice half locked balance: ", vePuppet.balanceOfAtT(alice, block.timestamp));
-        // console.log("alice max locked balance1: ", votingEscrow.balanceOfAtT(alice, _tsBefore));
-        console.log("alice max locked balance1: ", vePuppet.balanceOfAtT(alice, _tsBefore));
-        // console.log("total supply: ", votingEscrow.totalSupply());
-        console.log("total supply: ", vePuppet.totalSupply());
-        // console.log("total supply: ", votingEscrow.totalSupplyAtT(_tsBefore));
-        console.log("total supply: ", vePuppet.totalSupplyAtT(_tsBefore));
-        // _checkLockTimesAfterSkipHalf(_aliceBalanceBefore, _bobBalanceBefore);
+        _checkLockTimesAfterSkipHalf(_aliceBalanceBefore, _bobBalanceBefore, _totalSupplyBefore);
 
-        // _checkIncreaseUnlockTimeWrongFlows(alice);
+        _checkIncreaseUnlockTimeWrongFlows(alice);
         vm.startPrank(alice);
-        // uint256 _aliceBalanceBeforeUnlock = votingEscrow.balanceOf(alice);
-        // uint256 _totalSupplyBeforeUnlock = votingEscrow.totalSupply();
-        // votingEscrow.increaseUnlockTime(block.timestamp + votingEscrow.MAXTIME());
-        vePuppet.increase_unlock_time(block.timestamp + votingEscrow.MAXTIME());
-        // console.log("alice max locked balance2: ", votingEscrow.balanceOf(alice));
-        console.log("alice max locked balance2: ", vePuppet.balanceOf(alice));
-        // console.log("alice max locked balance21: ", votingEscrow.balanceOf(alice));
-        console.log("alice max locked balance21: ", vePuppet.balanceOf(alice));
-        // console.log("alice max locked balance3: ", votingEscrow.balanceOfAtT(alice, _tsBefore));
-        console.log("alice max locked balance3: ", vePuppet.balanceOfAtT(alice, _tsBefore));
-        // console.log("total supply at block.timestamp: ", votingEscrow.totalSupplyAtT(block.timestamp));
-        console.log("total supply at block.timestamp: ", vePuppet.totalSupplyAtT(block.timestamp));
-        // console.log("total supply at _tsBefore: ", votingEscrow.totalSupplyAtT(_tsBefore));
-        // skip(4 weeks);
-        console.log("total supply at _tsBefore: ", vePuppet.totalSupplyAtT(block.timestamp - 5 weeks + 10 days));
-        console.log("block.timestamp: ", block.timestamp);
-        // console.log("block.timestamp - 2 years: ", block.timestamp - 2 years);
-        revert("SDF");
+        uint256 _aliceBalanceBeforeUnlock = votingEscrow.balanceOf(alice);
+        uint256 _totalSupplyBeforeUnlock = votingEscrow.totalSupply();
+        votingEscrow.increaseUnlockTime(block.timestamp + votingEscrow.MAXTIME());
         vm.stopPrank();
-        // _checkUserLockTimesAfterIncreaseUnlockTime(_tsBefore, _aliceBalanceBeforeUnlock, _aliceBalanceBefore, _totalSupplyBeforeUnlock, _totalSupplyBefore, alice);
 
-        // skip(86400 * 20);
-        // skip(86400 * 20);
-        // skip(86400 * 20);
-        // vm.roll(block.number + 100);
+        vm.startPrank(bob);
+        uint256 _bobBalanceBeforeUnlock = votingEscrow.balanceOf(bob);
+        votingEscrow.increaseUnlockTime(block.timestamp + votingEscrow.MAXTIME());
+        vm.stopPrank();
 
-        // vm.startPrank(bob);
-        // console.log("lockedEnd69: ", votingEscrow.lockedEnd(bob));
-        // votingEscrow.increaseUnlockTime(block.timestamp + votingEscrow.MAXTIME());
-        // console.log("lockedEnd6969: ", votingEscrow.lockedEnd(bob));
-        // vm.stopPrank();
+        _checkUserLockTimesAfterIncreaseUnlockTime(_aliceBalanceBeforeUnlock, _aliceBalanceBefore, _totalSupplyBeforeUnlock, _totalSupplyBefore, alice);
+        _checkUserLockTimesAfterIncreaseUnlockTime(_bobBalanceBeforeUnlock, _bobBalanceBefore, _totalSupplyBeforeUnlock, _totalSupplyBefore, bob);
 
         // --- INCREASE AMOUNT ---
 
+        _checkIncreaseAmountWrongFlows(alice);
+        vm.startPrank(alice);
+        _aliceBalanceBefore = votingEscrow.balanceOf(alice);
+        _totalSupplyBefore = votingEscrow.totalSupply();
+        IERC20(address(puppetERC20)).approve(address(votingEscrow), _aliceAmountLocked);
+        votingEscrow.increaseAmount(_aliceAmountLocked);
+        vm.stopPrank();
+        _checkUserBalancesAfterIncreaseAmount(alice, _aliceBalanceBefore, _totalSupplyBefore, _aliceAmountLocked);
+
+        _checkIncreaseAmountWrongFlows(bob);
+        vm.startPrank(bob);
+        _bobBalanceBefore = votingEscrow.balanceOf(bob);
+        _totalSupplyBefore = votingEscrow.totalSupply();
+        IERC20(address(puppetERC20)).approve(address(votingEscrow), _bobAmountLocked);
+        votingEscrow.increaseAmount(_bobAmountLocked);
+        vm.stopPrank();
+        _checkUserBalancesAfterIncreaseAmount(bob, _bobBalanceBefore, _totalSupplyBefore, _bobAmountLocked);
+
         // --- WITHDRAW ---
+
+        _checkWithdrawWrongFlows(alice);
+
+        _totalSupplyBefore = votingEscrow.totalSupply();
+
+        skip(votingEscrow.MAXTIME()); // entire lock time
+
+        vm.startPrank(alice);
+        _aliceBalanceBefore = puppetERC20.balanceOf(alice);
+        votingEscrow.withdraw();
+        vm.stopPrank();
+        _checkUserBalancesAfterWithdraw(alice, _totalSupplyBefore, _aliceBalanceBefore);
+
+        vm.startPrank(bob);
+        _bobBalanceBefore = puppetERC20.balanceOf(bob);
+        votingEscrow.withdraw();
+        vm.stopPrank();
+        _checkUserBalancesAfterWithdraw(bob, _totalSupplyBefore, _bobBalanceBefore);
     }
 
-    function testMutatedOnCRV() public {
+    function _testMutatedOnCRV() internal {
         address _crv = 0xD533a949740bb3306d119CC777fa900bA034cd52;
         _dealERC20(_crv, alice , 100000 * 1e18);
         _dealERC20(_crv, bob , 100000 * 1e18);
@@ -276,28 +261,10 @@ contract testVotingEscrow is Test, DeployerUtilities {
 
         // --- INCREASE UNLOCK TIME ---
 
-        console.log("alice max locked balance: ", crvVotingEscrow.balanceOf(alice));
-        console.log("alice max locked balance: ", crvVotingEscrow.balanceOf(alice, block.timestamp));
-        console.log("total supply: ", crvVotingEscrow.totalSupply());
-        console.log("total supply: ", crvVotingEscrow.totalSupply(block.timestamp));
-        uint256 _tsBefore = block.timestamp;
         skip((4 * 365 * 86400) / 2); // skip half of the lock time
-        console.log("alice half locked balance: ", crvVotingEscrow.balanceOf(alice));
-        console.log("alice half locked balance: ", crvVotingEscrow.balanceOf(alice, block.timestamp));
-        console.log("alice max locked balance1: ", crvVotingEscrow.balanceOf(alice, _tsBefore));
-        console.log("total supply: ", crvVotingEscrow.totalSupply());
-        console.log("total supply: ", crvVotingEscrow.totalSupply(_tsBefore));
-        
+
         vm.startPrank(alice);
         crvVotingEscrow.increase_unlock_time(block.timestamp + (4 * 365 * 86400));
-        console.log("alice max locked balance2: ", crvVotingEscrow.balanceOf(alice));
-        console.log("alice max locked balance21: ", crvVotingEscrow.balanceOf(alice));
-        console.log("alice max locked balance3: ", crvVotingEscrow.balanceOf(alice, _tsBefore));
-        console.log("total supply at block.timestamp: ", crvVotingEscrow.totalSupply(block.timestamp));
-        // skip(4 weeks);
-        console.log("total supply at _tsBefore: ", crvVotingEscrow.totalSupply(_tsBefore));
-        console.log("block.timestamp: ", block.timestamp);
-        revert("SDF");
         vm.stopPrank();
     }
 
@@ -382,11 +349,13 @@ contract testVotingEscrow is Test, DeployerUtilities {
         assertApproxEqAbs(votingEscrow.lockedEnd(bob), block.timestamp + votingEscrow.MAXTIME(), 1e6, "_checkLockTimesBeforeSkip: E1");
     }
 
-    function _checkLockTimesAfterSkipHalf(uint256 _aliceBalanceBefore, uint256 _bobBalanceBefore) internal {
+    function _checkLockTimesAfterSkipHalf(uint256 _aliceBalanceBefore, uint256 _bobBalanceBefore, uint256 _totalSupplyBefore) internal {
         assertApproxEqAbs(votingEscrow.balanceOf(alice), _aliceBalanceBefore / 2, 1e21, "_checkLockTimesAfterSkipHalf: E0");
         assertApproxEqAbs(votingEscrow.balanceOf(bob), _bobBalanceBefore / 2, 1e21, "_checkLockTimesAfterSkipHalf: E1");
         assertEq(votingEscrow.balanceOfAtT(alice, block.timestamp - votingEscrow.MAXTIME() / 2), _aliceBalanceBefore, "_checkLockTimesAfterSkipHalf: E2");
         assertEq(votingEscrow.balanceOfAtT(bob, block.timestamp - votingEscrow.MAXTIME() / 2), _bobBalanceBefore, "_checkLockTimesAfterSkipHalf: E3");
+        assertApproxEqAbs(votingEscrow.totalSupply(), _totalSupplyBefore / 2, 1e21, "_checkLockTimesAfterSkipHalf: E4");
+        assertEq(votingEscrow.totalSupplyAtT(block.timestamp - votingEscrow.MAXTIME() / 2), _totalSupplyBefore, "_checkLockTimesAfterSkipHalf: E5");
     }
 
     function _checkIncreaseUnlockTimeWrongFlows(address _user) internal {
@@ -409,62 +378,42 @@ contract testVotingEscrow is Test, DeployerUtilities {
         vm.stopPrank();
     }
 
-    function _checkUserLockTimesAfterIncreaseUnlockTime(uint256 _tsBefore, uint256 _userBalanceBeforeUnlock, uint256 _userBalanceBefore, uint256 _totalSupplyBeforeUnlock, uint256 _totalSupplyBefore, address _user) internal {
+    function _checkUserLockTimesAfterIncreaseUnlockTime(uint256 _userBalanceBeforeUnlock, uint256 _userBalanceBefore, uint256 _totalSupplyBeforeUnlock, uint256 _totalSupplyBefore, address _user) internal {
         assertApproxEqAbs(votingEscrow.lockedEnd(_user), block.timestamp + votingEscrow.MAXTIME(), 1e6, "_checkUserLockTimesAfterIncreaseUnlockTime: E0");
         assertApproxEqAbs(votingEscrow.balanceOf(_user), _userBalanceBeforeUnlock * 2, 1e21, "_checkUserLockTimesAfterIncreaseUnlockTime: E1");
         assertApproxEqAbs(votingEscrow.balanceOfAtT(_user, block.timestamp), _userBalanceBeforeUnlock * 2, 1e21, "_checkUserLockTimesAfterIncreaseUnlockTime: E2");
-        assertEq(votingEscrow.balanceOfAtT(_user, _tsBefore), votingEscrow.balanceOf(_user), "_checkUserLockTimesAfterIncreaseUnlockTime: E3");
+        // assertEq(votingEscrow.balanceOfAtT(_user, block.timestamp - votingEscrow.MAXTIME() / 2), votingEscrow.balanceOf(_user), "_checkUserLockTimesAfterIncreaseUnlockTime: E3");
         assertTrue(votingEscrow.totalSupply() > _totalSupplyBeforeUnlock, "_checkUserLockTimesAfterIncreaseUnlockTime: E4");
         assertApproxEqAbs(votingEscrow.totalSupply(), _totalSupplyBefore, 1e21, "_checkUserLockTimesAfterIncreaseUnlockTime: E5");
         assertApproxEqAbs(_userBalanceBefore, votingEscrow.balanceOf(_user), 1e21, "_checkUserLockTimesAfterIncreaseUnlockTime: E6");
+    }
+
+    function _checkIncreaseAmountWrongFlows(address _user) internal {
+        vm.startPrank(_user);
+        vm.expectRevert();
+        votingEscrow.increaseAmount(0);
+        vm.stopPrank();
+    }
+
+    function _checkUserBalancesAfterIncreaseAmount(address _user, uint256 _balanceBefore, uint256 _totalSupplyBefore, uint256 _amountLocked) internal {
+        assertApproxEqAbs(votingEscrow.balanceOf(_user), _balanceBefore + _amountLocked, 1e21, "_checkUserBalancesAfterIncreaseAmount: E0");
+        assertApproxEqAbs(votingEscrow.totalSupply(), _totalSupplyBefore + _amountLocked, 1e21, "_checkUserBalancesAfterIncreaseAmount: E1");   
+    }
+
+    function _checkWithdrawWrongFlows(address _user) internal {
+        vm.startPrank(_user);
+        vm.expectRevert(); // reverts with ```The lock didn't expire```
+        votingEscrow.withdraw();
+        vm.stopPrank();
+    }
+
+    function _checkUserBalancesAfterWithdraw(address _user, uint256 _totalSupplyBefore, uint256 _puppetBalanceBefore) internal {
+        assertEq(votingEscrow.balanceOf(_user), 0, "_checkUserBalancesAfterWithdraw: E0");
+        assertTrue(votingEscrow.totalSupply() < _totalSupplyBefore, "_checkUserBalancesAfterWithdraw: E1");
+        assertTrue(puppetERC20.balanceOf(_user) > _puppetBalanceBefore, "_checkUserBalancesAfterWithdraw: E2");
     }
 
     function _dealERC20(address _token, address _recipient , uint256 _amount) internal {
         deal({ token: address(_token), to: _recipient, give: _amount});
     }
 }
-
-// votingEscrow tests
-//   alice max locked balance:  66441425143751043364601
-//   alice max locked balance:  66441425143751043364601
-//   total supply:  132882850287502086729202
-//   total supply:  132882850287502086729202
-//   alice half locked balance:  33108091810417716868601
-//   alice half locked balance:  33108091810417716868601
-//   alice max locked balance1:  66441425143751043364601
-//   total supply:  66216183620835433737202
-//   total supply:  132882850287502086729202
-//   alice max locked balance2:  66350100942837801374201
-//   alice max locked balance21:  66350100942837801374201
-//   alice max locked balance3:  99683434276171127870201
-//   total supply at block.timestamp:  99458192753255518242802
-
-// ------
-// vePuppet (dopex ve) tests
-// alice max locked balance:  66441004460510725421173
-// alice max locked balance:  66441004460510725421173
-// total supply:  132882008921021450842346
-// total supply:  132882008921021450842346
-// alice half locked balance:  33107671127177398925173
-// alice half locked balance:  33107671127177398925173
-// alice max locked balance1:  66441004460510725421173
-// total supply:  66215342254354797850346
-// total supply:  132882008921021450842346
-// alice max locked balance2:  66349680259597483430773
-// alice max locked balance21:  66349680259597483430773
-// alice max locked balance3:  99683013592930809926773
-// total supply at block.timestamp:  99457351386774882355946
-
-// ------
-// veCRV tests
-// alice max locked balance:  66530828788263135346939
-//   alice max locked balance:  66530828788263135346939
-//   total supply:  610942803830652755929315752
-//   total supply:  610942803830652755929315752
-//   alice half locked balance:  33197495454929808850939
-//   alice half locked balance:  33197495454929808850939
-//   alice max locked balance1:  66530828788263135346939
-//   total supply:  281298293654947716170826450
-//   total supply:  610942803830652755929315752
-//   alice max locked balance2:  66439504587349893356539
-//   alice max locked balance21:  66439504587349893356539

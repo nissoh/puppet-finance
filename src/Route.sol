@@ -30,7 +30,7 @@ import {IPositionRouterCallbackReceiver} from "./interfaces/IPositionRouterCallb
 import {IRoute} from "./interfaces/IRoute.sol";
 
 import "./Base.sol";
-
+// todo - test ```cumulativeVolumeGenerated``` and ```traderPnL```
 /// @title Route
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
 /// @notice This contract acts as a container account for a specific trading route, called by the Orchestrator and owned by a Trader
@@ -47,8 +47,10 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     bool private _isPositionOpen;
     bool private _enableKeeperAdjustment;
 
-    int256 public totalPuppetsProfit;
+    int256 public puppetsPnL;
+    int256 public traderPnL; // todo - denominate in USD
 
+    uint256 public cumulativeVolumeGenerated; // todo - make sure denominated in USD
     uint256 public positionIndex;
     uint256 public targetLeverage;
 
@@ -60,7 +62,9 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
     mapping(bytes32 => bool) public keeperRequests; // requestKey => isKeeperRequest
 
+    mapping(bytes32 => uint256) public pendingSizeDelta; // requestKey => sizeDelta
     mapping(bytes32 => uint256) public requestKeyToAddCollateralRequestsIndex; // requestKey => addCollateralRequestsIndex
+
     mapping(uint256 => AddCollateralRequest) public addCollateralRequests; // addCollateralIndex => AddCollateralRequest
     mapping(uint256 => Position) public positions; // positionIndex => Position
 
@@ -328,7 +332,10 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     function gmxPositionCallback(bytes32 _requestKey, bool _isExecuted, bool _isIncrease) external nonReentrant {
         if (msg.sender != orchestrator.gmxPositionRouter()) revert NotCallbackCaller();
 
-        if (_isExecuted && _isIncrease) _allocateShares(_requestKey);
+        if (_isExecuted) {
+            cumulativeVolumeGenerated = pendingSizeDelta[_requestKey];
+            if (_isIncrease) _allocateShares(_requestKey);
+        }
 
         uint256 _performanceFeePaid = _repayBalance(_requestKey, 0, _isExecuted, keeperRequests[_requestKey], _isIncrease);
 
@@ -584,6 +591,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
             address(this)
         );
 
+        pendingSizeDelta[_requestKey] = _adjustPositionParams.sizeDelta;
         positions[positionIndex].requestKeys.push(_requestKey);
 
         if (_amountIn > 0) requestKeyToAddCollateralRequestsIndex[_requestKey] = positions[positionIndex].addCollateralRequestsIndex - 1;
@@ -626,6 +634,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
             address(this)
         );
 
+        pendingSizeDelta[_requestKey] = _adjustPositionParams.sizeDelta;
         positions[positionIndex].requestKeys.push(_requestKey);
 
         emit DecreaseRequest(
@@ -702,11 +711,13 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
                     _totalSupply += _newPuppetShares;
                     _totalAssets += _puppetAmountIn;
 
-                    totalPuppetsProfit += _puppetAmountIn.toInt256();
+                    puppetsPnL += _puppetAmountIn.toInt256();
                 }
             }
  
             _isPositionOpen = true;
+
+            traderPnL += _traderAmountIn.toInt256();
 
             uint256 _newTraderShares = _convertToShares(_totalAssets, _totalSupply, _traderAmountIn);
 
@@ -772,9 +783,10 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
             uint256 _traderAssets = _convertToAssets(_balance, _totalSupply, _traderShares);
 
             if (_isExecuted && !_isIncrease) {
-                totalPuppetsProfit -= _puppetsAssets.toInt256();
-                if (totalPuppetsProfit < 0) {
-                    _performanceFeePaid = (totalPuppetsProfit * -1).toUint256() * orchestrator.performanceFee() / _BASIS_POINTS_DIVISOR;
+                puppetsPnL -= _puppetsAssets.toInt256();
+                traderPnL -= _traderAssets.toInt256();
+                if (puppetsPnL < 0) {
+                    _performanceFeePaid = (puppetsPnL * -1).toUint256() * orchestrator.performanceFee() / _BASIS_POINTS_DIVISOR;
                     _puppetsAssets -= _performanceFeePaid;
                     _traderAssets += _performanceFeePaid;
                 }
@@ -822,6 +834,8 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     function _resetRoute() internal {
         _isPositionOpen = false;
         positionIndex += 1;
+
+        // IScoreGauge(orchestrator.scoreGauge()).updateScore(cumulativeVolumeGenerated, traderPnL); // todo
 
         emit Reset();
     }
