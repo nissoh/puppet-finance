@@ -1,48 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.19;
 
+import {IVotingEscrow} from "src/interfaces/IVotingEscrow.sol";
+
 // @title Gauge Controller
 // @author Curve Finance
 // @license MIT
 // @notice Controls liquidity gauges and the issuance of coins through the gauges
 
-// interface VotingEscrow:
-//     def get_last_user_slope(addr: address) -> int128: view
-//     def locked__end(addr: address) -> uint256: view
-
 contract GaugeContoller {
-    // # 7 * 86400 seconds - all future times are rounded by week
-    // WEEK: constant(uint256) = 604800
-    uint256 constant WEEK = 604800;
 
-    // # Cannot change weight votes more often than once in 10 days
-    // WEIGHT_VOTE_DELAY: constant(uint256) = 10 * 86400
-    uint256 constant WEIGHT_VOTE_DELAY = 864000;
-
-    // struct Point:
-    //     bias: uint256
-    //     slope: uint256
     struct Point {
         uint256 bias;
         uint256 slope;
     }
 
-    // struct VotedSlope:
-    //     slope: uint256
-    //     power: uint256
-    //     end: uint256
     struct VotedSlope {
         uint256 slope;
         uint256 power;
         uint256 end;
     }
 
-    // event CommitOwnership:
-    //     admin: address
-    event CommitOwnership(address admin);
+    // # 7 * 86400 seconds - all future times are rounded by week
+    uint256 constant WEEK = 604800;
 
-    // event ApplyOwnership:
-    //     admin: address
+    // # Cannot change weight votes more often than once in 10 days
+    uint256 constant WEIGHT_VOTE_DELAY = 10 * 86400;
+
+    event CommitOwnership(address admin);
     event ApplyOwnership(address admin);
 
     // event AddType:
@@ -781,37 +766,112 @@ contract GaugeContoller {
     /// @param _gauge_addr Gauge which `msg.sender` votes for
     /// @param _user_weight Weight for a gauge in bps (units of 0.01%). Minimal is 0.01%. Ignored if 0
     function vote_for_gauge_weights(address _gauge_addr, uint256 _user_weight) external {
-        address escrow = voting_escrow;
-        uint256 slope = IVotingEscrow(escrow).get_last_user_slope(msg.sender); // todo add interface
-        uint256 lock_end = IVotingEscrow(escrow).locked__end(msg.sender); // todo add interface
-        int128 _n_gauges = n_gauges;
-        uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
-        require(lock_end > next_time, "Your token lock expires too soon");
         require(_user_weight >= 0 && _user_weight <= 10000, "You used all your voting power");
         require(block.timestamp >= last_user_vote[msg.sender][_gauge_addr] + WEIGHT_VOTE_DELAY, "Cannot vote so often");
 
+        // address escrow = voting_escrow;
+        // uint256 slope = uint256(int256(IVotingEscrow(escrow).getLastUserSlope(msg.sender)));
+        uint256 lock_end = IVotingEscrow(voting_escrow).lockedEnd(msg.sender);
+        // int128 _n_gauges = n_gauges;
+        uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
+        require(lock_end > next_time, "Your token lock expires too soon");
+
         int128 gauge_type = gauge_types_[_gauge_addr] - 1;
         require(gauge_type >= 0, "Gauge not added");
+
         // Prepare slopes and biases in memory
         VotedSlope memory old_slope = vote_user_slopes[msg.sender][_gauge_addr];
-        uint256 old_dt = 0;
-        if (old_slope.end > next_time) {
-            old_dt = old_slope.end - next_time;
+        // uint256 old_dt = 0;
+        // if (old_slope.end > next_time) {
+        //     old_dt = old_slope.end - next_time;
+        // }
+        // uint256 old_bias = old_slope.slope * old_dt;
+        uint256 old_bias = old_slope.slope * _old_dt(old_slope.end, next_time);
+        // VotedSlope memory new_slope = VotedSlope({
+        //     slope: slope * _user_weight / 10000,
+        //     end: lock_end,
+        //     power: _user_weight
+        // });
+        VotedSlope memory new_slope = _createNewSlope(_user_weight, lock_end);
+
+        // Check and update powers (weights) used
+        // uint256 power_used = vote_user_power[msg.sender];
+        // power_used = power_used + new_slope.power - old_slope.power;
+        // vote_user_power[msg.sender] = power_used;
+        // require(power_used >= 0 && power_used <= 10000, "Used too much power");
+        _updatePowerUsed(new_slope.power, old_slope.power);
+
+        // uint256 new_dt = lock_end - next_time; // dev: raises when expired
+        // uint256 new_bias = new_slope.slope * new_dt;
+
+        // // Remove old and schedule new slope changes
+        // // Remove slope changes for old slopes
+        // // Schedule recording of initial slope for next_time
+        // uint256 old_weight_bias = _get_weight(_gauge_addr);
+        // uint256 old_weight_slope = points_weight[_gauge_addr][next_time].slope;
+        // uint256 old_sum_bias = _get_sum(gauge_type);
+        // uint256 old_sum_slope = points_sum[gauge_type][next_time].slope;
+
+        // points_weight[_gauge_addr][next_time].bias = max(old_weight_bias + new_bias, old_bias) - old_bias;
+        // points_sum[gauge_type][next_time].bias = max(old_sum_bias + new_bias, old_bias) - old_bias;
+        // if (old_slope.end > next_time) {
+        //     points_weight[_gauge_addr][next_time].slope = max(old_weight_slope + new_slope.slope, old_slope.slope) - old_slope.slope;
+
+        //     points_sum[gauge_type][next_time].slope = max(old_sum_slope + new_slope.slope, old_slope.slope) - old_slope.slope;
+        // } else {
+        //     points_weight[_gauge_addr][next_time].slope += new_slope.slope;
+        //     points_sum[gauge_type][next_time].slope += new_slope.slope;
+        // }
+        // if (old_slope.end > block.timestamp) {
+        //     // Cancel old slope changes if they still didn't happen
+        //     changes_weight[_gauge_addr][old_slope.end] -= old_slope.slope;
+        //     changes_sum[gauge_type][old_slope.end] -= old_slope.slope;
+        // }
+        // // Add slope changes for new slopes
+        // changes_weight[_gauge_addr][new_slope.end] += new_slope.slope;
+        // changes_sum[gauge_type][new_slope.end] += new_slope.slope;
+        _updateSlopes(_gauge_addr, gauge_type, old_slope, new_slope, next_time, old_bias, lock_end);
+
+        _get_total();
+
+        vote_user_slopes[msg.sender][_gauge_addr] = new_slope;
+
+        // Record last action time
+        last_user_vote[msg.sender][_gauge_addr] = block.timestamp;
+
+        emit VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight);
+    }
+    function _old_dt(uint256 old_slope_end, uint256 next_time) internal pure returns (uint256) {
+        if (old_slope_end > next_time) {
+            return old_slope_end - next_time;
+        } else {
+            return 0;
         }
-        uint256 old_bias = old_slope.slope * old_dt;
-        VotedSlope memory new_slope = VotedSlope({
-            slope: slope * _user_weight / 10000,
+    }
+    function _createNewSlope(uint256 _user_weight, uint256 lock_end) internal view returns (VotedSlope memory) {
+        return VotedSlope({
+            slope: uint256(int256(IVotingEscrow(voting_escrow).getLastUserSlope(msg.sender))) * _user_weight / 10000,
             end: lock_end,
             power: _user_weight
         });
-        uint256 new_dt = lock_end - next_time; // dev: raises when expired
-        uint256 new_bias = new_slope.slope * new_dt;
-
-        // Check and update powers (weights) used
+    }
+    function _updatePowerUsed(uint256 new_slope_power, uint256 old_slope_power) internal {
         uint256 power_used = vote_user_power[msg.sender];
-        power_used = power_used + new_slope.power - old_slope.power;
+        power_used = power_used + new_slope_power - old_slope_power;
         vote_user_power[msg.sender] = power_used;
         require(power_used >= 0 && power_used <= 10000, "Used too much power");
+    }
+    function _updateSlopes(
+        address _gauge_addr,
+        int128 gauge_type,
+        VotedSlope memory old_slope,
+        VotedSlope memory new_slope,
+        uint256 next_time,
+        uint256 old_bias,
+        uint256 lock_end
+    ) internal {
+        uint256 new_dt = lock_end - next_time; // dev: raises when expired
+        uint256 new_bias = new_slope.slope * new_dt;
 
         // Remove old and schedule new slope changes
         // Remove slope changes for old slopes
@@ -821,8 +881,8 @@ contract GaugeContoller {
         uint256 old_sum_bias = _get_sum(gauge_type);
         uint256 old_sum_slope = points_sum[gauge_type][next_time].slope;
 
-        points_weight[_gauge_addr][next_time].bias = max(old_weight_bias + new_bias, old_bias) - old_bias; // todo implement max
-        points_sum[gauge_type][next_time].bias = max(old_sum_bias + new_bias, old_bias) - old_bias; // todo implement max
+        points_weight[_gauge_addr][next_time].bias = max(old_weight_bias + new_bias, old_bias) - old_bias;
+        points_sum[gauge_type][next_time].bias = max(old_sum_bias + new_bias, old_bias) - old_bias;
         if (old_slope.end > next_time) {
             points_weight[_gauge_addr][next_time].slope = max(old_weight_slope + new_slope.slope, old_slope.slope) - old_slope.slope;
 
@@ -839,15 +899,6 @@ contract GaugeContoller {
         // Add slope changes for new slopes
         changes_weight[_gauge_addr][new_slope.end] += new_slope.slope;
         changes_sum[gauge_type][new_slope.end] += new_slope.slope;
-
-        _get_total();
-
-        vote_user_slopes[msg.sender][_gauge_addr] = new_slope;
-
-        // Record last action time
-        last_user_vote[msg.sender][_gauge_addr] = block.timestamp;
-
-        emit VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight);
     }
 
     // @external
@@ -869,7 +920,7 @@ contract GaugeContoller {
     /// @param type_id Type id
     /// @return Type weight
     function get_type_weight(int128 type_id) external view returns (uint256) {
-        return points_type_weight[type_id][time_type_weight[type_id]];
+        return points_type_weight[type_id][time_type_weight[uint256(int256(type_id))]];
     }
 
     // @external
@@ -890,6 +941,10 @@ contract GaugeContoller {
     /// @param type_id Type id
     /// @return Sum of gauge weights
     function get_weights_sum_per_type(int128 type_id) external view returns (uint256) {
-        return points_sum[type_id][time_sum[type_id]].bias;
+        return points_sum[type_id][time_sum[uint256(int256(type_id))]].bias;
+    }
+
+    function max(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a >= b ? a : b;
     }
 }
