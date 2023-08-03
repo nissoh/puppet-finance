@@ -835,7 +835,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         _isPositionOpen = false;
         positionIndex += 1;
 
-        // IScoreGauge(orchestrator.scoreGauge()).updateScore(cumulativeVolumeGenerated, traderPnL); // todo
+        // IScoreGauge(orchestrator.scoreGauge()).updateScore(cumulativeVolumeGenerated, traderPnL); // todo - make this optional
 
         emit Reset();
     }

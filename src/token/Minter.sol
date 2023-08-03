@@ -1,3 +1,5 @@
+// todo - should mint to ScoreGauges instead of directly to users, according to the ScoreGauges relative weights in the GaugeController
+
 // # @version 0.2.4
 // """
 // @title Token Minter
