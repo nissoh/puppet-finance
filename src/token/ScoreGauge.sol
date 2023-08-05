@@ -13,3 +13,13 @@
 // if then Traders want to lock Puppet and not dump them, they will need to bridge them back to Arbi
 // ScoreGauge is also upgradable, so we can add features as we want
 // the sidechainHelperGauge will also be able to send vePuppet balances info to sidechain, so we should be able to have the vendor locking feature that way
+
+
+// ---- from discord dm with itburnz ----
+// actually lemme describe it to you from a high level:
+
+// the GaugeController decides on minting of Puppet tokens to diff PerformanceGauges based on weights etc (governance). PerformanceGauges decide on distribution of minted Puppet tokens to Traders according to performanceScore (CVG * cvgWeight + PnL * pnlWeight).
+// we need Route to update the performanceScore on the respective PerformanceGauge every time a Trader settles a trade.
+
+// each DEX has it's own PerformanceGauge
+// PerformanceGauges works in epochs, only once an epoch (1 week) has ended, a Trader can claim his Puppet tokens

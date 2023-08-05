@@ -1,11 +1,14 @@
-// todo - should mint to ScoreGauges instead of directly to users, according to the ScoreGauges relative weights in the GaugeController
+// SPDX-License-Identifier: AGPL-3.0-only
+pragma solidity 0.8.19;
 
-// # @version 0.2.4
-// """
 // @title Token Minter
 // @author Curve Finance
 // @license MIT
-// """
+
+// todo - should mint to ScoreGauges instead of directly to users, according to the ScoreGauges relative weights in the GaugeController
+contract GaugeContoller {
+
+}
 
 // interface LiquidityGauge:
 //     # Presumably, other gauges will provide the same interfaces
@@ -55,6 +58,23 @@
 
 //         log Minted(_for, gauge_addr, total_mint)
 
+// function _mint_for(address gauge_addr, address _for) internal { // todo
+//     require(IGaugeController(controller).gauge_types(gauge_addr) >= 0, "gauge is not added");
+//     uint256 _epoch = IGaugeController(controller).epoch() - 1;
+//     require(!minted[_epoch][gauge_addr], "already minted for this epoch");
+//     require(block.timestamp >= _epochEndTime, "epoch has not ended yet");
+
+//     // mintableInTimeframe(uint256 start, uint256 end)
+//     uint256 _totalMint = IPuppet(controller).mintableInTimeframe(_epochStartTime, _epochEndTime);
+//     // when starting a new epoch on controller, make sure to update and record the relative weights of the gauges // todo
+//     uint256 _mintForGauge = _totalMint * IGaugeController(gauge_addr).relativeWeightAtEpoch(_epoch, gauge_addr) / 1e18;
+
+//     if (_mintForGauge > 0) {
+//         minted[_epoch][gauge_addr] = true;
+//         IPuppet(token).mint(gauge_addr, _mintForGauge);
+//         emit Minted(_for, gauge_addr, _mintForGauge);
+//     }
+// }
 
 // @external
 // @nonreentrant('lock')

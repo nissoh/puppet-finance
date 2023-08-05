@@ -156,6 +156,12 @@ contract GaugeContoller {
 
     // mutated functions
 
+    // function startEpoch() external { // todo
+    //     require(epochStartTimestamp + 1 weeks <= block.timestamp, "Epoch not ended");
+    //     epochStartTimestamp = block.timestamp;
+    //     epoch += 1;
+    // }
+
     /// @notice Get gauge weight normalized to 1e18 and also fill all the unfilled values for type and gauge records
     /// @dev Any address can call, however nothing is recorded if the values are filled already
     /// @param addr Gauge address
@@ -294,36 +300,13 @@ contract GaugeContoller {
         }
     }
 
-    // @internal
-    // def _get_sum(gauge_type: int128) -> uint256:
-    //     t: uint256 = self.time_sum[gauge_type]
-    //     if t > 0:
-    //         pt: Point = self.points_sum[gauge_type][t]
-    //         for i in range(500):
-    //             if t > block.timestamp:
-    //                 break
-    //             t += WEEK
-    //             d_bias: uint256 = pt.slope * WEEK
-    //             if pt.bias > d_bias:
-    //                 pt.bias -= d_bias
-    //                 d_slope: uint256 = self.changes_sum[gauge_type][t]
-    //                 pt.slope -= d_slope
-    //             else:
-    //                 pt.bias = 0
-    //                 pt.slope = 0
-    //             self.points_sum[gauge_type][t] = pt
-    //             if t > block.timestamp:
-    //                 self.time_sum[gauge_type] = t
-    //         return pt.bias
-    //     else:
-    //         return 0
     /// @notice Fill sum of gauge weights for the same type week-over-week for missed checkins and return the sum for the future week
     /// @param gauge_type Gauge type id
     /// @return Sum of weights
     function _get_sum(int128 gauge_type) internal returns (uint256) {
         uint256 t = time_sum[uint256(int256(gauge_type))]; // todo - make sure this conversion is correct
         if (t > 0) {
-            Point memory pt = points_sum[gauge_type][t];
+            Point memory pt = points_sum[gauge_type][t]; // todo - make sure this is a memory copy, not a reference (storage)
             for (uint256 i = 0; i < 500; i++) {
                 if (t > block.timestamp) {
                     break;
@@ -349,38 +332,6 @@ contract GaugeContoller {
         }
     }
 
-    // @internal
-    // def _get_total() -> uint256:
-    //     t: uint256 = self.time_total
-    //     _n_gauge_types: int128 = self.n_gauge_types
-    //     if t > block.timestamp:
-    //         # If we have already checkpointed - still need to change the value
-    //         t -= WEEK
-    //     pt: uint256 = self.points_total[t]
-
-    //     for gauge_type in range(100):
-    //         if gauge_type == _n_gauge_types:
-    //             break
-    //         self._get_sum(gauge_type)
-    //         self._get_type_weight(gauge_type)
-
-    //     for i in range(500):
-    //         if t > block.timestamp:
-    //             break
-    //         t += WEEK
-    //         pt = 0
-    //         # Scales as n_types * n_unchecked_weeks (hopefully 1 at most)
-    //         for gauge_type in range(100):
-    //             if gauge_type == _n_gauge_types:
-    //                 break
-    //             type_sum: uint256 = self.points_sum[gauge_type][t].bias
-    //             type_weight: uint256 = self.points_type_weight[gauge_type][t]
-    //             pt += type_sum * type_weight
-    //         self.points_total[t] = pt
-
-    //         if t > block.timestamp:
-    //             self.time_total = t
-    //     return pt
     /// @notice Fill historic total weights week-over-week for missed checkins and return the total for the future week
     /// @return Total weight
     function _get_total() internal returns (uint256) {
@@ -424,36 +375,13 @@ contract GaugeContoller {
         return pt;
     }
 
-    // @internal
-    // def _get_weight(gauge_addr: address) -> uint256:
-    //     t: uint256 = self.time_weight[gauge_addr]
-    //     if t > 0:
-    //         pt: Point = self.points_weight[gauge_addr][t]
-    //         for i in range(500):
-    //             if t > block.timestamp:
-    //                 break
-    //             t += WEEK
-    //             d_bias: uint256 = pt.slope * WEEK
-    //             if pt.bias > d_bias:
-    //                 pt.bias -= d_bias
-    //                 d_slope: uint256 = self.changes_weight[gauge_addr][t]
-    //                 pt.slope -= d_slope
-    //             else:
-    //                 pt.bias = 0
-    //                 pt.slope = 0
-    //             self.points_weight[gauge_addr][t] = pt
-    //             if t > block.timestamp:
-    //                 self.time_weight[gauge_addr] = t
-    //         return pt.bias
-    //     else:
-    //         return 0
     /// @notice Fill historic gauge weights week-over-week for missed checkins and return the total for the future week
     /// @param gauge_addr Address of the gauge
     /// @return Gauge weight
     function _get_weight(address gauge_addr) internal returns (uint256) {
         uint256 t = time_weight[gauge_addr];
         if (t > 0) {
-            Point memory pt = points_weight[gauge_addr][t];
+            Point memory pt = points_weight[gauge_addr][t]; // todo - make sure this is a memory copy, not a reference (storage)
             for (uint256 i = 0; i < 500; i++) {
                 if (t > block.timestamp) {
                     break;
@@ -479,20 +407,6 @@ contract GaugeContoller {
         }
     }
 
-    // @internal
-    // @view
-    // def _gauge_relative_weight(addr: address, time: uint256) -> uint256:
-    //     t: uint256 = time / WEEK * WEEK
-    //     _total_weight: uint256 = self.points_total[t]
-
-    //     if _total_weight > 0:
-    //         gauge_type: int128 = self.gauge_types_[addr] - 1
-    //         _type_weight: uint256 = self.points_type_weight[gauge_type][t]
-    //         _gauge_weight: uint256 = self.points_weight[addr][t].bias
-    //         return MULTIPLIER * _type_weight * _gauge_weight / _total_weight
-
-    //     else:
-    //         return 0
     /// @notice Get Gauge relative weight (not more than 1.0) normalized to 1e18
     //          (e.g. 1.0 == 1e18). Inflation which will be received by it is
     //          inflation_rate * relative_weight / 1e18
@@ -513,20 +427,6 @@ contract GaugeContoller {
         }
     }
 
-    // @internal
-    // def _change_type_weight(type_id: int128, weight: uint256):
-    //     old_weight: uint256 = self._get_type_weight(type_id)
-    //     old_sum: uint256 = self._get_sum(type_id)
-    //     _total_weight: uint256 = self._get_total()
-    //     next_time: uint256 = (block.timestamp + WEEK) / WEEK * WEEK
-
-    //     _total_weight = _total_weight + old_sum * weight - old_sum * old_weight
-    //     self.points_total[next_time] = _total_weight
-    //     self.points_type_weight[type_id][next_time] = weight
-    //     self.time_total = next_time
-    //     self.time_type_weight[type_id] = next_time
-
-    //     log NewTypeWeight(type_id, next_time, weight, _total_weight)
     /// @notice Change type weight
     /// @param type_id Type id
     /// @param weight New type weight
@@ -545,29 +445,6 @@ contract GaugeContoller {
         emit NewTypeWeight(type_id, next_time, weight, _total_weight);
     }
 
-    // @internal
-    // def _change_gauge_weight(addr: address, weight: uint256):
-    //     # Change gauge weight
-    //     # Only needed when testing in reality
-    //     gauge_type: int128 = self.gauge_types_[addr] - 1
-    //     old_gauge_weight: uint256 = self._get_weight(addr)
-    //     type_weight: uint256 = self._get_type_weight(gauge_type)
-    //     old_sum: uint256 = self._get_sum(gauge_type)
-    //     _total_weight: uint256 = self._get_total()
-    //     next_time: uint256 = (block.timestamp + WEEK) / WEEK * WEEK
-
-    //     self.points_weight[addr][next_time].bias = weight
-    //     self.time_weight[addr] = next_time
-
-    //     new_sum: uint256 = old_sum + weight - old_gauge_weight
-    //     self.points_sum[gauge_type][next_time].bias = new_sum
-    //     self.time_sum[gauge_type] = next_time
-
-    //     _total_weight = _total_weight + new_sum * type_weight - old_sum * type_weight
-    //     self.points_total[next_time] = _total_weight
-    //     self.time_total = next_time
-
-    //     log NewGaugeWeight(addr, block.timestamp, weight, _total_weight)
     function _change_gauge_weight(address addr, uint256 weight) internal {
         // Change gauge weight
         // Only needed when testing in reality
@@ -592,6 +469,7 @@ contract GaugeContoller {
         emit NewGaugeWeight(addr, block.timestamp, weight, _total_weight);
     }
 
+    // TODO
     // @external
     // def vote_for_gauge_weights(_gauge_addr: address, _user_weight: uint256):
     //     escrow: address = self.voting_escrow
@@ -661,6 +539,7 @@ contract GaugeContoller {
     /// @param _gauge_addr Gauge which `msg.sender` votes for
     /// @param _user_weight Weight for a gauge in bps (units of 0.01%). Minimal is 0.01%. Ignored if 0
     function vote_for_gauge_weights(address _gauge_addr, uint256 _user_weight) external {
+        // require(vote only 1 time per epoch) // todo (use last_user_vote)
         require(_user_weight >= 0 && _user_weight <= 10000, "You used all your voting power");
         require(block.timestamp >= last_user_vote[msg.sender][_gauge_addr] + WEIGHT_VOTE_DELAY, "Cannot vote so often");
 
@@ -795,7 +674,6 @@ contract GaugeContoller {
         changes_weight[_gauge_addr][new_slope.end] += new_slope.slope;
         changes_sum[gauge_type][new_slope.end] += new_slope.slope;
     }
-
     function max(uint256 a, uint256 b) internal pure returns (uint256) {
         return a >= b ? a : b;
     }
