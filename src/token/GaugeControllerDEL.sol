@@ -270,6 +270,43 @@ contract GaugeContoller {
         emit VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight);
     }
 
+    uint256 public currentEpoch;
+    uint256 public currentEpochEndTime;
+    uint256 public constant EPOCH_LENGTH = 7 days;
+    address[] public gaugeList;
+    mapping(uint256 => mapping(address => uint256)) public epochGaugeWeights;
+    mapping(uint256 => EpochData) public epochData;
+    struct EpochData {
+        uint256 startTime;
+        uint256 endTime;
+    }
+
+    // todo
+    function advanceEpoch() external {
+        require(block.timestamp > currentEpochEndTime, "Epoch not yet finished");
+
+        address[] memory _gauges = gaugeList;
+        for (uint i = 0; i < _gauges.length; i++) {
+            // if (_gauge.isAlive) // todo
+            checkpoint_gauge(_gauges[i]);
+        }
+
+        for (uint i = 0; i < _gauges.length; i++) {
+            address _gauge = _gauges[i];
+            // if (_gauge.isAlive) // todo
+            epochGaugeWeights[currentEpoch][_gauge] = _gauge_relative_weight(_gauge, block.timestamp);
+        }
+
+        epochData[currentEpoch] = EpochData({
+            startTime: currentEpochEndTime - EPOCH_LENGTH,
+            endTime: currentEpochEndTime
+        });
+
+        currentEpoch += 1;
+        currentEpochEndTime += EPOCH_LENGTH;
+    }
+
+
     /// @notice Transfer ownership of GaugeController to `addr`
     /// @param addr Address to have ownership transferred to
     function commit_transfer_ownership(address addr) external {
