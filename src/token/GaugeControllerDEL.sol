@@ -18,6 +18,12 @@ contract GaugeContoller {
         uint256 end;
     }
 
+    struct EpochData {
+        uint256 startTime;
+        uint256 endTime;
+        mapping(address => uint256) gaugeWeights; // gauge_addr -> weight
+    }
+
     // events
 
     event CommitOwnership(address admin);
@@ -36,6 +42,9 @@ contract GaugeContoller {
     address public token; // CRV token
     address public voting_escrow; // Voting escrow
 
+    uint256 public currentEpoch;
+    uint256 public currentEpochEndTime;
+
     // Gauge parameters
     // All numbers are "fixed point" on the basis of 1e18
     int128 public n_gauge_types;
@@ -44,6 +53,7 @@ contract GaugeContoller {
 
     // Needed for enumeration
     address[1000000000] public gauges;
+    address[] public gaugeList;
 
     // we increment values by 1 prior to storing them here so we can rely on a value
     // of zero as meaning the gauge has not been set
@@ -73,8 +83,9 @@ contract GaugeContoller {
     mapping(int128 => mapping(uint256 => uint256)) public points_type_weight; // type_id -> time -> type weight
     uint256[1000000000] public time_type_weight; // type_id -> last scheduled time (next week)
 
-    // constants
+    mapping(uint256 => EpochData) public epochData; // epoch -> EpochData
 
+    // constants
     uint256 constant WEEK = 604800; // 7 * 86400 seconds - all future times are rounded by week
     uint256 constant WEIGHT_VOTE_DELAY = 10 * 86400; // Cannot change weight votes more often than once in 10 days
     uint256 constant MULTIPLIER = 10 ** 18;
@@ -187,6 +198,8 @@ contract GaugeContoller {
         n_gauges = n + 1;
         gauges[uint256(int256(n))] = addr; // todo - check that conversion is correct
 
+        // todo - add gauge to gaugeList
+
         gauge_types_[addr] = gauge_type + 1;
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
 
@@ -245,6 +258,7 @@ contract GaugeContoller {
     /// @param _gauge_addr Gauge which `msg.sender` votes for
     /// @param _user_weight Weight for a gauge in bps (units of 0.01%). Minimal is 0.01%. Ignored if 0
     function vote_for_gauge_weights(address _gauge_addr, uint256 _user_weight) external {
+        // require(vote only 1 time per epoch) // todo (use last_user_vote)
         require(_user_weight >= 0 && _user_weight <= 10000, "You used all your voting power");
         require(block.timestamp >= last_user_vote[msg.sender][_gauge_addr] + WEIGHT_VOTE_DELAY, "Cannot vote so often");
 
@@ -268,18 +282,7 @@ contract GaugeContoller {
         last_user_vote[msg.sender][_gauge_addr] = block.timestamp;
 
         emit VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight);
-    }
-
-    uint256 public currentEpoch;
-    uint256 public currentEpochEndTime;
-    uint256 public constant EPOCH_LENGTH = 7 days;
-    address[] public gaugeList;
-    mapping(uint256 => mapping(address => uint256)) public epochGaugeWeights;
-    mapping(uint256 => EpochData) public epochData;
-    struct EpochData {
-        uint256 startTime;
-        uint256 endTime;
-    }
+    }    
 
     // todo
     function advanceEpoch() external {
@@ -287,23 +290,20 @@ contract GaugeContoller {
 
         address[] memory _gauges = gaugeList;
         for (uint i = 0; i < _gauges.length; i++) {
-            // if (_gauge.isAlive) // todo
-            checkpoint_gauge(_gauges[i]);
+            // checkpoint_gauge(_gauges[i]);
         }
 
+        EpochData storage _epochData = epochData[currentEpoch];
         for (uint i = 0; i < _gauges.length; i++) {
             address _gauge = _gauges[i];
-            // if (_gauge.isAlive) // todo
-            epochGaugeWeights[currentEpoch][_gauge] = _gauge_relative_weight(_gauge, block.timestamp);
+            _epochData.gaugeWeights[_gauge] = _gauge_relative_weight(_gauge, block.timestamp);
         }
 
-        epochData[currentEpoch] = EpochData({
-            startTime: currentEpochEndTime - EPOCH_LENGTH,
-            endTime: currentEpochEndTime
-        });
+        _epochData.startTime = currentEpochEndTime - WEEK;
+        _epochData.endTime = currentEpochEndTime;
 
         currentEpoch += 1;
-        currentEpochEndTime += EPOCH_LENGTH;
+        currentEpochEndTime += WEEK;
     }
 
 
