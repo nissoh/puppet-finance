@@ -1,121 +1,80 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.19;
 
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+import {IPuppet} from "src/interfaces/IGaugeController.sol";
+import {IGaugeController} from "src/interfaces/IGaugeController.sol";
+
 // @title Token Minter
 // @author Curve Finance
 // @license MIT
 
-// todo - should mint to ScoreGauges instead of directly to users, according to the ScoreGauges relative weights in the GaugeController
-contract GaugeContoller {
+contract Minter is ReentrancyGuard {
 
+    mapping(uint256 => mapping(address => bool)) public minted; // epoch -> gauge -> hasMinted
+
+    IPuppet public token;
+    IGaugeController public controller;
+
+    // ============================================================================================
+    // Constructor
+    // ============================================================================================
+
+    constructor(address _token, address _controller) {
+        token = IPuppet(_token);
+        controller = IGaugeController(_controller);
+    }
+
+    // ============================================================================================
+    // External functions
+    // ============================================================================================
+
+    /// @notice Mint everything which belongs to `_gauge` and send to it
+    /// @param _gauge `ScoreGauge` address to mint for
+    function mint(address _gauge) external nonReentrant {
+        _mint(_gauge);
+    }
+
+    /// @notice Mint for multiple gauges
+    /// @param _gauges List of `ScoreGauge` addresses
+    function mintMany(address[] memory _gauges) external nonReentrant {
+        for (uint256 i = 0; i < _gauges.length; i++) {
+            if (_gauges[i] == address(0)) {
+                break;
+            }
+            _mint(_gauges[i]);
+        }
+    }
+
+    // ============================================================================================
+    // Internal functions
+    // ============================================================================================
+
+    function _mint(address _gauge) internal {
+        IGaugeController _controller = controller;
+        require(_controller.gauge_types(_gauge) >= 0, "gauge is not added");
+
+        uint256 _epoch = _controller.epoch() - 1;
+        require(!minted[_epoch][_gauge], "already minted for this epoch");
+
+        (uint256 _epochStartTime, uint256 _epochEndTime) = _controller.epochTimeRange(_epoch);
+        require(block.timestamp >= _epochEndTime, "epoch has not ended yet");
+
+        uint256 _totalMint = token.mintableInTimeframe(_epochStartTime, _epochEndTime);
+        uint256 _mintForGauge = _totalMint * _controller.relativeWeightAtEpoch(_epoch, _gauge) / 1e18;
+
+        if (_mintForGauge > 0) {
+            minted[_epoch][_gauge] = true;
+            token.mint(_gauge, _mintForGauge);
+
+            emit Minted(_gauge, _mintForGauge);
+        }
+    }
+
+    // ============================================================================================
+    // Events
+    // ============================================================================================
+
+    event Minted(address indexed gauge, uint256 minted);
 }
-
-// interface LiquidityGauge:
-//     # Presumably, other gauges will provide the same interfaces
-//     def integrate_fraction(addr: address) -> uint256: view
-//     def user_checkpoint(addr: address) -> bool: nonpayable
-
-// interface MERC20:
-//     def mint(_to: address, _value: uint256) -> bool: nonpayable
-
-// interface GaugeController:
-//     def gauge_types(addr: address) -> int128: view
-
-
-// event Minted:
-//     recipient: indexed(address)
-//     gauge: address
-//     minted: uint256
-
-
-// token: public(address)
-// controller: public(address)
-
-// # user -> gauge -> value
-// minted: public(HashMap[address, HashMap[address, uint256]])
-
-// # minter -> user -> can mint?
-// allowed_to_mint_for: public(HashMap[address, HashMap[address, bool]])
-
-
-// @external
-// def __init__(_token: address, _controller: address):
-//     self.token = _token
-//     self.controller = _controller
-
-
-// @internal
-// def _mint_for(gauge_addr: address, _for: address):
-//     assert GaugeController(self.controller).gauge_types(gauge_addr) >= 0  # dev: gauge is not added
-
-//     LiquidityGauge(gauge_addr).user_checkpoint(_for)
-//     total_mint: uint256 = LiquidityGauge(gauge_addr).integrate_fraction(_for)
-//     to_mint: uint256 = total_mint - self.minted[_for][gauge_addr]
-
-//     if to_mint != 0:
-//         MERC20(self.token).mint(_for, to_mint)
-//         self.minted[_for][gauge_addr] = total_mint
-
-//         log Minted(_for, gauge_addr, total_mint)
-
-// function _mint_for(address gauge_addr, address _for) internal { // todo
-//     require(IGaugeController(controller).gauge_types(gauge_addr) >= 0, "gauge is not added");
-//     uint256 _epoch = IGaugeController(controller).epoch() - 1;
-//     require(!minted[_epoch][gauge_addr], "already minted for this epoch");
-//     require(block.timestamp >= _epochEndTime, "epoch has not ended yet");
-
-//     // mintableInTimeframe(uint256 start, uint256 end)
-//     uint256 _totalMint = IPuppet(controller).mintableInTimeframe(_epochStartTime, _epochEndTime);
-//     // when starting a new epoch on controller, make sure to update and record the relative weights of the gauges // todo
-//     uint256 _mintForGauge = _totalMint * IGaugeController(gauge_addr).relativeWeightAtEpoch(_epoch, gauge_addr) / 1e18;
-
-//     if (_mintForGauge > 0) {
-//         minted[_epoch][gauge_addr] = true;
-//         IPuppet(token).mint(gauge_addr, _mintForGauge);
-//         emit Minted(_for, gauge_addr, _mintForGauge);
-//     }
-// }
-
-// @external
-// @nonreentrant('lock')
-// def mint(gauge_addr: address):
-//     """
-//     @notice Mint everything which belongs to `msg.sender` and send to them
-//     @param gauge_addr `LiquidityGauge` address to get mintable amount from
-//     """
-//     self._mint_for(gauge_addr, msg.sender)
-
-
-// @external
-// @nonreentrant('lock')
-// def mint_many(gauge_addrs: address[8]):
-//     """
-//     @notice Mint everything which belongs to `msg.sender` across multiple gauges
-//     @param gauge_addrs List of `LiquidityGauge` addresses
-//     """
-//     for i in range(8):
-//         if gauge_addrs[i] == ZERO_ADDRESS:
-//             break
-//         self._mint_for(gauge_addrs[i], msg.sender)
-
-
-// @external
-// @nonreentrant('lock')
-// def mint_for(gauge_addr: address, _for: address):
-//     """
-//     @notice Mint tokens for `_for`
-//     @dev Only possible when `msg.sender` has been approved via `toggle_approve_mint`
-//     @param gauge_addr `LiquidityGauge` address to get mintable amount from
-//     @param _for Address to mint to
-//     """
-//     if self.allowed_to_mint_for[msg.sender][_for]:
-//         self._mint_for(gauge_addr, _for)
-
-
-// @external
-// def toggle_approve_mint(minting_user: address):
-//     """
-//     @notice allow `minting_user` to mint for `msg.sender`
-//     @param minting_user Address to toggle permission for
-//     """
-//     self.allowed_to_mint_for[minting_user][msg.sender] = not self.allowed_to_mint_for[minting_user][msg.sender]
