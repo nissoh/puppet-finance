@@ -55,7 +55,7 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
         vm.stopPrank();
 
         // mint some PUPPET to alice and bob
-        skip(86400); // skip INFLATION_DELAY (1 day)
+        // skip(86400); // skip INFLATION_DELAY (1 day)
         // puppetERC20.updateMiningParameters(); // start 1st epoch
         // skip(86400 * 365); // skip the entire epoch (year)
         vm.startPrank(owner);
@@ -100,7 +100,7 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
 
     function testCorrectFlow() public {
         
-        // ADD GAUGE TYPE
+        // ADD GAUGE TYPE1
         _preGaugeTypeAddAsserts();
         vm.startPrank(owner);
         gaugeController.add_type("Arbitrum", 0);
@@ -113,19 +113,50 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
         gaugeController.add_gauge(gauge1, 0, 0);
         vm.stopPrank();
         _postGauge1AddAsserts();
+
+        // ADD GAUGE2
+        _preGauge2AddAsserts();
+        vm.startPrank(owner);
+        gaugeController.add_gauge(gauge2, 0, 0);
+        vm.stopPrank();
+        _postGauge2AddAsserts();
+
+        // ADD GAUGE TYPE2
+        _preGauge2TypeAddAsserts();
+        vm.startPrank(owner);
+        gaugeController.add_type("Optimism", 0);
+        vm.stopPrank();
+        _postGauge2TypeAddAsserts();
+
+        // ADD GAUGE3
+        _preGauge3AddAsserts();
+        vm.startPrank(owner);
+        gaugeController.add_gauge(gauge3, 1, 0);
+        vm.stopPrank();
+        _postGauge3AddAsserts();
+
+        // INIT EPOCH
+        _preInitEpochAsserts();
+        // todo
     }
 
-    function _postGauge1AddAsserts() internal {
-        assertEq(gaugeController.n_gauges(), 1, "_postGauge1AddAsserts: E0");
-        assertEq(gaugeController.get_gauge_weight(gauge1), 0, "_postGauge1AddAsserts: E1");
-        assertEq(gaugeController.get_total_weight(), 0, "_postGauge1AddAsserts: E2");
-        assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_postGauge1AddAsserts: E3");
+    function _preInitEpochAsserts() internal {
+        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
+        minterContract.mint(gauge1);
+        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
+        minterContract.mint(gauge2);
+        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
+        minterContract.mint(gauge3);
 
-        vm.startPrank(owner);
-        vm.expectRevert(); // reverts with ```cannot add the same gauge twice```
-        gaugeController.add_gauge(gauge1, 0, 0);
+        vm.startPrank(alice);
+        vm.expectRevert("Epoch is not set yet");
+        gaugeController.vote_for_gauge_weights(gauge1, 10000);
         vm.stopPrank();
-        // todo - finish
+
+        vm.expectRevert("Epoch is not set yet");
+        gaugeController.advanceEpoch();
+
+        assertEq(gaugeController.epoch(), 0, "_preInitEpochAsserts: E0");
     }
 
     // =======================================================
@@ -139,7 +170,7 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.get_total_weight(), 0, "_preGaugeTypeAddAsserts: E3");
         assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_preGaugeTypeAddAsserts: E4");
 
-        vm.expectRevert(); // reverts with ```only admin```
+        vm.expectRevert("only admin");
         gaugeController.add_type("Arbitrum", 0);
     }
 
@@ -156,15 +187,113 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.get_gauge_weight(gauge1), 0, "_preGaugeAddAsserts: E1");
         assertEq(gaugeController.get_total_weight(), 0, "_preGaugeAddAsserts: E2");
         assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_preGaugeAddAsserts: E3");
+        assertEq(gaugeController.gauges(0), address(0), "_preGaugeAddAsserts: E4");
 
         int128 _n_gauge_types = gaugeController.n_gauge_types();
 
-        vm.expectRevert(); // reverts with ```only admin```
+        vm.expectRevert("dev: admin only");
         gaugeController.add_gauge(gauge1, _n_gauge_types, 0);
 
         vm.startPrank(owner);
-        vm.expectRevert(); // reverts with ```invalid gauge type```
+        vm.expectRevert("dev: invalid gauge type");
         gaugeController.add_gauge(gauge1, _n_gauge_types, 0);
+        vm.stopPrank();
+    }
+
+    function _postGauge1AddAsserts() internal {
+        assertEq(gaugeController.n_gauges(), 1, "_postGauge1AddAsserts: E0");
+        assertEq(gaugeController.get_gauge_weight(gauge1), 0, "_postGauge1AddAsserts: E1");
+        assertEq(gaugeController.get_total_weight(), 0, "_postGauge1AddAsserts: E2");
+        assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_postGauge1AddAsserts: E3");
+        assertEq(gaugeController.gauges(0), gauge1, "_postGauge1AddAsserts: E4");
+        assertEq(gaugeController.gauge_relative_weight_write(gauge1, block.timestamp), 0, "_postGauge1AddAsserts: E5");
+
+        vm.startPrank(owner);
+        vm.expectRevert("dev: cannot add the same gauge twice");
+        gaugeController.add_gauge(gauge1, 0, 0);
+        vm.stopPrank();
+    }
+
+    function _preGauge2AddAsserts() internal {
+        assertEq(gaugeController.n_gauges(), 1, "_preGauge2AddAsserts: E0");
+        assertEq(gaugeController.get_gauge_weight(gauge2), 0, "_preGauge2AddAsserts: E1");
+        assertEq(gaugeController.get_total_weight(), 0, "_preGauge2AddAsserts: E2");
+        assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_preGauge2AddAsserts: E3");
+        assertEq(gaugeController.gauges(1), address(0), "_preGauge2AddAsserts: E4");
+
+        int128 _n_gauge_types = gaugeController.n_gauge_types();
+
+        vm.expectRevert("dev: admin only");
+        gaugeController.add_gauge(gauge2, _n_gauge_types, 0);
+
+        vm.startPrank(owner);
+        vm.expectRevert("dev: invalid gauge type");
+        gaugeController.add_gauge(gauge1, _n_gauge_types, 0);
+        vm.stopPrank();
+    }
+
+    function _postGauge2AddAsserts() internal {
+        assertEq(gaugeController.n_gauges(), 2, "_postGauge2AddAsserts: E0");
+        assertEq(gaugeController.get_gauge_weight(gauge2), 0, "_postGauge2AddAsserts: E1");
+        assertEq(gaugeController.get_total_weight(), 0, "_postGauge2AddAsserts: E2");
+        assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_postGauge2AddAsserts: E3");
+        assertEq(gaugeController.gauges(1), gauge2, "_postGauge2AddAsserts: E4");
+        assertEq(gaugeController.gauge_relative_weight_write(gauge2, block.timestamp), 0, "_postGauge2AddAsserts: E5");
+
+        vm.startPrank(owner);
+        vm.expectRevert("dev: cannot add the same gauge twice");
+        gaugeController.add_gauge(gauge2, 0, 0);
+        vm.stopPrank();
+    }
+
+    function _preGauge2TypeAddAsserts() internal {
+        assertEq(gaugeController.gauge_type_names(1), "", "_preGauge2TypeAddAsserts: E0");
+        assertEq(gaugeController.n_gauge_types(), 1, "_preGauge2TypeAddAsserts: E1");
+        assertEq(gaugeController.get_type_weight(1), 0, "_preGauge2TypeAddAsserts: E2");
+        assertEq(gaugeController.get_total_weight(), 0, "_preGauge2TypeAddAsserts: E3");
+        assertEq(gaugeController.get_weights_sum_per_type(1), 0, "_preGauge2TypeAddAsserts: E4");
+
+        vm.expectRevert("only admin");
+        gaugeController.add_type("Optimism", 0);
+    }
+
+    function _postGauge2TypeAddAsserts() internal {
+        assertEq(gaugeController.gauge_type_names(1), "Optimism", "_postGauge2TypeAddAsserts: E0");
+        assertEq(gaugeController.n_gauge_types(), 2, "_postGauge2TypeAddAsserts: E1");
+        assertEq(gaugeController.get_type_weight(0), 0, "_postGauge2TypeAddAsserts: E2");
+        assertEq(gaugeController.get_total_weight(), 0, "_postGauge2TypeAddAsserts: E3");
+        assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_postGauge2TypeAddAsserts: E4");
+    }
+
+    function _preGauge3AddAsserts() internal {
+        assertEq(gaugeController.n_gauges(), 2, "_preGaugeAddAsserts: E0");
+        assertEq(gaugeController.get_gauge_weight(gauge3), 0, "_preGaugeAddAsserts: E1");
+        assertEq(gaugeController.get_total_weight(), 0, "_preGaugeAddAsserts: E2");
+        assertEq(gaugeController.get_weights_sum_per_type(1), 0, "_preGaugeAddAsserts: E3");
+        assertEq(gaugeController.gauges(2), address(0), "_preGaugeAddAsserts: E4");
+
+        int128 _n_gauge_types = gaugeController.n_gauge_types();
+
+        vm.expectRevert("dev: admin only");
+        gaugeController.add_gauge(gauge3, _n_gauge_types, 0);
+
+        vm.startPrank(owner);
+        vm.expectRevert("dev: invalid gauge type");
+        gaugeController.add_gauge(gauge3, _n_gauge_types, 0);
+        vm.stopPrank();
+    }
+
+    function _postGauge3AddAsserts() internal {
+        assertEq(gaugeController.n_gauges(), 3, "_postGaugeAddAsserts: E0");
+        assertEq(gaugeController.get_gauge_weight(gauge3), 0, "_postGaugeAddAsserts: E1");
+        assertEq(gaugeController.get_total_weight(), 0, "_postGaugeAddAsserts: E2");
+        assertEq(gaugeController.get_weights_sum_per_type(1), 0, "_postGaugeAddAsserts: E3");
+        assertEq(gaugeController.gauges(2), gauge3, "_postGaugeAddAsserts: E4");
+        assertEq(gaugeController.gauge_relative_weight_write(gauge3, block.timestamp), 0, "_postGaugeAddAsserts: E5");
+
+        vm.startPrank(owner);
+        vm.expectRevert("dev: cannot add the same gauge twice");
+        gaugeController.add_gauge(gauge3, 0, 0);
         vm.stopPrank();
     }
 }

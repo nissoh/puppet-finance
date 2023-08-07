@@ -53,7 +53,6 @@ contract GaugeController {
 
     // Needed for enumeration
     address[1000000000] public gauges;
-    address[] public gaugeList; // todo - remove, use gauges and n_gauges instead
 
     // we increment values by 1 prior to storing them here so we can rely on a value
     // of zero as meaning the gauge has not been set
@@ -105,12 +104,6 @@ contract GaugeController {
         token = _token;
         voting_escrow = _voting_escrow;
         time_total = block.timestamp / WEEK * WEEK;
-
-        // init first epoch todo
-        _currentEpoch = 1;
-        currentEpochEndTime = block.timestamp + WEEK;
-        epochData[_currentEpoch].startTime = block.timestamp;
-        epochData[_currentEpoch].endTime = currentEpochEndTime;
     }
 
     // ============================================================================================
@@ -219,8 +212,6 @@ contract GaugeController {
         n_gauges = n + 1;
         gauges[uint256(int256(n))] = addr; // todo - check that conversion is correct
 
-        gaugeList.push(addr); // todo - add gauge to gaugeList
-
         gauge_types_[addr] = gauge_type + 1;
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
 
@@ -281,6 +272,7 @@ contract GaugeController {
     function vote_for_gauge_weights(address _gauge_addr, uint256 _user_weight) external {
         require(_user_weight >= 0 && _user_weight <= 10000, "You used all your voting power");
         // require(block.timestamp >= last_user_vote[msg.sender][_gauge_addr] + WEIGHT_VOTE_DELAY, "Cannot vote so often");
+        require(_currentEpoch != 0, "Epoch is not set yet");
         require(_currentEpoch > last_user_vote[msg.sender][_gauge_addr], "Already voted for this epoch"); // todo
 
         uint256 lock_end = IVotingEscrow(voting_escrow).lockedEnd(msg.sender);
@@ -304,22 +296,34 @@ contract GaugeController {
         last_user_vote[msg.sender][_gauge_addr] = _currentEpoch; // todo
 
         emit VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight);
-    }    
+    }
+
+    // todo
+    function initializeEpoch() external {
+        require(msg.sender == admin, "admin only");
+        require(_currentEpoch == 0, "already initialized");
+
+        _currentEpoch = 1;
+        currentEpochEndTime = block.timestamp + WEEK;
+        epochData[_currentEpoch].startTime = block.timestamp;
+        epochData[_currentEpoch].endTime = currentEpochEndTime;
+    }
 
     // todo
     function advanceEpoch() external {
+        require(_currentEpoch != 0, "Epoch is not set yet");
         require(block.timestamp > currentEpochEndTime, "Epoch not yet finished");
 
-        address[] memory _gauges = gaugeList;
-        for (uint i = 0; i < _gauges.length; i++) {
+        uint256 _n_gauges = uint256(int256(n_gauges)); // todo - safecast        
+        for (uint256 i = 0; i < _n_gauges; i++) {
             // checkpoint each gauge
-            _get_weight(_gauges[i]);
+            _get_weight(gauges[i]);
             _get_total(); // todo - look into removing this out of loop
         }
 
         EpochData storage _epochData = epochData[_currentEpoch];
-        for (uint i = 0; i < _gauges.length; i++) {
-            address _gauge = _gauges[i];
+        for (uint256 i = 0; i < _n_gauges; i++) {
+            address _gauge = gauges[i];
             _epochData.gaugeWeights[_gauge] = _gauge_relative_weight(_gauge, block.timestamp);
         }
 

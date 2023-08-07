@@ -55,8 +55,8 @@ contract Minter is ReentrancyGuard {
         IGaugeController _controller = controller;
         require(_controller.gauge_types(_gauge) >= 0, "gauge is not added");
 
-        uint256 _epoch = _controller.epoch() - 1;
-        require(!minted[_epoch][_gauge] && _epoch != 0, "already minted for this epoch");
+        uint256 _epoch = _controller.epoch() - 1; // underflows if epoch() is 0
+        require(!minted[_epoch][_gauge], "already minted for this epoch");
 
         (uint256 _epochStartTime, uint256 _epochEndTime) = _controller.epochTimeframe(_epoch);
         require(block.timestamp > _epochEndTime, "epoch has not ended yet");
