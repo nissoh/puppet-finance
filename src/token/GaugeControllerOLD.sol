@@ -3,6 +3,11 @@ pragma solidity 0.8.19;
 
 import {IVotingEscrow} from "src/interfaces/IVotingEscrow.sol";
 
+// @title Gauge Controller
+// @author Curve Finance
+// @license MIT
+// @notice Controls liquidity gauges and the issuance of coins through the gauges
+
 contract GaugeContoller {
 
     // structs
@@ -16,12 +21,6 @@ contract GaugeContoller {
         uint256 slope;
         uint256 power;
         uint256 end;
-    }
-
-    struct EpochData {
-        uint256 startTime;
-        uint256 endTime;
-        mapping(address => uint256) gaugeWeights; // gauge_addr -> weight
     }
 
     // events
@@ -42,9 +41,6 @@ contract GaugeContoller {
     address public token; // CRV token
     address public voting_escrow; // Voting escrow
 
-    uint256 public currentEpoch;
-    uint256 public currentEpochEndTime;
-
     // Gauge parameters
     // All numbers are "fixed point" on the basis of 1e18
     int128 public n_gauge_types;
@@ -53,7 +49,6 @@ contract GaugeContoller {
 
     // Needed for enumeration
     address[1000000000] public gauges;
-    address[] public gaugeList;
 
     // we increment values by 1 prior to storing them here so we can rely on a value
     // of zero as meaning the gauge has not been set
@@ -83,9 +78,8 @@ contract GaugeContoller {
     mapping(int128 => mapping(uint256 => uint256)) public points_type_weight; // type_id -> time -> type weight
     uint256[1000000000] public time_type_weight; // type_id -> last scheduled time (next week)
 
-    mapping(uint256 => EpochData) public epochData; // epoch -> EpochData
-
     // constants
+
     uint256 constant WEEK = 604800; // 7 * 86400 seconds - all future times are rounded by week
     uint256 constant WEIGHT_VOTE_DELAY = 10 * 86400; // Cannot change weight votes more often than once in 10 days
     uint256 constant MULTIPLIER = 10 ** 18;
@@ -162,6 +156,13 @@ contract GaugeContoller {
 
     // mutated functions
 
+    // function startEpoch() external { // todo
+    // when starting a new epoch on controller, make sure to update and record the relative weights of the gauges // todo
+    //     require(epochStartTimestamp + 1 weeks <= block.timestamp, "Epoch not ended");
+    //     epochStartTimestamp = block.timestamp;
+    //     epoch += 1;
+    // }
+
     /// @notice Get gauge weight normalized to 1e18 and also fill all the unfilled values for type and gauge records
     /// @dev Any address can call, however nothing is recorded if the values are filled already
     /// @param addr Gauge address
@@ -197,8 +198,6 @@ contract GaugeContoller {
         int128 n = n_gauges;
         n_gauges = n + 1;
         gauges[uint256(int256(n))] = addr; // todo - check that conversion is correct
-
-        // todo - add gauge to gaugeList
 
         gauge_types_[addr] = gauge_type + 1;
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
@@ -253,59 +252,6 @@ contract GaugeContoller {
         require(msg.sender == admin, "only admin");
         _change_gauge_weight(addr, weight);
     }
-
-    /// @notice Allocate voting power for changing pool weights
-    /// @param _gauge_addr Gauge which `msg.sender` votes for
-    /// @param _user_weight Weight for a gauge in bps (units of 0.01%). Minimal is 0.01%. Ignored if 0
-    function vote_for_gauge_weights(address _gauge_addr, uint256 _user_weight) external {
-        // require(vote only 1 time per epoch) // todo (use last_user_vote)
-        require(_user_weight >= 0 && _user_weight <= 10000, "You used all your voting power");
-        require(block.timestamp >= last_user_vote[msg.sender][_gauge_addr] + WEIGHT_VOTE_DELAY, "Cannot vote so often");
-
-        uint256 lock_end = IVotingEscrow(voting_escrow).lockedEnd(msg.sender);
-        uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
-        require(lock_end > next_time, "Your token lock expires too soon");
-
-        int128 gauge_type = gauge_types_[_gauge_addr] - 1;
-        require(gauge_type >= 0, "Gauge not added");
-
-        VotedSlope memory old_slope = vote_user_slopes[msg.sender][_gauge_addr];
-        uint256 old_bias = old_slope.slope * _old_dt(old_slope.end, next_time);
-        VotedSlope memory new_slope = _createNewSlope(_user_weight, lock_end);
-
-        _updatePowerUsed(new_slope.power, old_slope.power);
-        _updateSlopes(_gauge_addr, gauge_type, old_slope, new_slope, next_time, old_bias, lock_end);
-        _get_total();
-
-        vote_user_slopes[msg.sender][_gauge_addr] = new_slope;
-
-        last_user_vote[msg.sender][_gauge_addr] = block.timestamp;
-
-        emit VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight);
-    }    
-
-    // todo
-    function advanceEpoch() external {
-        require(block.timestamp > currentEpochEndTime, "Epoch not yet finished");
-
-        address[] memory _gauges = gaugeList;
-        for (uint i = 0; i < _gauges.length; i++) {
-            // checkpoint_gauge(_gauges[i]);
-        }
-
-        EpochData storage _epochData = epochData[currentEpoch];
-        for (uint i = 0; i < _gauges.length; i++) {
-            address _gauge = _gauges[i];
-            _epochData.gaugeWeights[_gauge] = _gauge_relative_weight(_gauge, block.timestamp);
-        }
-
-        _epochData.startTime = currentEpochEndTime - WEEK;
-        _epochData.endTime = currentEpochEndTime;
-
-        currentEpoch += 1;
-        currentEpochEndTime += WEEK;
-    }
-
 
     /// @notice Transfer ownership of GaugeController to `addr`
     /// @param addr Address to have ownership transferred to
@@ -522,6 +468,152 @@ contract GaugeContoller {
         emit NewGaugeWeight(addr, block.timestamp, weight, _total_weight);
     }
 
+    // TODO
+    // @external
+    // def vote_for_gauge_weights(_gauge_addr: address, _user_weight: uint256):
+    //     escrow: address = self.voting_escrow
+    //     slope: uint256 = convert(VotingEscrow(escrow).get_last_user_slope(msg.sender), uint256)
+    //     lock_end: uint256 = VotingEscrow(escrow).locked__end(msg.sender)
+    //     _n_gauges: int128 = self.n_gauges
+    //     next_time: uint256 = (block.timestamp + WEEK) / WEEK * WEEK
+    //     assert lock_end > next_time, "Your token lock expires too soon"
+    //     assert (_user_weight >= 0) and (_user_weight <= 10000), "You used all your voting power"
+    //     assert block.timestamp >= self.last_user_vote[msg.sender][_gauge_addr] + WEIGHT_VOTE_DELAY, "Cannot vote so often"
+
+    //     gauge_type: int128 = self.gauge_types_[_gauge_addr] - 1
+    //     assert gauge_type >= 0, "Gauge not added"
+    //     # Prepare slopes and biases in memory
+    //     old_slope: VotedSlope = self.vote_user_slopes[msg.sender][_gauge_addr]
+    //     old_dt: uint256 = 0
+    //     if old_slope.end > next_time:
+    //         old_dt = old_slope.end - next_time
+    //     old_bias: uint256 = old_slope.slope * old_dt
+    //     new_slope: VotedSlope = VotedSlope({
+    //         slope: slope * _user_weight / 10000,
+    //         end: lock_end,
+    //         power: _user_weight
+    //     })
+    //     new_dt: uint256 = lock_end - next_time  # dev: raises when expired
+    //     new_bias: uint256 = new_slope.slope * new_dt
+
+    //     # Check and update powers (weights) used
+    //     power_used: uint256 = self.vote_user_power[msg.sender]
+    //     power_used = power_used + new_slope.power - old_slope.power
+    //     self.vote_user_power[msg.sender] = power_used
+    //     assert (power_used >= 0) and (power_used <= 10000), 'Used too much power'
+
+    //     ## Remove old and schedule new slope changes
+    //     # Remove slope changes for old slopes
+    //     # Schedule recording of initial slope for next_time
+    //     old_weight_bias: uint256 = self._get_weight(_gauge_addr)
+    //     old_weight_slope: uint256 = self.points_weight[_gauge_addr][next_time].slope
+    //     old_sum_bias: uint256 = self._get_sum(gauge_type)
+    //     old_sum_slope: uint256 = self.points_sum[gauge_type][next_time].slope
+
+    //     self.points_weight[_gauge_addr][next_time].bias = max(old_weight_bias + new_bias, old_bias) - old_bias
+    //     self.points_sum[gauge_type][next_time].bias = max(old_sum_bias + new_bias, old_bias) - old_bias
+    //     if old_slope.end > next_time:
+    //         self.points_weight[_gauge_addr][next_time].slope = max(old_weight_slope + new_slope.slope, old_slope.slope) - old_slope.slope
+    //         self.points_sum[gauge_type][next_time].slope = max(old_sum_slope + new_slope.slope, old_slope.slope) - old_slope.slope
+    //     else:
+    //         self.points_weight[_gauge_addr][next_time].slope += new_slope.slope
+    //         self.points_sum[gauge_type][next_time].slope += new_slope.slope
+    //     if old_slope.end > block.timestamp:
+    //         # Cancel old slope changes if they still didn't happen
+    //         self.changes_weight[_gauge_addr][old_slope.end] -= old_slope.slope
+    //         self.changes_sum[gauge_type][old_slope.end] -= old_slope.slope
+    //     # Add slope changes for new slopes
+    //     self.changes_weight[_gauge_addr][new_slope.end] += new_slope.slope
+    //     self.changes_sum[gauge_type][new_slope.end] += new_slope.slope
+
+    //     self._get_total()
+
+    //     self.vote_user_slopes[msg.sender][_gauge_addr] = new_slope
+
+    //     # Record last action time
+    //     self.last_user_vote[msg.sender][_gauge_addr] = block.timestamp
+
+    //     log VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight)
+    /// @notice Allocate voting power for changing pool weights
+    /// @param _gauge_addr Gauge which `msg.sender` votes for
+    /// @param _user_weight Weight for a gauge in bps (units of 0.01%). Minimal is 0.01%. Ignored if 0
+    function vote_for_gauge_weights(address _gauge_addr, uint256 _user_weight) external {
+        // require(vote only 1 time per epoch) // todo (use last_user_vote)
+        require(_user_weight >= 0 && _user_weight <= 10000, "You used all your voting power");
+        require(block.timestamp >= last_user_vote[msg.sender][_gauge_addr] + WEIGHT_VOTE_DELAY, "Cannot vote so often");
+
+        // address escrow = voting_escrow;
+        // uint256 slope = uint256(int256(IVotingEscrow(escrow).getLastUserSlope(msg.sender)));
+        uint256 lock_end = IVotingEscrow(voting_escrow).lockedEnd(msg.sender);
+        // int128 _n_gauges = n_gauges;
+        uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
+        require(lock_end > next_time, "Your token lock expires too soon");
+
+        int128 gauge_type = gauge_types_[_gauge_addr] - 1;
+        require(gauge_type >= 0, "Gauge not added");
+
+        // Prepare slopes and biases in memory
+        VotedSlope memory old_slope = vote_user_slopes[msg.sender][_gauge_addr];
+        // uint256 old_dt = 0;
+        // if (old_slope.end > next_time) {
+        //     old_dt = old_slope.end - next_time;
+        // }
+        // uint256 old_bias = old_slope.slope * old_dt;
+        uint256 old_bias = old_slope.slope * _old_dt(old_slope.end, next_time);
+        // VotedSlope memory new_slope = VotedSlope({
+        //     slope: slope * _user_weight / 10000,
+        //     end: lock_end,
+        //     power: _user_weight
+        // });
+        VotedSlope memory new_slope = _createNewSlope(_user_weight, lock_end);
+
+        // Check and update powers (weights) used
+        // uint256 power_used = vote_user_power[msg.sender];
+        // power_used = power_used + new_slope.power - old_slope.power;
+        // vote_user_power[msg.sender] = power_used;
+        // require(power_used >= 0 && power_used <= 10000, "Used too much power");
+        _updatePowerUsed(new_slope.power, old_slope.power);
+
+        // uint256 new_dt = lock_end - next_time; // dev: raises when expired
+        // uint256 new_bias = new_slope.slope * new_dt;
+
+        // // Remove old and schedule new slope changes
+        // // Remove slope changes for old slopes
+        // // Schedule recording of initial slope for next_time
+        // uint256 old_weight_bias = _get_weight(_gauge_addr);
+        // uint256 old_weight_slope = points_weight[_gauge_addr][next_time].slope;
+        // uint256 old_sum_bias = _get_sum(gauge_type);
+        // uint256 old_sum_slope = points_sum[gauge_type][next_time].slope;
+
+        // points_weight[_gauge_addr][next_time].bias = max(old_weight_bias + new_bias, old_bias) - old_bias;
+        // points_sum[gauge_type][next_time].bias = max(old_sum_bias + new_bias, old_bias) - old_bias;
+        // if (old_slope.end > next_time) {
+        //     points_weight[_gauge_addr][next_time].slope = max(old_weight_slope + new_slope.slope, old_slope.slope) - old_slope.slope;
+
+        //     points_sum[gauge_type][next_time].slope = max(old_sum_slope + new_slope.slope, old_slope.slope) - old_slope.slope;
+        // } else {
+        //     points_weight[_gauge_addr][next_time].slope += new_slope.slope;
+        //     points_sum[gauge_type][next_time].slope += new_slope.slope;
+        // }
+        // if (old_slope.end > block.timestamp) {
+        //     // Cancel old slope changes if they still didn't happen
+        //     changes_weight[_gauge_addr][old_slope.end] -= old_slope.slope;
+        //     changes_sum[gauge_type][old_slope.end] -= old_slope.slope;
+        // }
+        // // Add slope changes for new slopes
+        // changes_weight[_gauge_addr][new_slope.end] += new_slope.slope;
+        // changes_sum[gauge_type][new_slope.end] += new_slope.slope;
+        _updateSlopes(_gauge_addr, gauge_type, old_slope, new_slope, next_time, old_bias, lock_end);
+
+        _get_total();
+
+        vote_user_slopes[msg.sender][_gauge_addr] = new_slope;
+
+        // Record last action time
+        last_user_vote[msg.sender][_gauge_addr] = block.timestamp;
+
+        emit VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight);
+    }
     function _old_dt(uint256 old_slope_end, uint256 next_time) internal pure returns (uint256) {
         if (old_slope_end > next_time) {
             return old_slope_end - next_time;

@@ -42,8 +42,6 @@ contract Puppet {
 
     // supply constants
 
-    uint256 private constant _YEAR = 86400 * 365;
-
     // NOTE: the supply of tokens will start at 3 million, and approximately 1,115,000 new tokens will be minted in the first year.
     // Each subsequent year, the number of new tokens minted will decrease by about 18%,
     // leading to a total supply of approximately 10 million tokens after about 40 years.
@@ -60,6 +58,7 @@ contract Puppet {
 
     uint256 public constant MAX_SUPPLY = 10000000 * 1e18;
 
+    uint256 private constant _YEAR = 86400 * 365;
     uint256 private constant _INITIAL_SUPPLY = 3000000;
     uint256 private constant _INITIAL_RATE = 1115000 * 1e18 / _YEAR;
     uint256 private constant _RATE_REDUCTION_TIME = _YEAR;
