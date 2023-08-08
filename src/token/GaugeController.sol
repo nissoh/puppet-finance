@@ -286,20 +286,15 @@ contract GaugeController is Test {
         uint256 lock_end = IVotingEscrow(voting_escrow).lockedEnd(msg.sender);
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
         require(lock_end > next_time, "Your token lock expires too soon");
-        console.log("lock_end: %s", lock_end);
-        console.log("next_time: %s", next_time);
 
         int128 gauge_type = gauge_types_[_gauge_addr] - 1;
         require(gauge_type >= 0, "Gauge not added");
 
         VotedSlope memory old_slope = vote_user_slopes[msg.sender][_gauge_addr];
         uint256 old_bias = old_slope.slope * _old_dt(old_slope.end, next_time);
-        console.log("old_bias: %s", old_bias);
         VotedSlope memory new_slope = _createNewSlope(_user_weight, lock_end);
 
         _updatePowerUsed(new_slope.power, old_slope.power);
-        console.log("new_slope.power: %s", new_slope.power);
-        console.log("old_slope.power: %s", old_slope.power);
         _updateSlopes(_gauge_addr, gauge_type, old_slope, new_slope, next_time, old_bias, lock_end);
         _get_total();
 
@@ -379,7 +374,6 @@ contract GaugeController is Test {
     /// @return Type weight
     function _get_type_weight(int128 gauge_type) internal returns (uint256) {
         uint256 t = time_type_weight[uint256(int256(gauge_type))]; // todo - make sure this conversion is correct
-        console.log("_get_type_weight: t: %s", t);
         if (t > 0) {
             uint256 w = points_type_weight[gauge_type][t];
             for (uint256 i = 0; i < 500; i++) {
@@ -440,7 +434,6 @@ contract GaugeController is Test {
             t -= WEEK;
         }
         uint256 pt = points_total[t];
-        console.log("pt: %s", pt);
 
         for (int128 gauge_type = 0; gauge_type < 100; gauge_type++) {
             if (gauge_type == _n_gauge_types) {
@@ -463,11 +456,9 @@ contract GaugeController is Test {
                 }
                 uint256 type_sum = points_sum[gauge_type][t].bias;
                 uint256 type_weight = points_type_weight[gauge_type][t];
-                console.log("i: %s, type_sum: %s, type_weight: %s", i, type_sum, type_weight);
                 pt += type_sum * type_weight;
             }
             points_total[t] = pt;
-            console.log("i: %s, t: %s, pt: %s", i, t, pt);
 
             if (t > block.timestamp) {
                 time_total = t;
@@ -628,8 +619,6 @@ contract GaugeController is Test {
         // Add slope changes for new slopes
         changes_weight[_gauge_addr][new_slope.end] += new_slope.slope;
         changes_sum[gauge_type][new_slope.end] += new_slope.slope;
-        console.log("old_slope.slope", old_slope.slope);
-        console.log("new_slope.slope", new_slope.slope);
     }
     function max(uint256 a, uint256 b) internal pure returns (uint256) {
         return a >= b ? a : b;

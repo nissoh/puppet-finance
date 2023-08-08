@@ -103,14 +103,14 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
         // ADD GAUGE TYPE1
         _preGaugeTypeAddAsserts();
         vm.startPrank(owner);
-        gaugeController.add_type("Arbitrum", 0);
+        gaugeController.add_type("Arbitrum", 1000000000000000000);
         vm.stopPrank();
         _postGaugeTypeAddAsserts();
 
         // ADD GAUGE1
         _preGauge1AddAsserts();
         vm.startPrank(owner);
-        gaugeController.add_gauge(gauge1, 0, 0);
+        gaugeController.add_gauge(gauge1, 0, 1);
         vm.stopPrank();
         _postGauge1AddAsserts();
 
@@ -137,15 +137,35 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
 
         // INIT 1st EPOCH
         _preInitEpochAsserts();
-        skip(86400); // wait _INFLATION_DELAY (1 day)
+        skip(86400 * 2); // wait _INFLATION_DELAY (2 day)
+        // _postInflationDelayAsserts(); // todo - relative weights should be set now on block.timestamp
         vm.startPrank(owner);
         gaugeController.initializeEpoch();
         vm.stopPrank();
         _postInitEpochAsserts(); // (epoch has not ended yet)
 
-        // VOTE FOR 1st EPOCH
-        _preVote1stEpochAsserts();
-        _userVote1stEpoch(alice);
+        // // VOTE FOR 1st EPOCH
+        // _preVote1stEpochAsserts();
+        // _userVote1stEpoch(alice);
+        // skip(86400 * 1);
+        // vm.startPrank(alice);
+        // gaugeController.vote_for_gauge_weights(gauge1, 10000);
+        // vm.stopPrank();
+        // skip(86400 * 8);
+        // vm.startPrank(bob);
+        // gaugeController.vote_for_gauge_weights(gauge1, 10000);
+        // vm.stopPrank();
+        // print relative weight
+        console.log("1: %s", gaugeController.gauge_relative_weight(gauge1, block.timestamp));
+        console.log("11: %s", gaugeController.gauge_relative_weight_write(gauge1, block.timestamp));
+        console.log("112: %s", gaugeController.gauge_relative_weight_write(gauge1, block.timestamp + 1 weeks));
+        console.log("111: %s", gaugeController.gauge_relative_weight_write(gauge2, block.timestamp));
+        console.log("7: %s", gaugeController.gauge_relative_weight_write(gauge2, block.timestamp) + gaugeController.gauge_relative_weight_write(gauge1, block.timestamp));
+        console.log("2: %s", gaugeController.gauge_relative_weight(gauge1, block.timestamp - 1 weeks));
+        console.log("22: %s", gaugeController.gauge_relative_weight_write(gauge1, block.timestamp - 1 weeks));
+        console.log("222: %s", gaugeController.gauge_relative_weight_write(gauge2, block.timestamp - 1 weeks));
+        console.log("3: %s", gaugeController.gauge_relative_weight(gauge1, block.timestamp - 2 weeks));
+        console.log("33: %s", gaugeController.gauge_relative_weight_write(gauge1, block.timestamp - 2 weeks));
 
         // ON 1st EPOCH END
         // skip(86400 * 7); // skip 1 epoch (1 week)
@@ -194,7 +214,7 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
     function _postGaugeTypeAddAsserts() internal {
         assertEq(gaugeController.gauge_type_names(0), "Arbitrum", "_postGaugeTypeAddAsserts: E0");
         assertEq(gaugeController.n_gauge_types(), 1, "_postGaugeTypeAddAsserts: E1");
-        assertEq(gaugeController.get_type_weight(0), 0, "_postGaugeTypeAddAsserts: E2");
+        assertEq(gaugeController.get_type_weight(0), 5, "_postGaugeTypeAddAsserts: E2");
         assertEq(gaugeController.get_total_weight(), 0, "_postGaugeTypeAddAsserts: E3");
         assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_postGaugeTypeAddAsserts: E4");
     }
@@ -205,6 +225,7 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.get_total_weight(), 0, "_preGaugeAddAsserts: E2");
         assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_preGaugeAddAsserts: E3");
         assertEq(gaugeController.gauges(0), address(0), "_preGaugeAddAsserts: E4");
+        assertEq(gaugeController.gauge_relative_weight_write(gauge1, block.timestamp), 0, "_preGaugeAddAsserts: E5");
 
         int128 _n_gauge_types = gaugeController.n_gauge_types();
 
@@ -219,11 +240,12 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
 
     function _postGauge1AddAsserts() internal {
         assertEq(gaugeController.n_gauges(), 1, "_postGauge1AddAsserts: E0");
-        assertEq(gaugeController.get_gauge_weight(gauge1), 0, "_postGauge1AddAsserts: E1");
-        assertEq(gaugeController.get_total_weight(), 0, "_postGauge1AddAsserts: E2");
-        assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_postGauge1AddAsserts: E3");
+        assertEq(gaugeController.get_gauge_weight(gauge1), 5, "_postGauge1AddAsserts: E1");
+        assertEq(gaugeController.get_total_weight(), 5, "_postGauge1AddAsserts: E2");
+        assertEq(gaugeController.get_weights_sum_per_type(0), 5, "_postGauge1AddAsserts: E3");
         assertEq(gaugeController.gauges(0), gauge1, "_postGauge1AddAsserts: E4");
-        assertEq(gaugeController.gauge_relative_weight_write(gauge1, block.timestamp), 0, "_postGauge1AddAsserts: E5");
+        assertEq(gaugeController.gauge_relative_weight_write(gauge1, block.timestamp), 1e18, "_postGauge1AddAsserts: E5");
+        assertEq(gaugeController.gauge_relative_weight(gauge1, block.timestamp), 1e18, "_postGauge1AddAsserts: E6");
 
         vm.startPrank(owner);
         vm.expectRevert("dev: cannot add the same gauge twice");
@@ -277,7 +299,7 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
     function _postGauge2TypeAddAsserts() internal {
         assertEq(gaugeController.gauge_type_names(1), "Optimism", "_postGauge2TypeAddAsserts: E0");
         assertEq(gaugeController.n_gauge_types(), 2, "_postGauge2TypeAddAsserts: E1");
-        assertEq(gaugeController.get_type_weight(0), 0, "_postGauge2TypeAddAsserts: E2");
+        assertEq(gaugeController.get_type_weight(1), 0, "_postGauge2TypeAddAsserts: E2");
         assertEq(gaugeController.get_total_weight(), 0, "_postGauge2TypeAddAsserts: E3");
         assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_postGauge2TypeAddAsserts: E4");
     }
