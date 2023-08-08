@@ -135,28 +135,45 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
         vm.stopPrank();
         _postGauge3AddAsserts();
 
-        // INIT EPOCH
+        // INIT 1st EPOCH
         _preInitEpochAsserts();
-        // todo
+        skip(86400); // wait _INFLATION_DELAY (1 day)
+        vm.startPrank(owner);
+        gaugeController.initializeEpoch();
+        vm.stopPrank();
+        _postInitEpochAsserts(); // (epoch has not ended yet)
+
+        // VOTE FOR 1st EPOCH
+        _preVote1stEpochAsserts();
+        _userVote1stEpoch(alice);
+
+        // ON 1st EPOCH END
+        // skip(86400 * 7); // skip 1 epoch (1 week)
+        // _pre1stEpochEndAsserts(); // (before calling advanceEpoch())
     }
 
-    function _preInitEpochAsserts() internal {
-        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
-        minterContract.mint(gauge1);
-        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
-        minterContract.mint(gauge2);
-        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
-        minterContract.mint(gauge3);
-
-        vm.startPrank(alice);
-        vm.expectRevert("Epoch is not set yet");
-        gaugeController.vote_for_gauge_weights(gauge1, 10000);
+    function _userVote1stEpoch(address _user) internal {
+        uint256 _voteSize = uint256(10000) / uint256(3);
+        console.log("_userVote1stEpoch: _voteSize: %s", _voteSize);
+        vm.startPrank(_user);
+        gaugeController.vote_for_gauge_weights(gauge1, _voteSize);
+        // gaugeController.vote_for_gauge_weights(gauge2, _voteSize);
+        // gaugeController.vote_for_gauge_weights(gauge3, _voteSize);
         vm.stopPrank();
 
-        vm.expectRevert("Epoch is not set yet");
-        gaugeController.advanceEpoch();
+        skip(86400 * 8);
 
-        assertEq(gaugeController.epoch(), 0, "_preInitEpochAsserts: E0");
+        // vm.expectRevert("asd"); // todo
+
+        uint256 _gaugeWeight = gaugeController.gauge_relative_weight_write(gauge1, block.timestamp);
+        console.log("_userVote1stEpoch: _gaugeWeight1: %s", _gaugeWeight);
+        console.log("get_total_weight(): %s", gaugeController.get_total_weight());
+        revert("asd");
+        // assertEq(_gaugeWeight, 1e18 / 3, "_userVote1stEpoch: E0");
+    }
+
+    function _pre1stEpochEndAsserts() internal {
+        // mint(address _gauge) should revert on ```epoch has not ended yet```
     }
 
     // =======================================================
@@ -295,5 +312,62 @@ contract testGaugeControllerAndMinter is Test, DeployerUtilities {
         vm.expectRevert("dev: cannot add the same gauge twice");
         gaugeController.add_gauge(gauge3, 0, 0);
         vm.stopPrank();
+    }
+
+    function _preInitEpochAsserts() internal {
+        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
+        minterContract.mint(gauge1);
+        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
+        minterContract.mint(gauge2);
+        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
+        minterContract.mint(gauge3);
+
+        vm.startPrank(alice);
+        vm.expectRevert("Epoch is not set yet");
+        gaugeController.vote_for_gauge_weights(gauge1, 10000);
+        vm.stopPrank();
+
+        vm.expectRevert("Epoch is not set yet");
+        gaugeController.advanceEpoch();
+
+        assertEq(gaugeController.epoch(), 0, "_preInitEpochAsserts: E0");
+        assertEq(puppetERC20.mintableInTimeframe(block.timestamp, block.timestamp + 1 weeks), 0, "_preInitEpochAsserts: E1"); // must wait _INFLATION_DELAY
+
+        vm.expectRevert("admin only");
+        gaugeController.initializeEpoch();
+
+        vm.startPrank(owner);
+        vm.expectRevert("too soon!");
+        gaugeController.initializeEpoch(); // must wait _INFLATION_DELAY
+        vm.stopPrank();
+
+        (uint256 _startTime, uint256 _endTime) = gaugeController.epochTimeframe(0);
+        assertEq(_startTime, 0, "_preInitEpochAsserts: E2");
+        assertEq(_endTime, 0, "_preInitEpochAsserts: E3");
+    }
+
+    function _postInitEpochAsserts() internal {
+        assertEq(gaugeController.epoch(), 1, "_postInitEpochAsserts: E0");
+        assertTrue(puppetERC20.mintableInTimeframe(block.timestamp, block.timestamp + 1 weeks) > 0, "_postInitEpochAsserts: E1");
+        assertEq(gaugeController.get_total_weight(), 0, "_postInitEpochAsserts: E2");
+        assertEq(gaugeController.get_weights_sum_per_type(0), 0, "_postInitEpochAsserts: E3");
+        assertEq(gaugeController.currentEpochEndTime(), block.timestamp + 1 weeks, "_postInitEpochAsserts: E4");
+        (uint256 _startTime, uint256 _endTime) = gaugeController.epochTimeframe(1);
+        assertEq(_startTime, block.timestamp, "_postInitEpochAsserts: E5");
+        assertEq(_endTime, block.timestamp + 1 weeks, "_postInitEpochAsserts: E6");
+
+        vm.expectRevert("epoch has not ended yet");
+        minterContract.mint(gauge1);
+    }
+
+    function _preVote1stEpochAsserts() internal {
+        assertEq(gaugeController.gauge_relative_weight_write(address(gauge1), block.timestamp), 0, "_preVote1stEpochAsserts: E0");
+        assertEq(gaugeController.gauge_relative_weight_write(address(gauge1), block.timestamp + 1 weeks), 0, "_preVote1stEpochAsserts: E1");
+        assertEq(gaugeController.gauge_relative_weight_write(address(gauge2), block.timestamp), 0, "_preVote1stEpochAsserts: E2");
+        assertEq(gaugeController.gauge_relative_weight_write(address(gauge2), block.timestamp + 1 weeks), 0, "_preVote1stEpochAsserts: E2");
+        assertEq(gaugeController.gaugeWeightForEpoch(0, address(gauge1)), 0, "_preVote1stEpochAsserts: E3");
+        assertEq(gaugeController.gaugeWeightForEpoch(1, address(gauge1)), 0, "_preVote1stEpochAsserts: E4");
+        assertEq(gaugeController.gaugeWeightForEpoch(2, address(gauge1)), 0, "_preVote1stEpochAsserts: E5");
+        assertEq(gaugeController.get_total_weight(), 0, "_preVote1stEpochAsserts: E6");
     }
 }

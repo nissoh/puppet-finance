@@ -2,8 +2,10 @@
 pragma solidity 0.8.19;
 
 import {IVotingEscrow} from "src/interfaces/IVotingEscrow.sol";
-
-contract GaugeController {
+import {IPuppet} from "src/interfaces/IPuppet.sol";
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
+contract GaugeController is Test {
 
     // structs
 
@@ -21,6 +23,7 @@ contract GaugeController {
     struct EpochData {
         uint256 startTime;
         uint256 endTime;
+        bool hasEnded;
         mapping(address => uint256) gaugeWeights; // gauge_addr -> weight
     }
 
@@ -174,6 +177,11 @@ contract GaugeController {
         return epochData[_epoch].gaugeWeights[_gauge];
     }
 
+    // todo
+    function hasEpochEnded(uint256 _epoch) external view returns (bool) {
+        return epochData[_epoch].hasEnded;
+    }
+
     // mutated functions
 
     /// @notice Get gauge weight normalized to 1e18 and also fill all the unfilled values for type and gauge records
@@ -278,15 +286,20 @@ contract GaugeController {
         uint256 lock_end = IVotingEscrow(voting_escrow).lockedEnd(msg.sender);
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
         require(lock_end > next_time, "Your token lock expires too soon");
+        console.log("lock_end: %s", lock_end);
+        console.log("next_time: %s", next_time);
 
         int128 gauge_type = gauge_types_[_gauge_addr] - 1;
         require(gauge_type >= 0, "Gauge not added");
 
         VotedSlope memory old_slope = vote_user_slopes[msg.sender][_gauge_addr];
         uint256 old_bias = old_slope.slope * _old_dt(old_slope.end, next_time);
+        console.log("old_bias: %s", old_bias);
         VotedSlope memory new_slope = _createNewSlope(_user_weight, lock_end);
 
         _updatePowerUsed(new_slope.power, old_slope.power);
+        console.log("new_slope.power: %s", new_slope.power);
+        console.log("old_slope.power: %s", old_slope.power);
         _updateSlopes(_gauge_addr, gauge_type, old_slope, new_slope, next_time, old_bias, lock_end);
         _get_total();
 
@@ -307,6 +320,8 @@ contract GaugeController {
         currentEpochEndTime = block.timestamp + WEEK;
         epochData[_currentEpoch].startTime = block.timestamp;
         epochData[_currentEpoch].endTime = currentEpochEndTime;
+
+        IPuppet(token).updateMiningParameters();
     }
 
     // todo
@@ -329,6 +344,7 @@ contract GaugeController {
 
         _epochData.startTime = currentEpochEndTime - WEEK;
         _epochData.endTime = currentEpochEndTime;
+        _epochData.hasEnded = true;
 
         _currentEpoch += 1;
         currentEpochEndTime += WEEK;
@@ -363,6 +379,7 @@ contract GaugeController {
     /// @return Type weight
     function _get_type_weight(int128 gauge_type) internal returns (uint256) {
         uint256 t = time_type_weight[uint256(int256(gauge_type))]; // todo - make sure this conversion is correct
+        console.log("_get_type_weight: t: %s", t);
         if (t > 0) {
             uint256 w = points_type_weight[gauge_type][t];
             for (uint256 i = 0; i < 500; i++) {
@@ -423,6 +440,7 @@ contract GaugeController {
             t -= WEEK;
         }
         uint256 pt = points_total[t];
+        console.log("pt: %s", pt);
 
         for (int128 gauge_type = 0; gauge_type < 100; gauge_type++) {
             if (gauge_type == _n_gauge_types) {
@@ -445,9 +463,11 @@ contract GaugeController {
                 }
                 uint256 type_sum = points_sum[gauge_type][t].bias;
                 uint256 type_weight = points_type_weight[gauge_type][t];
+                console.log("i: %s, type_sum: %s, type_weight: %s", i, type_sum, type_weight);
                 pt += type_sum * type_weight;
             }
             points_total[t] = pt;
+            console.log("i: %s, t: %s, pt: %s", i, t, pt);
 
             if (t > block.timestamp) {
                 time_total = t;
@@ -608,6 +628,8 @@ contract GaugeController {
         // Add slope changes for new slopes
         changes_weight[_gauge_addr][new_slope.end] += new_slope.slope;
         changes_sum[gauge_type][new_slope.end] += new_slope.slope;
+        console.log("old_slope.slope", old_slope.slope);
+        console.log("new_slope.slope", new_slope.slope);
     }
     function max(uint256 a, uint256 b) internal pure returns (uint256) {
         return a >= b ? a : b;

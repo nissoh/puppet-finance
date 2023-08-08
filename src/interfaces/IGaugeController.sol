@@ -10,4 +10,6 @@ interface IGaugeController {
         function epochTimeframe(uint256 _epoch) external view returns (uint256, uint256);
 
         function gaugeWeightForEpoch(uint256 _epoch, address _gauge) external view returns (uint256);
+
+        function hasEpochEnded(uint256 _epoch) external view returns (bool);
 }
