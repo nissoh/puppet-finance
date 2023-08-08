@@ -313,8 +313,6 @@ contract GaugeController is Test {
 
         _currentEpoch = 1;
         currentEpochEndTime = block.timestamp + WEEK;
-        epochData[_currentEpoch].startTime = block.timestamp;
-        epochData[_currentEpoch].endTime = currentEpochEndTime;
 
         IPuppet(token).updateMiningParameters();
     }
@@ -322,17 +320,10 @@ contract GaugeController is Test {
     // todo
     function advanceEpoch() external {
         require(_currentEpoch != 0, "Epoch is not set yet");
-        require(block.timestamp > currentEpochEndTime, "Epoch not yet finished");
-
-        uint256 _n_gauges = uint256(int256(n_gauges)); // todo - safecast        
-        for (uint256 i = 0; i < _n_gauges; i++) {
-            // checkpoint each gauge
-            _get_weight(gauges[i]);
-            _get_total(); // todo - look into removing this out of loop
-        }
+        require(block.timestamp >= currentEpochEndTime, "Epoch has not ended yet");
 
         EpochData storage _epochData = epochData[_currentEpoch];
-        for (uint256 i = 0; i < _n_gauges; i++) {
+        for (uint256 i = 0; i < uint256(int256(n_gauges)); i++) { // todo - safecast
             address _gauge = gauges[i];
             _epochData.gaugeWeights[_gauge] = _gauge_relative_weight(_gauge, block.timestamp);
         }

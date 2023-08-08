@@ -64,7 +64,7 @@ contract Puppet {
     uint256 private constant _RATE_REDUCTION_TIME = _YEAR;
     uint256 private constant _RATE_REDUCTION_COEFFICIENT = 1189207115002721024; // 2 ** (1/4) * 1e18
     uint256 private constant _RATE_DENOMINATOR = 1e18;
-    uint256 private constant _INFLATION_DELAY = 86400 * 2;
+    uint256 private constant _INFLATION_DELAY = 86400;
 
     // ============================================================================================
     // Constructor

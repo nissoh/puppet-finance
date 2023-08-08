@@ -60,7 +60,7 @@ contract Minter is ReentrancyGuard {
         require(!minted[_epoch][_gauge], "already minted for this epoch");
 
         (uint256 _epochStartTime, uint256 _epochEndTime) = _controller.epochTimeframe(_epoch);
-        require(block.timestamp > _epochEndTime, "epoch has not ended yet");
+        require(block.timestamp >= _epochEndTime, "epoch has not ended yet1");
 
         uint256 _totalMint = token.mintableInTimeframe(_epochStartTime, _epochEndTime);
         uint256 _mintForGauge = _totalMint * _controller.gaugeWeightForEpoch(_epoch, _gauge) / 1e18;
