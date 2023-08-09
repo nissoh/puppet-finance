@@ -109,7 +109,7 @@ contract testPuppet is Test, DeployerUtilities {
         bytes memory _gmxInfo = abi.encode(_gmxVaultPriceFeed, _gmxRouter, _gmxVault, _gmxPositionRouter, false, false);
 
         address _platformFeeRecipient = owner;
-        orchestrator = new Orchestrator(_dictator, address(_routeFactory), address(0), _platformFeeRecipient, _weth, bytes32(0), _gmxInfo);
+        orchestrator = new Orchestrator(_dictator, address(_routeFactory), address(0), address(0), _platformFeeRecipient, _weth, bytes32(0), _gmxInfo);
 
         decreaseSizeResolver = new DecreaseSizeResolver(_dictator, orchestrator);
 

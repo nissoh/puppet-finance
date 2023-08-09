@@ -89,7 +89,6 @@ contract GaugeController is Test {
 
     // constants
     uint256 constant WEEK = 604800; // 7 * 86400 seconds - all future times are rounded by week
-    // uint256 constant WEIGHT_VOTE_DELAY = 10 * 86400; // Cannot change weight votes more often than once in 10 days // todo - remove
     uint256 constant MULTIPLIER = 10 ** 18;
 
     // ============================================================================================
@@ -218,7 +217,7 @@ contract GaugeController is Test {
 
         int128 n = n_gauges;
         n_gauges = n + 1;
-        gauges[uint256(int256(n))] = addr; // todo - check that conversion is correct
+        gauges[uint256(int256(n))] = addr; // todo - safecast
 
         gauge_types_[addr] = gauge_type + 1;
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
@@ -229,15 +228,15 @@ contract GaugeController is Test {
             uint256 _old_total = _get_total();
 
             points_sum[gauge_type][next_time].bias = weight + _old_sum;
-            time_sum[uint256(int256(gauge_type))] = next_time; // todo - check that conversion is correct
+            time_sum[uint256(int256(gauge_type))] = next_time; // todo - safecast
             points_total[next_time] = _old_total + _type_weight * weight;
             time_total = next_time;
 
             points_weight[addr][next_time].bias = weight;
         }
 
-        if (time_sum[uint256(int256(gauge_type))] == 0) { // todo - check that conversion is correct
-            time_sum[uint256(int256(gauge_type))] = next_time; // todo - check that conversion is correct
+        if (time_sum[uint256(int256(gauge_type))] == 0) { // todo - safecast
+            time_sum[uint256(int256(gauge_type))] = next_time; // todo - safecast
         }
         time_weight[addr] = next_time;
 
@@ -279,9 +278,8 @@ contract GaugeController is Test {
     /// @param _user_weight Weight for a gauge in bps (units of 0.01%). Minimal is 0.01%. Ignored if 0
     function vote_for_gauge_weights(address _gauge_addr, uint256 _user_weight) external {
         require(_user_weight >= 0 && _user_weight <= 10000, "You used all your voting power");
-        // require(block.timestamp >= last_user_vote[msg.sender][_gauge_addr] + WEIGHT_VOTE_DELAY, "Cannot vote so often");
         require(_currentEpoch != 0, "Epoch is not set yet");
-        require(_currentEpoch > last_user_vote[msg.sender][_gauge_addr], "Already voted for this epoch"); // todo
+        require(_currentEpoch > last_user_vote[msg.sender][_gauge_addr], "Already voted for this epoch");
 
         uint256 lock_end = IVotingEscrow(voting_escrow).lockedEnd(msg.sender);
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
@@ -300,8 +298,7 @@ contract GaugeController is Test {
 
         vote_user_slopes[msg.sender][_gauge_addr] = new_slope;
 
-        // last_user_vote[msg.sender][_gauge_addr] = block.timestamp;
-        last_user_vote[msg.sender][_gauge_addr] = _currentEpoch; // todo
+        last_user_vote[msg.sender][_gauge_addr] = _currentEpoch;
 
         emit VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight);
     }
@@ -322,8 +319,14 @@ contract GaugeController is Test {
         require(_currentEpoch != 0, "Epoch is not set yet");
         require(block.timestamp >= currentEpochEndTime, "Epoch has not ended yet");
 
+        uint256 _n_gauges = uint256(int256(n_gauges)); // todo - safecast        
+        for (uint256 i = 0; i < _n_gauges; i++) {
+            _get_weight(gauges[i]);
+            _get_total();
+        }
+
         EpochData storage _epochData = epochData[_currentEpoch];
-        for (uint256 i = 0; i < uint256(int256(n_gauges)); i++) { // todo - safecast
+        for (uint256 i = 0; i < _n_gauges; i++) { // todo - safecast
             address _gauge = gauges[i];
             _epochData.gaugeWeights[_gauge] = _gauge_relative_weight(_gauge, block.timestamp);
         }
@@ -364,7 +367,7 @@ contract GaugeController is Test {
     /// @param gauge_type Gauge type id
     /// @return Type weight
     function _get_type_weight(int128 gauge_type) internal returns (uint256) {
-        uint256 t = time_type_weight[uint256(int256(gauge_type))]; // todo - make sure this conversion is correct
+        uint256 t = time_type_weight[uint256(int256(gauge_type))]; // todo - safecast
         if (t > 0) {
             uint256 w = points_type_weight[gauge_type][t];
             for (uint256 i = 0; i < 500; i++) {
@@ -374,7 +377,7 @@ contract GaugeController is Test {
                 t += WEEK;
                 points_type_weight[gauge_type][t] = w;
                 if (t > block.timestamp) {
-                    time_type_weight[uint256(int256(gauge_type))] = t; // todo - make sure this conversion is correct
+                    time_type_weight[uint256(int256(gauge_type))] = t; // todo - safecast
                 }
             }
             return w;
@@ -387,9 +390,9 @@ contract GaugeController is Test {
     /// @param gauge_type Gauge type id
     /// @return Sum of weights
     function _get_sum(int128 gauge_type) internal returns (uint256) {
-        uint256 t = time_sum[uint256(int256(gauge_type))]; // todo - make sure this conversion is correct
+        uint256 t = time_sum[uint256(int256(gauge_type))]; // todo - safecast
         if (t > 0) {
-            Point memory pt = points_sum[gauge_type][t]; // todo - make sure this is a memory copy, not a reference (storage)
+            Point memory pt = points_sum[gauge_type][t];
             for (uint256 i = 0; i < 500; i++) {
                 if (t > block.timestamp) {
                     break;
@@ -406,7 +409,7 @@ contract GaugeController is Test {
                 }
                 points_sum[gauge_type][t] = pt;
                 if (t > block.timestamp) {
-                    time_sum[uint256(int256(gauge_type))] = t; // todo - make sure this conversion is correct
+                    time_sum[uint256(int256(gauge_type))] = t; // todo - safecast
                 }
             }
             return pt.bias;
@@ -464,7 +467,7 @@ contract GaugeController is Test {
     function _get_weight(address gauge_addr) internal returns (uint256) {
         uint256 t = time_weight[gauge_addr];
         if (t > 0) {
-            Point memory pt = points_weight[gauge_addr][t]; // todo - make sure this is a memory copy, not a reference (storage)
+            Point memory pt = points_weight[gauge_addr][t];
             for (uint256 i = 0; i < 500; i++) {
                 if (t > block.timestamp) {
                     break;
@@ -523,7 +526,7 @@ contract GaugeController is Test {
         points_total[next_time] = _total_weight;
         points_type_weight[type_id][next_time] = weight;
         time_total = next_time;
-        time_type_weight[uint256(int256(type_id))] = next_time; // todo - make sure this conversion is correct
+        time_type_weight[uint256(int256(type_id))] = next_time; // todo - safecast
 
         emit NewTypeWeight(type_id, next_time, weight, _total_weight);
     }
@@ -543,7 +546,7 @@ contract GaugeController is Test {
 
         uint256 new_sum = old_sum + weight - old_gauge_weight;
         points_sum[gauge_type][next_time].bias = new_sum;
-        time_sum[uint256(int256(gauge_type))] = next_time; // todo - make sure this conversion is correct
+        time_sum[uint256(int256(gauge_type))] = next_time; // todo - safecast
 
         _total_weight = _total_weight + new_sum * type_weight - old_sum * type_weight;
         points_total[next_time] = _total_weight;

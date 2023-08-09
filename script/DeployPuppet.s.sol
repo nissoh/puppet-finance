@@ -24,11 +24,13 @@ contract DeployPuppet is DeployerUtilities {
 
         address _platformFeeRecipient = _deployer;
 
+        address _scoreGauge = address(0);
+
         Dictator _dictator = Dictator(_dictatorAddr);
 
         RouteFactory _routeFactory = new RouteFactory();
 
-        Orchestrator _orchestrator = new Orchestrator(_dictator, address(_routeFactory), _keeperAddr, _platformFeeRecipient, _weth, _referralCode, _gmxInfo);
+        Orchestrator _orchestrator = new Orchestrator(_dictator, address(_routeFactory), _keeperAddr, _scoreGauge, _platformFeeRecipient, _weth, _referralCode, _gmxInfo);
 
         bytes4 functionSig = _orchestrator.setRouteType.selector;
 

@@ -54,6 +54,10 @@ interface IOrchestrator {
     /// @return _keeper The address of the Keeper
     function keeper() external view returns (address _keeper);
 
+    /// @notice The ```scoreGauge``` function returns the address of the ScoreGauge
+    /// @return _scoreGauge The address of the ScoreGauge
+    function scoreGauge() external view returns (address);
+
     /// @notice The ```referralCode``` function returns the referral code
     /// @return _referralCode The referral code
     function referralCode() external view returns (bytes32 _referralCode);
@@ -349,6 +353,10 @@ interface IOrchestrator {
     /// @param _keeperAddr The address of the new Keeper
     function setKeeper(address _keeperAddr) external;
 
+    /// @notice The ```setScoreGauge``` function is called by the Authority to set the Score Gauge address
+    /// @param _gauge The address of the new Score Gauge
+    function setScoreGauge(address _gauge) external;
+
     /// @notice The ```setReferralCode``` function is called by the Authority to set the referral code
     /// @param _refCode The new referral code
     function setReferralCode(bytes32 _refCode) external;
@@ -408,6 +416,7 @@ interface IOrchestrator {
     event SetFees(uint256 managmentFee, uint256 withdrawalFee, uint256 performanceFee);
     event SetFeesRecipient(address recipient);
     event SetKeeper(address keeper);
+    event SetScoreGauge(address scoreGauge);
     event RescueRouteFunds(uint256 amount, address token, address indexed receiver, address indexed route);
     event Rescue(uint256 amount, address token, address indexed receiver);
     event FreezeRoute(address indexed route, bool freeze);

@@ -65,6 +65,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     address public platformFeeRecipient;
 
     address private _keeper;
+    address private _scoreGauge;
 
     bool private _paused;
 
@@ -92,6 +93,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @param _authority The Authority contract instance
     /// @param _routeFactory The RouteFactory contract address
     /// @param _keeperAddr The address of the keeper
+    /// @param _scoreGaugeAddr The address of the score gauge
     /// @param _platformFeeRecipient The address of the platform fee recipient
     /// @param _wethAddr The WETH contract address
     /// @param _refCode The GMX referral code
@@ -100,6 +102,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         Authority _authority,
         address _routeFactory,
         address _keeperAddr,
+        address _scoreGaugeAddr,
         address _platformFeeRecipient,
         address _wethAddr,
         bytes32 _refCode,
@@ -110,6 +113,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         routeFactory = _routeFactory;
         _keeper = _keeperAddr;
+        _scoreGauge = _scoreGaugeAddr;
         platformFeeRecipient = _platformFeeRecipient;
 
         (
@@ -152,6 +156,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @inheritdoc IOrchestrator
     function keeper() external view returns (address) {
         return _keeper;
+    }
+
+    /// @inheritdoc IOrchestrator
+    function scoreGauge() external view returns (address) {
+        return _scoreGauge;
     }
 
     /// @inheritdoc IOrchestrator
@@ -669,6 +678,15 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _keeper = _keeperAddr;
 
         emit SetKeeper(_keeper);
+    }
+
+    /// @inheritdoc IOrchestrator
+    function setScoreGauge(address _gauge) external requiresAuth nonReentrant {
+        if (_gauge == address(0)) revert ZeroAddress();
+
+        _scoreGauge = _gauge;
+
+        emit SetScoreGauge(_gauge);
     }
 
     /// @inheritdoc IOrchestrator

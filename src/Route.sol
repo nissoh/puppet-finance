@@ -28,6 +28,7 @@ import {IGMXVault} from "./interfaces/IGMXVault.sol";
 import {IPositionRouterCallbackReceiver} from "./interfaces/IPositionRouterCallbackReceiver.sol";
 
 import {IRoute} from "./interfaces/IRoute.sol";
+import {IScoreGauge} from "./interfaces/IScoreGauge.sol";
 
 import "./Base.sol";
 // todo - test ```cumulativeVolumeGenerated``` and ```traderPnL```
@@ -48,7 +49,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     bool private _enableKeeperAdjustment;
 
     int256 public puppetsPnL;
-    int256 public traderPnL; // todo - denominate in USD
+    int256 public traderPnL;
 
     uint256 public cumulativeVolumeGenerated; // todo - make sure denominated in USD
     uint256 public positionIndex;
@@ -333,7 +334,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         if (msg.sender != orchestrator.gmxPositionRouter()) revert NotCallbackCaller();
 
         if (_isExecuted) {
-            cumulativeVolumeGenerated = pendingSizeDelta[_requestKey];
+            cumulativeVolumeGenerated += pendingSizeDelta[_requestKey];
             if (_isIncrease) _allocateShares(_requestKey);
         }
 
@@ -835,7 +836,20 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         _isPositionOpen = false;
         positionIndex += 1;
 
-        // IScoreGauge(orchestrator.scoreGauge()).updateScore(cumulativeVolumeGenerated, traderPnL); // todo - make this optional
+        address _gauge = orchestrator.scoreGauge();//todo - test all of that
+        if (_gauge != address(0)) {
+            uint256 _usdDenominatedTraderProfit = 0;
+            if (traderPnL < 0) {
+                _usdDenominatedTraderProfit = orchestrator.getPrice(route.collateralToken)
+                    * ((traderPnL * -1).toUint256()) / _collateralTokenDecimals;
+            }
+
+            IScoreGauge(_gauge).updateTraderScore(cumulativeVolumeGenerated, _usdDenominatedTraderProfit);
+        }
+
+        traderPnL = 0;
+        puppetsPnL = 0;
+        cumulativeVolumeGenerated = 0;
 
         emit Reset();
     }
