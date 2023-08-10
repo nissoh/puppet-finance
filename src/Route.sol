@@ -31,13 +31,11 @@ import {IRoute} from "./interfaces/IRoute.sol";
 import {IScoreGauge} from "./interfaces/IScoreGauge.sol";
 
 import "./Base.sol";
-// todo - test ```cumulativeVolumeGenerated``` and ```traderPnL```
-import "forge-std/Test.sol";
-import "forge-std/console.sol";
+
 /// @title Route
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
 /// @notice This contract acts as a container account for a specific trading route, called by the Orchestrator and owned by a Trader
-contract Route is Base, IPositionRouterCallbackReceiver, IRoute, Test {
+contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
@@ -806,7 +804,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute, Test {
             payable(_executionFeeReceiver).sendValue(_ethBalance - _traderAmountIn);
         }
 
-        emit Repay(_totalAssets, _performanceFeePaid, traderPnL, puppetsPnL);
+        emit Repay(_totalAssets, _performanceFeePaid);
     }
 
     /// @notice The ```_setAdjustmentFlags``` function sets the adjustment flags, used by the Keeper to determine whether to adjust the position

@@ -329,6 +329,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bool _isLong
     ) public nonReentrant notPaused returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
+        // if (msg.sender != tx.origin && !traderWhitelist[msg.sender]) revert NotWhitelisted(); // todo
 
         bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
         if (!routeType[_routeTypeKey].isRegistered) revert RouteTypeNotRegistered();
