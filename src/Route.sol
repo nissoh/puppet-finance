@@ -43,7 +43,6 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     using Address for address payable;
 
     bool public waitForKeeperAdjustment;
-    bool public frozen;
 
     bool private _isPositionOpen;
     bool private _enableKeeperAdjustment;
@@ -113,13 +112,6 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     /// @notice Modifier that ensures the caller is the orchestrator
     modifier onlyOrchestrator() {
         if (msg.sender != address(orchestrator)) revert NotOrchestrator();
-        _;
-    }
-
-    /// @notice Modifier that ensures the Route is not frozen and the orchestrator is not paused
-    modifier notFrozen() {
-        if (orchestrator.paused()) revert Paused();
-        if (frozen) revert RouteFrozen();
         _;
     }
 
@@ -257,6 +249,8 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         _repayBalance(bytes32(0), msg.value, true, false, true);
 
         if (_isIncrease) {
+            if (orchestrator.paused()) revert Paused();
+
             (
                 uint256 _puppetsAmountIn,
                 uint256 _traderAmountIn,
@@ -316,13 +310,6 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         }
 
         emit RescueTokenFunds(_amount, _token, _receiver);
-    }
-
-    /// @inheritdoc IRoute
-    function freeze(bool _freeze) external onlyOrchestrator {
-        frozen = _freeze;
-
-        emit Freeze(_freeze);
     }
 
     // ============================================================================================
@@ -572,7 +559,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         AdjustPositionParams memory _adjustPositionParams,
         uint256 _amountIn,
         uint256 _executionFee
-    ) internal notFrozen returns (bytes32 _requestKey) {
+    ) internal returns (bytes32 _requestKey) {
         address[] memory _path = new address[](1);
         _path[0] = route.collateralToken;
 
@@ -846,7 +833,8 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         emit Reset();
     }
 
-    // todo - test all of that
+    /// @notice The ```_updateScoreGauge``` function is used to update the ScoreGauge contract, which is used to track user scores and distribute emissions
+    /// @dev This function is called by ```_resetRoute```
     function _updateScoreGauge() internal {
         uint256 _cumulativeVolumeGenerated = cumulativeVolumeGenerated;
         address _gauge = orchestrator.scoreGauge();

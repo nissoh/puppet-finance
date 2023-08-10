@@ -29,7 +29,7 @@ import {IGMXVaultPriceFeed} from "./interfaces/IGMXVaultPriceFeed.sol";
 import {IRouteFactory} from "./interfaces/IRouteFactory.sol";
 
 import "./Base.sol";
-
+// todo - (1) puppetHelper contract so Puppets can subscribe in multiple Orchestrators in 1 txn (2) https://www.notion.so/guardianaudits/3c46a8b3eea1443dad8bf940db897713?v=a95519bd6e674ac191fe14c3bf9d5ff6
 /// @title Orchestrator
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
 /// @notice This contract contains the logic and storage for managing routes and puppets
@@ -58,6 +58,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     uint256 public withdrawalFee = 0;
 
     uint256 internal _performanceFee = 0;
+
+    uint256 public immutable ownerFunctionsDeadline;
 
     uint256 public constant MAX_FEE = 1000; // 10%
 
@@ -124,6 +126,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         ) = abi.decode(_gmx, (address, address, address, address));
 
         _referralCode = _refCode;
+
+        ownerFunctionsDeadline = block.timestamp + 16 weeks;
     }
 
     // ============================================================================================
@@ -139,6 +143,12 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @notice Modifier that ensures the contract is not paused
     modifier notPaused() {
         if (_paused) revert Paused();
+        _;
+    }
+
+    /// @notice Modifier that ensures certain owner functions are called before the pre defined deadline
+    modifier beforeDeadline() {
+        if (block.timestamp >= ownerFunctionsDeadline) revert FunctionCallPastDeadline();
         _;
     }
 
@@ -442,6 +452,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     ) public nonReentrant notPaused {
         bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
         RouteInfo storage _route = _routeInfo[_routeKey];
+
+        // if (msg.sender != multiSubscriber) {
+        //     _owner = msg.sender;
+        // } // todo
+
         PuppetInfo storage _puppet = _puppetInfo[msg.sender];
 
         if (!_route.isRegistered) revert RouteNotRegistered();
@@ -610,24 +625,12 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         IRoute _route = IRoute(_routeInfo[_routeKey].route);
         if (address(_route) == address(0)) revert RouteNotRegistered();
 
-
         _route.liquidate();
 
         emit LiquidatePosition(address(_route), _routeKey, getPositionKey(_route));
     }
 
     // called by owner
-
-    /// @inheritdoc IOrchestrator
-    function rescueTokens(uint256 _amount, address _token, address _receiver) external requiresAuth nonReentrant {
-        if (_token == address(0)) {
-            payable(_receiver).sendValue(_amount);
-        } else {
-            IERC20(_token).safeTransfer(_receiver, _amount);
-        }
-
-        emit Rescue(_amount, _token, _receiver);
-    }
 
     /// @inheritdoc IOrchestrator
     function rescueRouteFunds(uint256 _amount, address _token, address _receiver, address _route) external requiresAuth nonReentrant {
@@ -637,14 +640,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function freezeRoute(address _route, bool _freeze) external requiresAuth nonReentrant {
-        IRoute(_route).freeze(_freeze);
-
-        emit FreezeRoute(_route, _freeze);
-    }
-
-    /// @inheritdoc IOrchestrator
-    function setRouteType(address _collateral, address _index, bool _isLong) external requiresAuth nonReentrant {
+    function setRouteType(address _collateral, address _index, bool _isLong) external beforeDeadline requiresAuth nonReentrant {
         bytes32 _routeTypeKey = getRouteTypeKey(_collateral, _index, _isLong);
         routeType[_routeTypeKey] = RouteType(_collateral, _index, _isLong, true);
 
@@ -652,28 +648,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function setGMXInfo(
-        address _vaultPriceFeed,
-        address _router,
-        address _vault,
-        address _positionRouter,
-        bool _priceFeedMaximise,
-        bool _priceFeedIncludeAmmPrice
-    ) external requiresAuth nonReentrant {
-        GMXInfo storage _gmx = _gmxInfo;
-
-        _gmx.vaultPriceFeed = _vaultPriceFeed;
-        _gmx.router = _router;
-        _gmx.vault = _vault;
-        _gmx.positionRouter = _positionRouter;
-        _gmx.priceFeedMaximise = _priceFeedMaximise;
-        _gmx.priceFeedIncludeAmmPrice = _priceFeedIncludeAmmPrice;
-
-        emit SetGMXUtils(_vaultPriceFeed, _router, _vault, _positionRouter, _priceFeedMaximise, _priceFeedIncludeAmmPrice);
-    }
-
-    /// @inheritdoc IOrchestrator
-    function setKeeper(address _keeperAddr) external requiresAuth nonReentrant {
+    function setKeeper(address _keeperAddr) external beforeDeadline requiresAuth nonReentrant {
         if (_keeperAddr == address(0)) revert ZeroAddress();
 
         _keeper = _keeperAddr;
@@ -682,7 +657,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function setScoreGauge(address _gauge) external requiresAuth nonReentrant {
+    function setScoreGauge(address _gauge) external beforeDeadline requiresAuth nonReentrant {
         if (_gauge == address(0)) revert ZeroAddress();
 
         _scoreGauge = _gauge;
@@ -691,7 +666,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function setReferralCode(bytes32 _refCode) external requiresAuth nonReentrant {
+    function setReferralCode(bytes32 _refCode) external beforeDeadline requiresAuth nonReentrant {
         if (_refCode == bytes32(0)) revert ZeroBytes32();
 
         _referralCode = _refCode;
@@ -700,16 +675,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function setRouteFactory(address _factory) external requiresAuth nonReentrant {
-        if (_factory == address(0)) revert ZeroAddress();
-
-        routeFactory = _factory;
-
-        emit SetRouteFactory(_factory);
-    }
-
-    /// @inheritdoc IOrchestrator
-    function setFees(uint256 _managmentFee, uint256 _withdrawalFee, uint256 _perfFee) external requiresAuth nonReentrant {
+    function setFees(uint256 _managmentFee, uint256 _withdrawalFee, uint256 _perfFee) external beforeDeadline requiresAuth nonReentrant {
         if (_managmentFee > MAX_FEE || _withdrawalFee > MAX_FEE || _perfFee > MAX_FEE) revert FeeExceedsMax();
 
         managementFee = _managmentFee;
@@ -721,7 +687,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function setPlatformFeesRecipient(address _recipient) external requiresAuth nonReentrant {
+    function setPlatformFeesRecipient(address _recipient) external beforeDeadline requiresAuth nonReentrant {
         if (_recipient == address(0)) revert ZeroAddress();
 
         platformFeeRecipient = _recipient;
@@ -730,7 +696,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     }
 
     /// @inheritdoc IOrchestrator
-    function pause(bool _pause) external requiresAuth nonReentrant {
+    function pause(bool _pause) external beforeDeadline requiresAuth nonReentrant {
         _paused = _pause;
 
         emit Pause(_pause);

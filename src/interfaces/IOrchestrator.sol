@@ -316,38 +316,19 @@ interface IOrchestrator {
 
     // called by owner
 
-    /// @notice The ```rescueTokens``` function is called by the Authority to rescue tokens from this contract
-    /// @param _amount The amount to rescue
-    /// @param _token The address of the Token
-    /// @param _receiver The address of the receiver
-    function rescueTokens(uint256 _amount, address _token, address _receiver) external;
-
     /// @notice The ```rescueRouteFunds``` function is called by the Authority to rescue tokens from a Route
+    /// @dev Route should never hold any funds, but this function is here just in case
     /// @param _amount The amount to rescue
     /// @param _token The address of the Token
     /// @param _receiver The address of the receiver
     /// @param _route The address of the Route
     function rescueRouteFunds(uint256 _amount, address _token, address _receiver, address _route) external;
 
-    /// @notice The ```freezeRoute``` function is called by the Authority to freeze or unfreeze a Route
-    /// @param _route The address of the Route
-    /// @param _freeze Whether to freeze or unfreeze
-    function freezeRoute(address _route, bool _freeze) external;
-
     /// @notice The ```setRouteType``` function is called by the Authority to set a new RouteType
     /// @param _collateral The address of the Collateral Token
     /// @param _index The address of the Index Token
     /// @param _isLong The boolean value of the position
     function setRouteType(address _collateral, address _index, bool _isLong) external;
-
-    /// @notice The ```setGMXInfo``` function is called by the Authority to set the GMX contract addresses
-    /// @param _vaultPriceFeed The address of the GMX Vault Price Feed
-    /// @param _gmxRouter The address of the GMX Router
-    /// @param _gmxVault The address of the GMX Vault
-    /// @param _gmxPositionRouter The address of the GMX Position Router
-    /// @param _priceFeedMaximise The boolean for the GMX Vault Price Feed `maximise` parameter
-    /// @param _priceFeedIncludeAmmPrice The boolean for the GMX Vault Price Feed `includeAmmPrice` parameter
-    function setGMXInfo(address _vaultPriceFeed, address _gmxRouter, address _gmxVault, address _gmxPositionRouter, bool _priceFeedMaximise, bool _priceFeedIncludeAmmPrice) external;
 
     /// @notice The ```setKeeper``` function is called by the Authority to set the Keeper address
     /// @param _keeperAddr The address of the new Keeper
@@ -370,10 +351,6 @@ interface IOrchestrator {
     /// @notice The ```setPlatformFeesRecipient``` function is called by the Authority to set the platform fees recipient
     /// @param _recipient The new platform fees recipient
     function setPlatformFeesRecipient(address _recipient) external;
-
-    /// @notice The ```setRouteFactory``` function is called by the Authority to set the Route Factory address
-    /// @param _factory The address of the new Route Factory
-    function setRouteFactory(address _factory) external;
 
     /// @notice The ```pause``` function is called by the Authority to pause all Routes
     /// @param _pause The new pause state
@@ -407,19 +384,14 @@ interface IOrchestrator {
     event CreditPuppet(uint256 amount, address asset, address indexed puppet, address indexed caller);
 
     event TransferRouteFunds(uint256 amount, address asset, address indexed receiver, address indexed caller);
-    event SetGMXUtils(address vaultPriceFeed, address router, address vault, address positionRouter);
-    event SetGMXUtils(address vaultPriceFeed, address router, address vault, address positionRouter, bool priceFeedMaximise, bool priceFeedIncludeAmmPrice);
     event Pause(bool paused);
     event SetReferralCode(bytes32 referralCode);
-    event SetRouteFactory(address factory);
     event WithdrawPlatformFees(uint256 amount, address asset, address caller, address platformFeeRecipient);
     event SetFees(uint256 managmentFee, uint256 withdrawalFee, uint256 performanceFee);
     event SetFeesRecipient(address recipient);
     event SetKeeper(address keeper);
     event SetScoreGauge(address scoreGauge);
     event RescueRouteFunds(uint256 amount, address token, address indexed receiver, address indexed route);
-    event Rescue(uint256 amount, address token, address indexed receiver);
-    event FreezeRoute(address indexed route, bool freeze);
 
     // ============================================================================================
     // Errors
@@ -440,4 +412,5 @@ interface IOrchestrator {
     error FeeExceedsMax();
     error ZeroBytes32();
     error RouteWaitingForCallback();
+    error FunctionCallPastDeadline();
 }

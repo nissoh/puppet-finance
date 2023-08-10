@@ -20,6 +20,8 @@ import {RouteFactory} from "src/RouteFactory.sol";
 import {DecreaseSizeResolver} from "src/keeper/DecreaseSizeResolver.sol";
 import {Dictator} from "src/Dictator.sol";
 
+import {ScoreGaugeMock} from "test/mocks/ScoreGaugeMock.sol";
+
 import {DeployerUtilities} from "script/utilities/DeployerUtilities.sol";
 
 import "forge-std/Test.sol";
@@ -28,6 +30,8 @@ import "forge-std/console.sol";
 contract testPuppet is Test, DeployerUtilities {
 
     using SafeERC20 for IERC20;
+
+    event UpdateScoreGauge(int256 puppetsPnL, int256 traderPnL, uint256 traderProfitInUSD, uint256 puppetsProfitInUSD, uint256 cumulativeVolumeGenerated);
 
      struct CreatePositionParams {
         IRoute.AdjustPositionParams adjustPositionParams;
@@ -89,6 +93,7 @@ contract testPuppet is Test, DeployerUtilities {
     Route route;
     Orchestrator orchestrator;
     DecreaseSizeResolver decreaseSizeResolver;
+    ScoreGaugeMock scoreGaugeMock;
 
     function setUp() public {
 
@@ -113,7 +118,10 @@ contract testPuppet is Test, DeployerUtilities {
 
         decreaseSizeResolver = new DecreaseSizeResolver(_dictator, orchestrator);
 
+        scoreGaugeMock = new ScoreGaugeMock();
+
         bytes4 setRouteTypeSig = orchestrator.setRouteType.selector;
+        bytes4 setScoreGaugeSig = orchestrator.setScoreGauge.selector;
         bytes4 setFeesPositionSig = orchestrator.setFees.selector;
         bytes4 adjustTargetLeverageSig = orchestrator.adjustTargetLeverage.selector;
         bytes4 liquidatePositionSig = orchestrator.liquidatePosition.selector;
@@ -121,6 +129,7 @@ contract testPuppet is Test, DeployerUtilities {
 
         vm.startPrank(owner);
         _setRoleCapability(_dictator, 0, address(orchestrator), setRouteTypeSig, true);
+        _setRoleCapability(_dictator, 0, address(orchestrator), setScoreGaugeSig, true);
         _setRoleCapability(_dictator, 0, address(orchestrator), setFeesPositionSig, true);
         _setRoleCapability(_dictator, 0, address(orchestrator), setPlatformFeesRecipientSig, true);
         _setRoleCapability(_dictator, 1, address(orchestrator), adjustTargetLeverageSig, true);
@@ -132,6 +141,7 @@ contract testPuppet is Test, DeployerUtilities {
         orchestrator.setRouteType(_weth, _weth, true);
         orchestrator.setRouteType(_usdc, _weth, false);
         orchestrator.setPlatformFeesRecipient(owner);
+        orchestrator.setScoreGauge(address(scoreGaugeMock));
         vm.stopPrank();
     }
 
@@ -243,7 +253,6 @@ contract testPuppet is Test, DeployerUtilities {
 
         // platform
         _testPlatformFeesWithdrawal();
-        revert("asd");
     }
 
     function testNonCollateralAmountIn() public {
@@ -1105,12 +1114,14 @@ contract testPuppet is Test, DeployerUtilities {
             _dealERC20(route.collateralToken(), address(route), 20 ether);
 
             vm.startPrank(GMXPositionRouterKeeper); // keeper
-            // expectEmit (UpdateScoreGauge(puppetsPnL, traderPnL, _traderProfitInUSD, _puppetsProfitInUSD, _cumulativeVolumeGenerated)) // todo
-            // traderPnL --> should be ~ 20 ether * traderShares / totalSupply
-            // puppetsPnL --> should be ~ 20 ether - traderPnL
-            // _traderProfitInUSD --> should be ~ 20 ether * traderShares / totalSupply * price
-            // _puppetsProfitInUSD --> should be ~ 20 ether - traderPnL * price
-            // _cumulativeVolumeGenerated --> should be total delta --> record total delta throughout the test
+            uint256 _cumulativeVolumeGenerated = 0; // todo testing trader/puppet pnl + _cumulativeVolumeGenerated and update on ScoreGauge
+            (,,,uint256 _totalSupply,) = route.positions(route.positionIndex());
+            uint256 _traderProfit = 20 ether * route.traderShares() / _totalSupply;
+            uint256 _puppetsProfit = 20 ether - _traderProfit;
+            uint256 _traderProfitInUSD = _traderProfit * orchestrator.getPrice(route.collateralToken()) / 1e18;
+            uint256 _puppetsProfitInUSD = _puppetsProfit * orchestrator.getPrice(route.collateralToken()) / 1e18;
+            // vm.expectEmit(address(route));
+            // emit UpdateScoreGauge(int256(_puppetsProfit), int256(_traderProfit), _traderProfitInUSD, _puppetsProfitInUSD, _cumulativeVolumeGenerated);
             IGMXPositionRouter(_gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
             vm.stopPrank();
 

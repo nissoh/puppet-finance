@@ -203,10 +203,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
     /// @param _receiver The receiver address
     function rescueTokenFunds(uint256 _amount, address _token, address _receiver) external;
 
-    /// @notice The ```freeze``` function is called by the Orchestrator and Authority to freeze the Route
-    /// @param _freeze The boolean indicating if the Route should be frozen or unfrozen 
-    function freeze(bool _freeze) external;
-
     // ============================================================================================
     // Events
     // ============================================================================================
@@ -220,7 +216,6 @@ interface IRoute is IPositionRouterCallbackReceiver {
     event Reset();
     event UpdateScoreGauge(int256 puppetsPnL, int256 traderPnL, uint256 traderProfitInUSD, uint256 puppetsProfitInUSD, uint256 cumulativeVolumeGenerated);
     event RescueTokenFunds(uint256 amount, address token, address receiver);
-    event Freeze(bool freeze);
 
     // ============================================================================================
     // Errors
