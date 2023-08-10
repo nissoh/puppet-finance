@@ -32,10 +32,12 @@ import {IScoreGauge} from "./interfaces/IScoreGauge.sol";
 
 import "./Base.sol";
 // todo - test ```cumulativeVolumeGenerated``` and ```traderPnL```
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
 /// @title Route
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
 /// @notice This contract acts as a container account for a specific trading route, called by the Orchestrator and owned by a Trader
-contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
+contract Route is Base, IPositionRouterCallbackReceiver, IRoute, Test {
 
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
@@ -51,7 +53,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     int256 public puppetsPnL;
     int256 public traderPnL;
 
-    uint256 public cumulativeVolumeGenerated; // todo - make sure denominated in USD
+    uint256 public cumulativeVolumeGenerated;
     uint256 public positionIndex;
     uint256 public targetLeverage;
 
@@ -755,8 +757,6 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
         Position storage _position = positions[positionIndex];
         Route memory _route = route;
 
-        if (!_isOpenInterest() && _isPositionOpen) _resetRoute();
-
         _setAdjustmentFlags(_request.isAdjustmentRequired, _isExecuted, _isKeeperRequest);
 
         uint256 _totalAssets = IERC20(_route.collateralToken).balanceOf(address(this));
@@ -786,12 +786,15 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
             if (_isExecuted && !_isIncrease) {
                 puppetsPnL -= _puppetsAssets.toInt256();
                 traderPnL -= _traderAssets.toInt256();
-                if (puppetsPnL < 0) {
-                    _performanceFeePaid = (puppetsPnL * -1).toUint256() * orchestrator.performanceFee() / _BASIS_POINTS_DIVISOR;
+                uint256 _performanceFeePercentage = orchestrator.performanceFee();
+                if (puppetsPnL < 0 && _performanceFeePercentage > 0) {
+                    _performanceFeePaid = (puppetsPnL * -1).toUint256() * _performanceFeePercentage / _BASIS_POINTS_DIVISOR;
                     _puppetsAssets -= _performanceFeePaid;
                     _traderAssets += _performanceFeePaid;
                 }
             }
+
+            if (!_isOpenInterest() && _isPositionOpen) _resetRoute();
 
             IERC20(_route.collateralToken).safeTransfer(address(orchestrator), _puppetsAssets);
             IERC20(_route.collateralToken).safeTransfer(_route.trader, _traderAssets);
@@ -803,7 +806,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
             payable(_executionFeeReceiver).sendValue(_ethBalance - _traderAmountIn);
         }
 
-        emit Repay(_totalAssets, _performanceFeePaid);
+        emit Repay(_totalAssets, _performanceFeePaid, traderPnL, puppetsPnL);
     }
 
     /// @notice The ```_setAdjustmentFlags``` function sets the adjustment flags, used by the Keeper to determine whether to adjust the position
@@ -833,25 +836,55 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     /// @notice The ```_resetRoute``` function is used to increment the position index, which is used to track the current position
     /// @dev This function is called by ```_repayBalance```, only if there's no open interest
     function _resetRoute() internal {
+        _updateScoreGauge();
+
         _isPositionOpen = false;
         positionIndex += 1;
-
-        address _gauge = orchestrator.scoreGauge();//todo - test all of that
-        if (_gauge != address(0)) {
-            uint256 _usdDenominatedTraderProfit = 0;
-            if (traderPnL < 0) {
-                _usdDenominatedTraderProfit = orchestrator.getPrice(route.collateralToken)
-                    * ((traderPnL * -1).toUint256()) / _collateralTokenDecimals;
-            }
-
-            IScoreGauge(_gauge).updateTraderScore(cumulativeVolumeGenerated, _usdDenominatedTraderProfit);
-        }
 
         traderPnL = 0;
         puppetsPnL = 0;
         cumulativeVolumeGenerated = 0;
 
         emit Reset();
+    }
+
+    // todo - test all of that
+    function _updateScoreGauge() internal {
+        uint256 _cumulativeVolumeGenerated = cumulativeVolumeGenerated;
+        address _gauge = orchestrator.scoreGauge();
+        if (_gauge != address(0) && _cumulativeVolumeGenerated > 0) {
+            uint256 _puppetsProfitInUSD = 0;
+            if (puppetsPnL < 0) {
+                _puppetsProfitInUSD = orchestrator.getPrice(route.collateralToken)
+                    * ((puppetsPnL * -1).toUint256()) / _collateralTokenDecimals;
+            }
+
+            Position storage _position = positions[positionIndex];
+            address[] memory _puppets = _position.puppets;
+            uint256 _totalSupply = _position.totalSupply;
+            for (uint256 i = 0; i < _puppets.length; i++) {
+                uint256 _shares = _position.puppetsShares[i];
+                if (_shares > 0) {
+                    uint256 _puppetVolumeGenerated = _convertToAssets(_cumulativeVolumeGenerated, _totalSupply, _shares);
+                    uint256 _puppetProfitInUSD = 0;
+                    if (_puppetsProfitInUSD > 0) {
+                        _puppetProfitInUSD = _convertToAssets(_puppetsProfitInUSD, _totalSupply, _shares);
+                    }
+                    IScoreGauge(_gauge).updateUserScore(_puppetVolumeGenerated, _puppetProfitInUSD, _puppets[i], false);
+                }
+            }
+
+            uint256 _traderVolumeGenerated = _convertToAssets(_cumulativeVolumeGenerated, _totalSupply, _position.traderShares);
+            uint256 _traderProfitInUSD = 0;
+            if (traderPnL < 0) {
+                _traderProfitInUSD = orchestrator.getPrice(route.collateralToken)
+                    * ((traderPnL * -1).toUint256()) / _collateralTokenDecimals;
+            }
+
+            IScoreGauge(_gauge).updateUserScore(_traderVolumeGenerated, _traderProfitInUSD, route.trader, true);
+
+            emit UpdateScoreGauge(puppetsPnL, traderPnL, _traderProfitInUSD, _puppetsProfitInUSD, _cumulativeVolumeGenerated);
+        }
     }
 
     // ============================================================================================

@@ -22,8 +22,10 @@ pragma solidity 0.8.19;
 
 interface IScoreGauge {
 
-    /// @notice The ```updateTraderScore``` is called when Route settles a trade
+    /// @notice The ```updateUserScore``` is called per user (Trader/Puppet) when Route settles a trade
     /// @param _cumulativeVolumeGenerated The uint256 value of the cumulative volume generated, USD denominated, with 30 decimals
     /// @param _profit The uint256 value of the profit, USD denominated, with 30 decimals
-    function updateTraderScore(uint256 _cumulativeVolumeGenerated, uint256 _profit) external;
+    /// @param _trader The address of the trader
+    /// @param _isTrader The bool value of whether the address is a Trader or Puppet
+    function updateUserScore(uint256 _cumulativeVolumeGenerated, uint256 _profit, address _trader, bool _isTrader) external;
 }

@@ -243,6 +243,7 @@ contract testPuppet is Test, DeployerUtilities {
 
         // platform
         _testPlatformFeesWithdrawal();
+        revert("asd");
     }
 
     function testNonCollateralAmountIn() public {
@@ -692,7 +693,7 @@ contract testPuppet is Test, DeployerUtilities {
         if (isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  47185580330546351132904934067280286335 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  56114325853597714538714066903928447121 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 10;
             _acceptablePrice = type(uint256).max;
             _amountInTrader = 10 ether;
@@ -1101,9 +1102,15 @@ contract testPuppet is Test, DeployerUtilities {
             vm.stopPrank();
 
             // todo - artifically add funds to Route, as if position was closed in profit
-            _dealERC20(route.collateralToken(), address(route), 100 ether);
+            _dealERC20(route.collateralToken(), address(route), 20 ether);
 
             vm.startPrank(GMXPositionRouterKeeper); // keeper
+            // expectEmit (UpdateScoreGauge(puppetsPnL, traderPnL, _traderProfitInUSD, _puppetsProfitInUSD, _cumulativeVolumeGenerated)) // todo
+            // traderPnL --> should be ~ 20 ether * traderShares / totalSupply
+            // puppetsPnL --> should be ~ 20 ether - traderPnL
+            // _traderProfitInUSD --> should be ~ 20 ether * traderShares / totalSupply * price
+            // _puppetsProfitInUSD --> should be ~ 20 ether - traderPnL * price
+            // _cumulativeVolumeGenerated --> should be total delta --> record total delta throughout the test
             IGMXPositionRouter(_gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
             vm.stopPrank();
 
@@ -1198,7 +1205,7 @@ contract testPuppet is Test, DeployerUtilities {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 47185580330546351132904934067280286335 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 56114325853597714538714066903928447121 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
