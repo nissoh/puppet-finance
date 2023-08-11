@@ -29,7 +29,7 @@ import {IGMXVaultPriceFeed} from "./interfaces/IGMXVaultPriceFeed.sol";
 import {IRouteFactory} from "./interfaces/IRouteFactory.sol";
 
 import "./Base.sol";
-// todo - (1) puppetHelper contract so Puppets can subscribe in multiple Orchestrators in 1 txn (2) https://www.notion.so/guardianaudits/3c46a8b3eea1443dad8bf940db897713?v=a95519bd6e674ac191fe14c3bf9d5ff6
+
 /// @title Orchestrator
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
 /// @notice This contract contains the logic and storage for managing routes and puppets
@@ -65,6 +65,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     address public routeFactory;
     address public platformFeeRecipient;
+    address public multiSubscriber;
 
     address private _keeper;
     address private _scoreGauge;
@@ -72,6 +73,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     bool private _paused;
 
     bytes32 private _referralCode;
+
+    mapping(address => bool) public traderWhitelist; // allows a Trader to be a contract
 
     GMXInfo private _gmxInfo;
 
@@ -212,13 +215,28 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @inheritdoc IOrchestrator
     function subscribedPuppets(bytes32 _routeKey) public view returns (address[] memory _puppets) {
         EnumerableSet.AddressSet storage _puppetsSet = _routeInfo[_routeKey].puppets;
-        _puppets = new address[](EnumerableSet.length(_puppetsSet));
 
-        for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
+        uint256 _validCount = 0;
+        uint256 _puppetsSetLength = EnumerableSet.length(_puppetsSet);
+        for (uint256 i = 0; i < _puppetsSetLength; i++) {
             address _puppet = EnumerableSet.at(_puppetsSet, i);
-            if (_puppetInfo[_puppet].subscriptionExpiry[_routeKey] > block.timestamp) _puppets[i] = _puppet;
+            if (_puppetInfo[_puppet].subscriptionExpiry[_routeKey] > block.timestamp) _validCount++;
         }
+
+        _puppets = new address[](_validCount);
+
+        uint256 j = 0;
+        for (uint256 i = 0; i < _puppetsSetLength; i++) {
+            address _puppet = EnumerableSet.at(_puppetsSet, i);
+            if (_puppetInfo[_puppet].subscriptionExpiry[_routeKey] > block.timestamp) {
+                _puppets[j] = _puppet;
+                j++;
+            }
+        }
+
+        return _puppets;
     }
+
 
     /// @inheritdoc IOrchestrator
     function getRoute(bytes32 _routeKey) external view returns (address) {
@@ -236,19 +254,31 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     // puppet
 
     /// @inheritdoc IOrchestrator
-    function puppetSubscriptions(address _puppet) external view returns (address[] memory _subscriptions) {
+    function puppetSubscriptions(address _puppet) external view returns (address[] memory) {
         PuppetInfo storage __puppetInfo = _puppetInfo[_puppet];
         EnumerableMap.AddressToUintMap storage _allowances = __puppetInfo.allowances;
 
+        uint256 _validCount = 0;
         uint256 _subscriptionCount = EnumerableMap.length(_allowances);
-        _subscriptions = new address[](_subscriptionCount);
+        for (uint256 i = 0; i < _subscriptionCount; i++) {
+            (address _route,) = EnumerableMap.at(_allowances, i);
+            if (__puppetInfo.subscriptionExpiry[IRoute(_route).routeKey()] > block.timestamp) _validCount++;
+        }
+
+        address[] memory _subscriptions = new address[](_validCount);
+
+        uint256 j = 0;
         for (uint256 i = 0; i < _subscriptionCount; i++) {
             (address _route,) = EnumerableMap.at(_allowances, i);
             if (__puppetInfo.subscriptionExpiry[IRoute(_route).routeKey()] > block.timestamp) {
-                _subscriptions[i] = _route;
+                _subscriptions[j] = _route;
+                j++;
             }
         }
+
+        return _subscriptions;
     }
+
 
     /// @inheritdoc IOrchestrator
     function puppetAllowancePercentage(address _puppet, address _route) external view returns (uint256) {
@@ -339,7 +369,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bool _isLong
     ) public nonReentrant notPaused returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
-        // if (msg.sender != tx.origin && !traderWhitelist[msg.sender]) revert NotWhitelisted(); // todo
+        if (msg.sender != tx.origin && !traderWhitelist[msg.sender]) revert NotWhitelisted();
 
         bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
         if (!routeType[_routeTypeKey].isRegistered) revert RouteTypeNotRegistered();
@@ -446,6 +476,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     function subscribeRoute(
         uint256 _allowance,
         uint256 _subscriptionPeriod,
+        address _owner,
         address _trader,
         bytes32 _routeTypeKey, 
         bool _subscribe
@@ -453,11 +484,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
         RouteInfo storage _route = _routeInfo[_routeKey];
 
-        // if (msg.sender != multiSubscriber) {
-        //     _owner = msg.sender;
-        // } // todo
+        if (msg.sender != multiSubscriber) {
+            _owner = msg.sender;
+        }
 
-        PuppetInfo storage _puppet = _puppetInfo[msg.sender];
+        PuppetInfo storage _puppet = _puppetInfo[_owner];
 
         if (!_route.isRegistered) revert RouteNotRegistered();
         if (IRoute(_route.route).isWaitingForCallback()) revert RouteWaitingForCallback();
@@ -469,19 +500,20 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             _puppet.subscriptionExpiry[_routeKey] = block.timestamp + _subscriptionPeriod;
 
             EnumerableMap.set(_puppet.allowances, _route.route, _allowance);
-            EnumerableSet.add(_route.puppets, msg.sender);
+            EnumerableSet.add(_route.puppets, _owner);
         } else {
             delete _puppet.subscriptionExpiry[_routeKey];
 
             EnumerableMap.remove(_puppet.allowances, _route.route);
-            EnumerableSet.remove(_route.puppets, msg.sender);
+            EnumerableSet.remove(_route.puppets, _owner);
         }
 
-        emit SubscribeRoute(_allowance, _trader, msg.sender, _route.route, _routeTypeKey, _subscribe);
+        emit SubscribeRoute(_allowance, _trader, _owner, _route.route, _routeTypeKey, _subscribe);
     }
 
     /// @inheritdoc IOrchestrator
     function batchSubscribeRoute(
+        address _owner,
         uint256[] memory _allowances,
         uint256[] memory _subscriptionPeriods,
         address[] memory _traders,
@@ -494,7 +526,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         if (_traders.length != _routeTypeKeys.length) revert MismatchedInputArrays();
 
         for (uint256 i = 0; i < _traders.length; i++) {
-            subscribeRoute(_allowances[i], _subscriptionPeriods[i], _traders[i], _routeTypeKeys[i], _subscribe[i]);
+            subscribeRoute(_allowances[i], _subscriptionPeriods[i], _owner, _traders[i], _routeTypeKeys[i], _subscribe[i]);
         }
     }
 
@@ -637,6 +669,22 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         IRoute(_route).rescueTokenFunds(_amount, _token, _receiver);
 
         emit RescueRouteFunds(_amount, _token, _receiver, _route);
+    }
+
+    /// @inheritdoc IOrchestrator
+    function setTraderWhitelist(address _trader, bool _isWhitelisted) external requiresAuth nonReentrant {
+        traderWhitelist[_trader] = _isWhitelisted;
+
+        emit SetTraderWhitelist(_trader, _isWhitelisted);
+    }
+
+    /// @inheritdoc IOrchestrator
+    function serMultiSubscriber(address _multiSubscriber) external requiresAuth nonReentrant {
+        if (_multiSubscriber == address(0)) revert ZeroAddress();
+
+        _multiSubscriber = _multiSubscriber;
+
+        emit SetMultiSubscriber(_multiSubscriber);
     }
 
     /// @inheritdoc IOrchestrator

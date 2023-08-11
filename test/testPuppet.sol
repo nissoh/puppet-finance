@@ -122,6 +122,7 @@ contract testPuppet is Test, DeployerUtilities {
 
         bytes4 setRouteTypeSig = orchestrator.setRouteType.selector;
         bytes4 setScoreGaugeSig = orchestrator.setScoreGauge.selector;
+        bytes4 setTraderWhitelistSig = orchestrator.setTraderWhitelist.selector;
         bytes4 setFeesPositionSig = orchestrator.setFees.selector;
         bytes4 adjustTargetLeverageSig = orchestrator.adjustTargetLeverage.selector;
         bytes4 liquidatePositionSig = orchestrator.liquidatePosition.selector;
@@ -130,6 +131,7 @@ contract testPuppet is Test, DeployerUtilities {
         vm.startPrank(owner);
         _setRoleCapability(_dictator, 0, address(orchestrator), setRouteTypeSig, true);
         _setRoleCapability(_dictator, 0, address(orchestrator), setScoreGaugeSig, true);
+        _setRoleCapability(_dictator, 0, address(orchestrator), setTraderWhitelistSig, true);
         _setRoleCapability(_dictator, 0, address(orchestrator), setFeesPositionSig, true);
         _setRoleCapability(_dictator, 0, address(orchestrator), setPlatformFeesRecipientSig, true);
         _setRoleCapability(_dictator, 1, address(orchestrator), adjustTargetLeverageSig, true);
@@ -142,6 +144,7 @@ contract testPuppet is Test, DeployerUtilities {
         orchestrator.setRouteType(_usdc, _weth, false);
         orchestrator.setPlatformFeesRecipient(owner);
         orchestrator.setScoreGauge(address(scoreGaugeMock));
+        orchestrator.setTraderWhitelist(trader, true);
         vm.stopPrank();
     }
 
@@ -166,8 +169,7 @@ contract testPuppet is Test, DeployerUtilities {
 
     //     uint256 _execFee = 180000000000000;
 
-    //     vm.startPrank(alice);
-    //     // _approve(address(route), _weth, type(uint256).max);
+    //     vm.startPrank(trader);
     //     orchestrator.registerRouteAccountAndRequestPosition{ value: _amountInTrader + _execFee }(
     //         _adjustPositionParams,
     //         _swapParams,
@@ -488,17 +490,17 @@ contract testPuppet is Test, DeployerUtilities {
         vm.startPrank(alice);
 
         vm.expectRevert(); // reverts with MismatchedInputArrays()
-        orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _faultyTraders, _routeTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(alice, _allowances, _subscriptionPeriods, _faultyTraders, _routeTypeKeys, _subscribe);
 
         vm.expectRevert(); // reverts with InvalidAllowancePercentage()
-        orchestrator.batchSubscribeRoute(_faultyAllowance, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(alice, _faultyAllowance, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
 
         vm.expectRevert(); // reverts with RouteNotRegistered()
-        orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _traders, _faultyRouteTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(alice, _allowances, _subscriptionPeriods, _traders, _faultyRouteTypeKeys, _subscribe);
 
         _subscriptionPeriods[0] = 0;
         vm.expectRevert(); // reverts with InvalidSubscriptionPeriod()
-        orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(alice, _allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
         _subscriptionPeriods[0] = 4 weeks;
 
         {
@@ -514,7 +516,7 @@ contract testPuppet is Test, DeployerUtilities {
             assertEq(_subscriptions.length, 0, "_testUpdateRoutesSubscription: E02");
         }
 
-        orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(alice, _allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
         assertEq(orchestrator.puppetAllowancePercentage(alice, _route), _allowances[0], "_testUpdateRoutesSubscription: E0");
         assertEq(orchestrator.subscribedPuppets(routeKey)[0], alice, "_testUpdateRoutesSubscription: E1");
         assertEq(orchestrator.subscribedPuppets(routeKey).length, 1, "_testUpdateRoutesSubscription: E2");
@@ -527,12 +529,12 @@ contract testPuppet is Test, DeployerUtilities {
         }
 
         vm.startPrank(bob);
-        orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(bob, _allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
         assertEq(orchestrator.puppetAllowancePercentage(bob, _route), _allowances[0], "_testUpdateRoutesSubscription: E3");
         assertEq(orchestrator.subscribedPuppets(routeKey)[1], bob, "_testUpdateRoutesSubscription: E4");
         assertEq(orchestrator.subscribedPuppets(routeKey).length, 2, "_testUpdateRoutesSubscription: E5");
         // again
-        orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(bob, _allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
         assertEq(orchestrator.puppetAllowancePercentage(bob, _route), _allowances[0], "_testUpdateRoutesSubscription: E03");
         assertEq(orchestrator.subscribedPuppets(routeKey)[1], bob, "_testUpdateRoutesSubscription: E04");
         assertEq(orchestrator.subscribedPuppets(routeKey).length, 2, "_testUpdateRoutesSubscription: E05");
@@ -547,7 +549,7 @@ contract testPuppet is Test, DeployerUtilities {
         _subscriptionPeriods[0] = 2 weeks;
 
         vm.startPrank(yossi);
-        orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(yossi, _allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
         assertEq(orchestrator.puppetAllowancePercentage(yossi, _route), _allowances[0], "_testUpdateRoutesSubscription: E6");
         assertEq(orchestrator.subscribedPuppets(routeKey)[2], yossi, "_testUpdateRoutesSubscription: E7");
         assertEq(orchestrator.subscribedPuppets(routeKey).length, 3, "_testUpdateRoutesSubscription: E8");
@@ -589,15 +591,15 @@ contract testPuppet is Test, DeployerUtilities {
         assertTrue(_yossiSubscriptionsBefore.length > 0, "_testRemoveRouteSubscription: E2");
 
         vm.startPrank(alice);
-        orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(alice, _allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
         vm.stopPrank();
 
         vm.startPrank(bob);
-        orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(bob, _allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
         vm.stopPrank();
 
         vm.startPrank(yossi);
-        orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
+        orchestrator.batchSubscribeRoute(yossi, _allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
         vm.stopPrank();
 
         {
@@ -842,7 +844,7 @@ contract testPuppet is Test, DeployerUtilities {
 
             vm.startPrank(alice);
             vm.expectRevert(); // reverts with RouteWaitingForCallback()
-            orchestrator.batchSubscribeRoute(_allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
+            orchestrator.batchSubscribeRoute(alice, _allowances, _subscriptionPeriods, _traders, _routeTypeKeys, _subscribe);
             vm.stopPrank();
         }
 
@@ -1110,16 +1112,16 @@ contract testPuppet is Test, DeployerUtilities {
             orchestrator.requestPosition{ value: _executionFee }(_adjustPositionParams, _swapParams, routeTypeKey, _executionFee, false);
             vm.stopPrank();
 
-            // todo - artifically add funds to Route, as if position was closed in profit
+            // artifically add funds to Route, as if position was closed in profit
             _dealERC20(route.collateralToken(), address(route), 20 ether);
 
             vm.startPrank(GMXPositionRouterKeeper); // keeper
-            uint256 _cumulativeVolumeGenerated = 0; // todo testing trader/puppet pnl + _cumulativeVolumeGenerated and update on ScoreGauge
-            (,,,uint256 _totalSupply,) = route.positions(route.positionIndex());
-            uint256 _traderProfit = 20 ether * route.traderShares() / _totalSupply;
-            uint256 _puppetsProfit = 20 ether - _traderProfit;
-            uint256 _traderProfitInUSD = _traderProfit * orchestrator.getPrice(route.collateralToken()) / 1e18;
-            uint256 _puppetsProfitInUSD = _puppetsProfit * orchestrator.getPrice(route.collateralToken()) / 1e18;
+            // uint256 _cumulativeVolumeGenerated = 0; // todo testing trader/puppet pnl + _cumulativeVolumeGenerated and update on ScoreGauge
+            // (,,,uint256 _totalSupply,) = route.positions(route.positionIndex());
+            // uint256 _traderProfit = 20 ether * route.traderShares() / _totalSupply;
+            // uint256 _puppetsProfit = 20 ether - _traderProfit;
+            // uint256 _traderProfitInUSD = _traderProfit * orchestrator.getPrice(route.collateralToken()) / 1e18;
+            // uint256 _puppetsProfitInUSD = _puppetsProfit * orchestrator.getPrice(route.collateralToken()) / 1e18;
             // vm.expectEmit(address(route));
             // emit UpdateScoreGauge(int256(_puppetsProfit), int256(_traderProfit), _traderProfitInUSD, _puppetsProfitInUSD, _cumulativeVolumeGenerated);
             IGMXPositionRouter(_gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
@@ -1415,7 +1417,9 @@ contract testPuppet is Test, DeployerUtilities {
         assertEq(orchestrator.puppetSubscriptionExpiry(yossi, address(route)), 0, "puppetSubscriptionExpiry: E10");
         assertEq(orchestrator.subscribedPuppets(routeKey)[0], alice, "subscribedPuppets: E11");
         assertEq(orchestrator.subscribedPuppets(routeKey)[1], bob, "subscribedPuppets: E12");
-        assertEq(orchestrator.subscribedPuppets(routeKey)[2], address(0), "subscribedPuppets: E13");
+        address[] memory _tempPuppetsArray = orchestrator.subscribedPuppets(routeKey);
+        vm.expectRevert(); // reverts with ```Index out of bounds```
+        _tempPuppetsArray[2];
         assertTrue(orchestrator.puppetAllowancePercentage(alice, address(route)) > 0, "puppetAllowancePercentage: E14");
         assertTrue(orchestrator.puppetAllowancePercentage(bob, address(route)) > 0, "puppetAllowancePercentage: E15");
         assertEq(orchestrator.puppetAllowancePercentage(yossi, address(route)), 0, "puppetAllowancePercentage: E16");
@@ -1461,7 +1465,9 @@ contract testPuppet is Test, DeployerUtilities {
         orchestrator.requestPosition{ value: _executionFee + 1 ether }(_adjustPositionParams, _swapParams, routeTypeKey, _executionFee, true);
         vm.stopPrank();
 
-        assertEq(route.puppets()[0], address(0), "puppetSubscriptions: E019");
+        address[] memory _puppets = route.puppets();
+        vm.expectRevert(); // reverts with ```Index out of bounds```
+        _puppets[0];
 
         vm.startPrank(GMXPositionRouterKeeper); // keeper
         IGMXPositionRouter(_gmxPositionRouter).executeIncreasePositions(type(uint256).max, payable(address(route)));
