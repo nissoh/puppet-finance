@@ -758,10 +758,13 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @param _routeKey Route Key
     function _removeExpiredSubscriptions(bytes32 _routeKey) internal {
         EnumerableSet.AddressSet storage _puppetsSet = _routeInfo[_routeKey].puppets;
-        for (uint256 i = 0; i < EnumerableSet.length(_puppetsSet); i++) {
+        uint256 i = 0;
+        while (i < EnumerableSet.length(_puppetsSet)) {
             address _puppet = EnumerableSet.at(_puppetsSet, i);
             if (_puppetInfo[_puppet].subscriptionExpiry[_routeKey] <= block.timestamp) {
                 EnumerableSet.remove(_puppetsSet, _puppet);
+            } else {
+                i++;
             }
         }
     }
