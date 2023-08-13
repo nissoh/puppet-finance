@@ -6,7 +6,8 @@ pragma solidity 0.8.19;
 // @license MIT
 // @notice ERC20 with piecewise-linear mining supply.
 // @dev Based on the ERC-20 token standard as defined @ https://eips.ethereum.org/EIPS/eip-20
-
+// todo delete setName
+// todo replcae admin with Ownable
 contract Puppet {
 
     // events

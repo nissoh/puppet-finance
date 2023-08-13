@@ -5,6 +5,7 @@ import {IVotingEscrow} from "src/interfaces/IVotingEscrow.sol";
 import {IPuppet} from "src/interfaces/IPuppet.sol";
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
+
 contract GaugeController is Test {
 
     // structs
@@ -319,7 +320,7 @@ contract GaugeController is Test {
         require(_currentEpoch != 0, "Epoch is not set yet");
         require(block.timestamp >= currentEpochEndTime, "Epoch has not ended yet");
 
-        uint256 _n_gauges = uint256(int256(n_gauges)); // todo - safecast        
+        uint256 _n_gauges = uint256(int256(n_gauges)); // todo - safecast
         for (uint256 i = 0; i < _n_gauges; i++) {
             _get_weight(gauges[i]);
             _get_total();

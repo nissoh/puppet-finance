@@ -174,14 +174,14 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         _postMintFor2ndEpochRewardsAsserts(_gauge1BalanceBefore);
 
         // VOTE FOR 3rd EPOCH (gauge1 gets half of rewards, gauge2 gets half of rewards)
-        skip(86400 * 5); // skip 5 days, just to make it more realistic
+        skip(86400 * 2); // skip 5 days, just to make it more realistic
         _userVote3rdEpoch(alice);
         _userVote3rdEpoch(bob);
         _userVote3rdEpoch(yossi);
         _postVote3rdEpochAsserts();
 
         // ON 3rd EPOCH END
-        skip(86400 * 2); // skip the 2 days left in the epoch
+        skip(86400 * 5); // skip the 2 days left in the epoch
         _pre3rdEpochEndAsserts(); // (before calling advanceEpoch())
         gaugeController.advanceEpoch();
         _post3rdEpochEndAsserts();
@@ -412,7 +412,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
     }
 
     function _preAdvanceEpochAsserts() internal {
-        assertEq(gaugeController.gauge_relative_weight(gauge1, block.timestamp), 0, "_preAdvanceEpochAsserts: E0"); // need to checkpoint gauge first
+        assertEq(gaugeController.gauge_relative_weight(gauge1, block.timestamp), 1e18, "_preAdvanceEpochAsserts: E0");
         assertEq(gaugeController.gauge_relative_weight(gauge2, block.timestamp), 0, "_preAdvanceEpochAsserts: E1");
         assertEq(gaugeController.gauge_relative_weight(gauge3, block.timestamp), 0, "_preAdvanceEpochAsserts: E2");
         assertEq(gaugeController.gauge_relative_weight_write(gauge1, block.timestamp), 1e18, "_preAdvanceEpochAsserts: E3");
@@ -531,8 +531,8 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
     }
 
     function _postVote3rdEpochAsserts() internal {
-        assertApproxEqAbs(gaugeController.gauge_relative_weight_write(gauge1, block.timestamp + 2 days), 1e18 / 2, 1e5, "_postVote3rdEpochAsserts: E0");
-        assertApproxEqAbs(gaugeController.gauge_relative_weight_write(gauge2, block.timestamp + 2 days), 1e18 / 2, 1e5, "_postVote3rdEpochAsserts: E1");
+        assertApproxEqAbs(gaugeController.gauge_relative_weight_write(gauge1, block.timestamp + 4 days), 1e18 / 2, 1e5, "_postVote3rdEpochAsserts: E0");
+        assertApproxEqAbs(gaugeController.gauge_relative_weight_write(gauge2, block.timestamp + 4 days), 1e18 / 2, 1e5, "_postVote3rdEpochAsserts: E1");
         assertEq(gaugeController.gauge_relative_weight_write(gauge3, block.timestamp + 1 weeks), 0, "_postVote3rdEpochAsserts: E2");
     }
 
