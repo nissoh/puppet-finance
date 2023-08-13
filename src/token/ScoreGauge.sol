@@ -98,6 +98,8 @@ contract ScoreGauge is IScoreGauge {
 
     mapping(uint256 => Score) public scores;
 
+    uint256 public contractCreationTimestamp;
+
     // ============================================================================================
     // Constructor
     // ============================================================================================
@@ -118,19 +120,20 @@ contract ScoreGauge is IScoreGauge {
         crv_token = _crv_addr;
         controller = _controller;
         voting_escrow = Controller(_controller).voting_escrow();
-        period_timestamp[0] = block.timestamp;
-        inflation_rate = CRV20(crv_addr).rate();
-        future_epoch_time = CRV20(crv_addr).future_epoch_time_write();
-        lp_addr = address(0); // todo remove?
+        // period_timestamp[0] = block.timestamp;
+        contractCreationTimestamp = block.timestamp;
+        // inflation_rate = CRV20(crv_addr).rate();
+        // future_epoch_time = CRV20(crv_addr).future_epoch_time_write();
+        // lp_addr = address(0); // todo remove?
     }
 
     // ============================================================================================
     // View Functions
     // ============================================================================================
 
-    // external
-
-    // internal
+    // function integrate_checkpoint() external view returns (uint256) {
+    //     return period_timestamp[period];
+    // }
 
     // ============================================================================================
     // Mutative Functions
@@ -138,75 +141,71 @@ contract ScoreGauge is IScoreGauge {
 
     // external
 
-    // @external
-    // @nonreentrant('lock')
-    // def deposit(_value: uint256, addr: address = msg.sender):
-    //     @notice Deposit `_value` LP tokens
-    //     @param _value Number of tokens to deposit
-    //     @param addr Address to deposit for
-    //     if addr != msg.sender:
-    //         assert self.approved_to_deposit[msg.sender][addr], "Not approved"
-
-    //     self._checkpoint(addr)
-
-    //     if _value != 0:
-    //         _balance: uint256 = self.balanceOf[addr] + _value
-    //         _supply: uint256 = self.totalSupply + _value
-    //         self.balanceOf[addr] = _balance
-    //         self.totalSupply = _supply
-
-    //         self._update_liquidity_limit(addr, _balance, _supply)
-
-    //         assert ERC20(self.lp_token).transferFrom(msg.sender, self, _value)
-
-    //     log Deposit(addr, _value)
-    function deposit
-
     /// @notice Record a checkpoint for `_user`
     /// @param _user User address
     /// @return bool success
     function userCheckpoint(address _user) external override returns (bool) {
         if (msg.sender != _user && msg.sender != minter) revert("unauthorized");
 
-        _checkpoint(_user);
-        _updateLiquidityLimit(_user, balanceOf[_user], totalSupply);
+        _update_liquidity_limit(_user, balanceOf[_user], totalSupply);
 
         return true;
     }
 
-    /// @notice Get the number of claimable tokens per user
-    /// @dev This function should be manually changed to "view" in the ABI
-    /// @return uint256 number of claimable tokens per user
-    function claimableTokens(address _user) external override returns (uint256) {
-        _checkpoint(_user);
-        return integrate_fraction[_user] - Minter(minter).minted(_user, address(this));
-    }
+    // todo
+    // /// @notice Get the number of claimable tokens per user
+    // /// @dev This function should be manually changed to "view" in the ABI
+    // /// @return uint256 number of claimable tokens per user
+    // function claimableTokens(address _user) external override returns (uint256) {
+    //     _checkpoint(_user);
+    //     return integrate_fraction[_user] - Minter(minter).minted(_user, address(this));
+    // }
 
     /// @notice Kick `_addr` for abusing their boost
     /// @dev Only if either they had another voting event, or their voting escrow lock expired
     /// @param _addr Address to kick
     function kick(address _addr) external {
-        if (msg.sender != admin) revert("unauthorized");
-
-        address _voting_escrow = voting_escrow;
-        uint256 _t_last = integrate_checkpoint_of[_addr];
-        uint256 _t_ve = VotingEscrow(_voting_escrow).user_point_history__ts(
-            _addr, VotingEscrow(_voting_escrow).user_point_epoch(_addr)
-        );
+        // address _voting_escrow = voting_escrow;
+        // uint256 _t_last = integrate_checkpoint_of[_addr];
+        // uint256 _t_ve = VotingEscrow(_voting_escrow).user_point_history__ts(
+        //     _addr, VotingEscrow(_voting_escrow).user_point_epoch(_addr)
+        // );
         uint256 _balance = balanceOf[_addr];
 
-        if (ERC20(_voting_escrow).balanceOf(_addr) == 0 || _t_ve > _t_last) revert("kickNotAllowed");
-        if (working_balances[_addr] <= _balance * TOKENLESS_PRODUCTION / 100) revert("kickNotNeeded");
+        // require (ERC20(_voting_escrow).balanceOf(_addr) == 0 || _t_ve > _t_last) revert("kickNotAllowed");
+        if (working_balances[_addr] <= _balance * TOKENLESS_PRODUCTION / 100) revert("kick not needed");
 
-        _checkpoint(_addr);
-        _updateLiquidityLimit(_addr, balanceOf[_addr], totalSupply);
+        // _checkpoint(_addr);
+        _update_liquidity_limit(_addr, balanceOf[_addr], totalSupply);
     }
 
-    /// @notice Set whether `_addr` can deposit tokens for `msg.sender`
-    /// @param _addr Address to set approval on
-    /// @param _can_deposit bool - can this account deposit for `msg.sender`?
-    function set_approve_deposit(address _addr, bool _can_deposit) external {
-        approved_to_deposit[_addr][msg.sender] = _can_deposit;
+    // todo
+    function claim(uint256 _epoch) external {
+        if (_epoch >= IGaugeController(controller).epoch()) revert("Cannot claim for ongoing or future epoch");
+        if (claimedEpochs[msg.sender] >= _epoch) revert("Already claimed for this epoch");
+
+        EpochInfo storage _epochInfo = epochInfo[_epoch];
+        uint256 _userProfitScore = _epochInfo.userProfit[msg.sender] * 1e18 / _epochInfo.totalProfit;
+        uint256 _userCvgScore = _epochInfo.userCvg[msg.sender] * 1e18 / _epochInfo.totalCvg;
+        uint256 _userScore = (((_userProfitScore * _epochInfo.profitWeight + _userCvgScore * _epochInfo.cvgWeight) / 10000) * 1e18) / _epochInfo.totalScore;
+
+        if (epochScore.isTrader(msg.sender)) {
+            _userScore = (_userScore * traderWeight) / 10000;
+        } else {
+            _userScore = (_userScore * puppetWeight) / 10000;
+        }
+
+        uint256 userAdjustedRewardMultiplier = (working_balances[msg.sender] * 1e18) / working_supply;
+        _userScore = (_userScore * userAdjustedRewardMultiplier) / 1e18; // scale down after multiplication
+
+        // Update user's balance
+        balanceOf[msg.sender] += userReward;
+        balanceOf[address(this)] -= userReward;
+
+        // Mark the epoch as claimed for this user
+        claimedEpochs[msg.sender] = _epoch;
+
+        // Emit an event or perform other necessary actions (like transferring tokens if needed)
     }
 
     /// @inheritdoc IScoreGauge
@@ -225,6 +224,28 @@ contract ScoreGauge is IScoreGauge {
         }
     }
 
+    function kill_me() external {
+        if (msg.sender != admin) revert("unauthorized");
+        is_killed = !is_killed;
+    }
+
+    /// @notice Transfer ownership of GaugeController to `_addr`
+    /// @param _addr Address to have ownership transferred to
+    function commit_transfer_ownership(address _addr) external {
+        if (msg.sender != admin) revert("unauthorized");
+        future_admin = _addr;
+        emit CommitOwnership(_addr);
+    }
+
+    /// @notice Apply pending ownership transfer
+    function apply_transfer_ownership() external {
+        if (msg.sender != admin) revert("unauthorized");
+        address _admin = future_admin;
+        if (_admin == address(0)) revert("admin not set");
+        admin = _admin;
+        emit ApplyOwnership(_admin);
+    }
+
     // internal
 
     /// @notice Calculate limits which depend on the amount of CRV token per-user.
@@ -240,11 +261,12 @@ contract ScoreGauge is IScoreGauge {
         uint256 _voting_total = IERC20(_voting_escrow).totalSupply();
 
         uint256 _lim = _l * TOKENLESS_PRODUCTION / 100;
-        if (_voting_total > 0 && block.timestamp > period_timestamp[0] + BOOST_WARMUP) {
+        // if (_voting_total > 0 && block.timestamp > period_timestamp[0] + BOOST_WARMUP) {
+        if (_voting_total > 0 && block.timestamp > contractCreationTimestamp + BOOST_WARMUP) {
             _lim += _L * _voting_balance / _voting_total * (100 - TOKENLESS_PRODUCTION) / 100;
         }
 
-        _lim = min(_l, _lim);
+        _lim = _lim <= _l ? _lim : _l;
         uint256 _old_bal = working_balances[_addr];
         working_balances[_addr] = _lim;
         uint256 _working_supply = working_supply + _lim - _old_bal;
@@ -252,11 +274,7 @@ contract ScoreGauge is IScoreGauge {
 
         emit UpdateLiquidityLimit(_addr, _l, _L, _lim, _working_supply);
     }
-    function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a <= b ? a : b;
-    }
 }
-
 
 // @internal
 // def _checkpoint(addr: address):
@@ -326,59 +344,3 @@ contract ScoreGauge is IScoreGauge {
 //     self.integrate_fraction[addr] += _working_balance * (_integrate_inv_supply - self.integrate_inv_supply_of[addr]) / 10 ** 18
 //     self.integrate_inv_supply_of[addr] = _integrate_inv_supply
 //     self.integrate_checkpoint_of[addr] = block.timestamp
-
-
-// @external
-// @nonreentrant('lock')
-// def withdraw(_value: uint256):
-//     """
-//     @notice Withdraw `_value` LP tokens
-//     @param _value Number of tokens to withdraw
-//     """
-//     self._checkpoint(msg.sender)
-
-//     _balance: uint256 = self.balanceOf[msg.sender] - _value
-//     _supply: uint256 = self.totalSupply - _value
-//     self.balanceOf[msg.sender] = _balance
-//     self.totalSupply = _supply
-
-//     self._update_liquidity_limit(msg.sender, _balance, _supply)
-
-//     assert ERC20(self.lp_token).transfer(msg.sender, _value)
-
-//     log Withdraw(msg.sender, _value)
-
-
-// @external
-// @view
-// def integrate_checkpoint() -> uint256:
-//     return self.period_timestamp[self.period]
-
-
-// @external
-// def kill_me():
-//     assert msg.sender == self.admin
-//     self.is_killed = not self.is_killed
-
-
-// @external
-// def commit_transfer_ownership(addr: address):
-//     """
-//     @notice Transfer ownership of GaugeController to `addr`
-//     @param addr Address to have ownership transferred to
-//     """
-//     assert msg.sender == self.admin  # dev: admin only
-//     self.future_admin = addr
-//     log CommitOwnership(addr)
-
-
-// @external
-// def apply_transfer_ownership():
-//     """
-//     @notice Apply pending ownership transfer
-//     """
-//     assert msg.sender == self.admin  # dev: admin only
-//     _admin: address = self.future_admin
-//     assert _admin != ZERO_ADDRESS  # dev: admin not set
-//     self.admin = _admin
-//     log ApplyOwnership(_admin)
