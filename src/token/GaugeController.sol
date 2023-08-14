@@ -329,6 +329,8 @@ contract GaugeController is Test {
         EpochData storage _epochData = epochData[_currentEpoch];
         for (uint256 i = 0; i < _n_gauges; i++) { // todo - safecast
             address _gauge = gauges[i];
+            if (IScoreGauge(_gauge).isKilled()) continue;
+
             _epochData.gaugeWeights[_gauge] = _gauge_relative_weight(_gauge, block.timestamp);
         }
 

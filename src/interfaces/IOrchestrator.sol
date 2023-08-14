@@ -109,6 +109,11 @@ interface IOrchestrator {
     /// @return _route The Route address
     function getRoute(address _trader, address _collateralToken, address _indexToken, bool _isLong) external view returns (address _route);
 
+    /// @notice The ```isRoute``` function returns the boolean value of whether a given address is a Route
+    /// @param _route The address of the Route
+    /// @return _isRoute The boolean value of whether the address is a Route
+    function isRoute(address _route) external view returns (bool _isRoute);
+
     // puppet
 
     /// @notice The ```puppetSubscriptions``` function returns all the subscriptions for a given Puppet

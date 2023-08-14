@@ -52,6 +52,8 @@ contract Minter is ReentrancyGuard {
     // ============================================================================================
 
     function _mint(address _gauge) internal {
+        require(!IScoreGauge(_gauge).isKilled(), "gauge is killed");
+
         IGaugeController _controller = controller;
         require(_controller.gauge_types(_gauge) >= 0, "gauge is not added");
 

@@ -79,10 +79,10 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     GMXInfo private _gmxInfo;
 
     // routes info
-    mapping(address => bool) public isRoute; // Route => isRoute
     mapping(address => uint256) public platformAccount; // asset => fees balance
     mapping(bytes32 => RouteType) public routeType; // routeTypeKey => RouteType
 
+    mapping(address => bool) private _isRoute; // Route => isRoute
     mapping(bytes32 => RouteInfo) private _routeInfo; // routeKey => RouteInfo
 
     address[] private _routes;
@@ -139,7 +139,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     /// @notice Modifier that ensures the caller is a route
     modifier onlyRoute() {
-        if (!isRoute[msg.sender]) revert NotRoute();
+        if (!_isRoute[msg.sender]) revert NotRoute();
         _;
     }
 
@@ -249,6 +249,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bytes32 _routeKey = getRouteKey(_trader, _routeTypeKey);
 
         return _routeInfo[_routeKey].route;
+    }
+
+    /// @inheritdoc IOrchestrator
+    function isRoute(address _route) external view returns (bool) {
+        return _isRoute[_route];
     }
 
     // puppet
@@ -399,7 +404,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _route.isRegistered = true;
         _route.routeType = _routeType;
 
-        isRoute[_routeAddr] = true;
+        _isRoute[_routeAddr] = true;
         _routes.push(_routeAddr);
 
         emit RegisterRouteAccount(msg.sender, _routeAddr, _routeTypeKey);

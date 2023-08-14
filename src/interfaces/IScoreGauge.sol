@@ -41,5 +41,7 @@ interface IScoreGauge {
     /// @param _isTrader The bool value of whether the address is a Trader or Puppet
     function updateUserScore(uint256 _volumeGenerated, uint256 _profit, address _user, bool _isTrader) external;
 
+    function isKilled() external view returns (bool);
+
     error ZeroAddress();
 }
