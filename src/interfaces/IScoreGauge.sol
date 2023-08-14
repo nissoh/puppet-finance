@@ -43,5 +43,8 @@ interface IScoreGauge {
 
     function isKilled() external view returns (bool);
 
+    event UpdateLiquidityLimit(address user, uint256 original_balance, uint256 working_balance, uint256 working_supply);
+    event CommitOwnership(address admin);
+
     error ZeroAddress();
 }

@@ -2,11 +2,10 @@
 pragma solidity 0.8.19;
 
 import {IVotingEscrow} from "src/interfaces/IVotingEscrow.sol";
+import {IScoreGauge} from "src/interfaces/IScoreGauge.sol";
 import {IPuppet} from "src/interfaces/IPuppet.sol";
-import "forge-std/Test.sol";
-import "forge-std/console.sol";
 
-contract GaugeController is Test {
+contract GaugeController {
 
     // structs
 
@@ -48,6 +47,9 @@ contract GaugeController is Test {
 
     uint256 private _currentEpoch;
     uint256 public currentEpochEndTime;
+
+    uint256 private _profitWeight;
+    uint256 private _volumeWeight;
 
     // Gauge parameters
     // All numbers are "fixed point" on the basis of 1e18
@@ -114,6 +116,18 @@ contract GaugeController is Test {
     // ============================================================================================
 
     // view functions
+
+    /// @notice Get current weight for the profit metric, used for calculating reward distribution
+    /// @return Profit weight
+    function profitWeight() external view returns (uint256) {
+        return _profitWeight;
+    }
+
+    /// @notice Get current weight for the volume metric, used for calculating reward distribution
+    /// @return Volume weight
+    function volumeWeight() external view returns (uint256) {
+        return _volumeWeight;
+    }
 
     /// @notice Get current gauge weight
     /// @param addr Gauge address
@@ -358,6 +372,15 @@ contract GaugeController is Test {
         require(_admin != address(0), "admin not set");
         admin = _admin;
         emit ApplyOwnership(_admin);
+    }
+
+    /// @inheritdoc IGaugeController
+    function setWeights(uint256 _profit, uint256 _volume) external {
+        require(msg.sender == admin, "admin only");
+        require (_profit + _volume == 10000, "sum of weights must be 10000");
+
+        _profitWeight = _profit;
+        _volumeWeight = _volume;
     }
 
     // ============================================================================================
