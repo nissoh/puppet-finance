@@ -109,6 +109,9 @@ contract GaugeController {
         token = _token;
         voting_escrow = _voting_escrow;
         time_total = block.timestamp / WEEK * WEEK;
+
+        _profitWeight = 2000; // 20%
+        _volumeWeight = 8000; // 80%
     }
 
     // ============================================================================================

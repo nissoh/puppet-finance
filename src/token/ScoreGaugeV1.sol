@@ -88,6 +88,7 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
 
     /// @inheritdoc IScoreGauge
     function claim(uint256 _epoch, bool _isTrader) external nonReentrant {
+        if (is_killed) revert GaugeKilled();
         if (_epoch >= IGaugeController(controller).epoch()) revert InvalidEpoch();
 
         EpochInfo storage _epochInfo = epochInfo[_epoch];
@@ -130,6 +131,7 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
             if (_epochInfo.profitWeight == 0 && _epochInfo.volumeWeight == 0) {
                 _epochInfo.profitWeight = IGaugeController(controller).profitWeight();
                 _epochInfo.volumeWeight = IGaugeController(controller).volumeWeight();
+                if (_epochInfo.profitWeight == 0 && _epochInfo.volumeWeight == 0) revert InvalidWeights();
             }
 
             uint256 _totalCvg = _epochInfo.totalCumulativeVolumeGenerated + _volumeGenerated;
