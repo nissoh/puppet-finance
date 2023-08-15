@@ -36,6 +36,11 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
 
     using SafeERC20 for IERC20;
 
+    mapping(uint256 => EpochInfo) public epochInfo; // epoch => EpochInfo
+
+    uint256 internal constant _BASIS_POINTS_DIVISOR = 10000;
+    uint256 internal constant _PRECISION = 1e18;
+
     IERC20 public token;
     IMinter public minter;
     IOrchestrator public orchestrator;
@@ -58,96 +63,89 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
     }
 
     // ============================================================================================
-    // View Functions
+    // External Functions
     // ============================================================================================
 
     /// @inheritdoc IScoreGauge
-    function claimableRewards(uint256 _epoch, address _user, bool _isTrader) external view returns (uint256) {
-        EpochInfo storage _epochInfo = epochInfo[_epoch];
-        if (_epochInfo.claimed[_isTrader][_user]) return 0;
-
-        uint256 _userProfit;
-        uint256 _userCvg;
-        if (_isTrader) {
-            _userProfit = _epochInfo.puppetScore[_user].profit;
-            _userCvg = _epochInfo.puppetScore[_user].cumulativeVolumeGenerated;
-        } else {
-            _userProfit = _epochInfo.traderScore[_user].profit;
-            _userCvg = _epochInfo.traderScore[_user].cumulativeVolumeGenerated;
-        }
-
-        uint256 _userScore = ((_userProfit * _epochInfo.profitWeight + _userCvg * _epochInfo.volumeWeight) / 10000) * 1e18 / _epochInfo.totalScore;
-        uint256 _userReward = _userScore * _epochInfo.rewards / 1e18;
-
-        return _userReward;
+    function claimableRewards(uint256 _epoch, address _user) external view returns (uint256) {
+        return _claimableRewards(_epoch, _user);
     }
 
-    // ============================================================================================
-    // Mutative Functions
-    // ============================================================================================
+    /// @inheritdoc IScoreGauge
+    function depositRewards(uint256 _amount) external nonReentrant {
+        if (msg.sender != address(minter)) revert NotMinter();
+
+        epochInfo[controller.epoch()].rewards += _amount;
+
+        emit DepositRewards(_amount);
+    }
 
     /// @inheritdoc IScoreGauge
-    function claim(uint256 _epoch, bool _isTrader) external nonReentrant {
-        if (is_killed) revert GaugeKilled();
+    function claim(uint256 _epoch) external nonReentrant returns (uint256 _userReward) {
         if (_epoch >= IGaugeController(controller).epoch()) revert InvalidEpoch();
 
         EpochInfo storage _epochInfo = epochInfo[_epoch];
-        if (_epochInfo.claimed[_isTrader][msg.sender]) revert AlreadyClaimed();
+        if (_epochInfo.claimed[msg.sender]) revert AlreadyClaimed();
 
-        uint256 _userProfit;
-        uint256 _userCvg;
-        if (_isTrader) {
-            _userProfit = _epochInfo.puppetScore[msg.sender].profit;
-            _userCvg = _epochInfo.puppetScore[msg.sender].cumulativeVolumeGenerated;
-        } else {
-            _userProfit = _epochInfo.traderScore[msg.sender].profit;
-            _userCvg = _epochInfo.traderScore[msg.sender].cumulativeVolumeGenerated;
-        }
+        _userReward = _claimableRewards(_epoch, msg.sender);
 
-        uint256 _userScore = ((_userProfit * _epochInfo.profitWeight + _userCvg * _epochInfo.volumeWeight) / 10000) * 1e18 / _epochInfo.totalScore;
-        uint256 _userReward = _userScore * _epochInfo.rewards / 1e18;
-
-        _epochInfo.claimed[_isTrader][msg.sender] = true;
+        _epochInfo.claimed[msg.sender] = true;
 
         IERC20(token).safeTransfer(msg.sender, _userReward);
 
-        emit Claim(_epoch, _userReward, msg.sender, _isTrader);
+        emit Claim(_epoch, _userReward, msg.sender);
     }
 
     /// @inheritdoc IScoreGauge
-    function updateUserScore(uint256 _volumeGenerated, uint256 _profit, address _user, bool _isTrader) external {
+    function updateUserScore(uint256 _volumeGenerated, uint256 _profit, address _user) external {
         if (!IOrchestrator(orchestrator).isRoute(msg.sender)) revert NotRoute();
 
         if (!is_killed) {
             EpochInfo storage _epochInfo = epochInfo[controller.epoch()];
-            if (_isTrader) {
-                _epochInfo.tradersScore[_user].cumulativeVolumeGenerated += _volumeGenerated;
-                _epochInfo.tradersScore[_user].profit += _profit;
-            } else {
-                _epochInfo.puppetsScore[_user].cumulativeVolumeGenerated += _volumeGenerated;
-                _epochInfo.puppetsScore[_user].profit += _profit;
-            }
+            _epochInfo.userPerformance[_user].volumeGenerated += _volumeGenerated;
+            _epochInfo.userPerformance[_user].profit += _profit;
 
             if (_epochInfo.profitWeight == 0 && _epochInfo.volumeWeight == 0) {
-                _epochInfo.profitWeight = IGaugeController(controller).profitWeight();
-                _epochInfo.volumeWeight = IGaugeController(controller).volumeWeight();
+                IGaugeController _controller = controller;
+                _epochInfo.profitWeight = _controller.profitWeight();
+                _epochInfo.volumeWeight = _controller.volumeWeight();
                 if (_epochInfo.profitWeight == 0 && _epochInfo.volumeWeight == 0) revert InvalidWeights();
             }
 
-            uint256 _totalCvg = _epochInfo.totalCumulativeVolumeGenerated + _volumeGenerated;
+            uint256 _totalVolumeGenerated = _epochInfo.totalVolumeGenerated + _volumeGenerated;
             uint256 _totalProfit = _epochInfo.totalProfit + _profit;
 
-            _epochInfo.totalCumulativeVolumeGenerated = _totalCvg;
+            _epochInfo.totalVolumeGenerated = _totalVolumeGenerated;
             _epochInfo.totalProfit = _totalProfit;
 
-            _epochInfo.totalScore = (_totalProfit * _epochInfo.profitWeight + _totalCvg * _epochInfo.cvgWeight) / 10000;
+            _epochInfo.totalScore = 
+                (_totalProfit * _epochInfo.profitWeight + _totalVolumeGenerated * _epochInfo.volumeWeight) 
+                / _BASIS_POINTS_DIVISOR;
 
-            emit UserScoreUpdate(_user, _volumeGenerated, _profit, _isTrader);
+            emit UserScoreUpdate(_user, _volumeGenerated, _profit);
         }
     }
 
     /// @inheritdoc IScoreGauge
     function killMe() external requiresAuth {
-        is_killed = !is_killed;
+        is_killed = true;
+    }
+
+    // ============================================================================================
+    // Internal Functions
+    // ============================================================================================
+
+    function _claimableRewards(uint256 _epoch, address _user) internal view returns (uint256) {
+        EpochInfo storage _epochInfo = epochInfo[_epoch];
+        if (_epochInfo.claimed[_user]) return 0;
+
+        uint256 _userProfit = _epochInfo.userPerformance[msg.sender].profit;
+        uint256 _userVolumeGenerated = _epochInfo.userPerformance[msg.sender].volumeGenerated;
+
+        uint256 _userScore = ((_userProfit * _epochInfo.profitWeight + _userVolumeGenerated * _epochInfo.volumeWeight) / _BASIS_POINTS_DIVISOR);
+        uint256 _userScoreShare = _userScore * _PRECISION / _epochInfo.totalScore;
+        uint256 _userReward = _userScoreShare * _epochInfo.rewards / _PRECISION;
+
+        return _userReward;
     }
 }

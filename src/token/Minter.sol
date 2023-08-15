@@ -70,6 +70,7 @@ contract Minter is ReentrancyGuard {
         if (_mintForGauge > 0) {
             minted[_epoch][_gauge] = true;
             token.mint(_gauge, _mintForGauge);
+            IScoreGauge(_gauge).depositRewards(_mintForGauge);
 
             emit Minted(_gauge, _mintForGauge);
         }

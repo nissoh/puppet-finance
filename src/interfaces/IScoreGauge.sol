@@ -22,29 +22,60 @@ pragma solidity 0.8.19;
 
 interface IScoreGauge {
 
-    struct UserScore {
-        uint256 cumulativeVolumeGenerated;
+    struct EpochInfo {
+        uint256 rewards;
+        uint256 claimed;
+        uint256 totalScore;
+        uint256 totalProfit;
+        uint256 totalVolumeGenerated;
+        uint256 profitWeight;
+        uint256 volumeWeight;
+        mapping(address => UserPerformance) userPerformance;
+    }
+
+    struct UserPerformance {
+        uint256 volumeGenerated;
         uint256 profit;
     }
 
-    struct Score {
-        uint256 totalCumulativeVolumeGenerated;
-        uint256 totalProfit;
-        mapping(address => UserScore) tradersScore;
-        mapping(address => UserScore) puppetsScore;
-    }
+    /// @notice The ```claimableRewards``` returns the amount of rewards claimable by a user for a given epoch
+    /// @param _epoch The uint256 value of the epoch
+    /// @param _user The address of the user
+    /// @return _userReward The uint256 value of the claimable rewards, USD denominated, with 30 decimals
+    function claimableRewards(uint256 _epoch, address _user) external view returns (uint256 _userReward);
 
-    /// @notice The ```updateUserScore``` is called per user (Trader/Puppet) when Route settles a trade
+    /// @notice The ```depositRewards``` function allows the minter to mint rewards for the current epoch
+    /// @param _amount The uint256 value of the amount of minted rewards, with 18 decimals
+    function depositRewards(uint256 _amount) external;
+
+    /// @notice The ```claim``` function allows a user to claim rewards for a given epoch
+    /// @param _epoch The uint256 value of the epoch
+    /// @return _userReward The uint256 value of the claimable rewards, USD denominated, with 30 decimals
+    function claim(uint256 _epoch) external returns (uint256 _userReward);
+
+    /// @notice The ```updateUserScore``` is called by Routes when a trade is settled, for each user (Trader/Puppet)
     /// @param _volumeGenerated The uint256 value of the cumulative volume generated, USD denominated, with 30 decimals
     /// @param _profit The uint256 value of the profit, USD denominated, with 30 decimals
     /// @param _user The address of the user
-    /// @param _isTrader The bool value of whether the address is a Trader or Puppet
-    function updateUserScore(uint256 _volumeGenerated, uint256 _profit, address _user, bool _isTrader) external;
+    function updateUserScore(uint256 _volumeGenerated, uint256 _profit, address _user) external;
 
-    function isKilled() external view returns (bool);
+    /// @notice The ```killMe``` is called by the admin to kill the gauge
+    function killMe() external;    
 
-    event UpdateLiquidityLimit(address user, uint256 original_balance, uint256 working_balance, uint256 working_supply);
-    event CommitOwnership(address admin);
+    // ============================================================================================
+    // Events
+    // ============================================================================================
 
-    error ZeroAddress();
+    event DepositRewards(uint256 amount);
+    event Claim(uint256 indexed epoch, uint256 userReward, address indexed user);
+    event UserScoreUpdate(address indexed user, uint256 volumeGenerated, uint256 profit);
+
+    // ============================================================================================
+    // Errors
+    // ============================================================================================
+
+    error NotMinter();
+    error InvalidEpoch();
+    error AlreadyClaimed();
+    error NotRoute();
 }
