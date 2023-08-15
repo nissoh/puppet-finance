@@ -45,6 +45,9 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
 
     bool private _isKilled;
 
+    address public admin;
+    address public future_admin; // can and will be a smart contract
+
     mapping(uint256 => EpochInfo) public epochInfo; // epoch => EpochInfo
 
     uint256 internal constant _BASIS_POINTS_DIVISOR = 10_000;
@@ -60,12 +63,12 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
     // ============================================================================================
 
     /// @notice Contract constructor
-    /// @param _authority The Authority contract instance
-    /// @param _minter The Minter contract instance
-    /// @param _orchestrator The Orchestrator contract instance
-    constructor(Authority _authority, IMinter _minter, IOrchestrator _orchestrator) Auth(address(0), _authority) {
-        minter = _minter;
-        orchestrator = _orchestrator;
+    /// @param _admin The admin address
+    /// @param _minter The Minter address
+    /// @param _orchestrator The Orchestrator address
+    constructor(address _admin, address _minter, address _orchestrator) {
+        minter = IMinter(_minter);
+        orchestrator = IOrchestrator(_orchestrator);
 
         token = IERC20(IMinter(_minter).token());
         controller = IGaugeController(IMinter(_minter).controller());
@@ -141,9 +144,38 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
     }
 
     /// @inheritdoc IScoreGauge
-    function killMe() external requiresAuth {
+    function killMe() external onlyAdmin {
+        require(msg.sender == admin, "admin only");
         _isKilled = true;
     }
+
+    /// @inheritdoc IScoreGauge
+    function commitTransferOwnership(address _futureAdmin) external onlyAdmin {
+        require(msg.sender == admin, "admin only");
+        future_admin = _futureAdmin;
+        emit CommitOwnership(_futureAdmin);
+    }
+
+    /// @inheritdoc IScoreGauge
+    function applyTransferOwnership() external onlyAdmin {
+        require(msg.sender == admin, "admin only");
+        address _admin = future_admin;
+        require(_admin != address(0), "admin not set");
+        admin = _admin;
+        emit ApplyOwnership(_admin);
+    }
+
+
+    @external
+    def apply_transfer_ownership():
+        """
+        @notice Apply pending ownership transfer
+        """
+        assert msg.sender == self.admin  # dev: admin only
+        _admin: address = self.future_admin
+        assert _admin != ZERO_ADDRESS  # dev: admin not set
+        self.admin = _admin
+        log ApplyOwnership(_admin)
 
     // ============================================================================================
     // Internal Functions

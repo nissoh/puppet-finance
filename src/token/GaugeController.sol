@@ -131,186 +131,160 @@ contract GaugeController is IGaugeController {
     }
 
     /// @inheritdoc IGaugeController
-    function get_type_weight(int128 _typeID) external view returns (uint256) {
+    function getTypeWeight(int128 _typeID) external view returns (uint256) {
         return points_type_weight[_typeID][time_type_weight[uint256(int256(_typeID))]]; // todo safecast
     }
 
-    /// @notice Get current total (type-weighted) weight
-    /// @return Total weight
-    function get_total_weight() external view returns (uint256) {
+    /// @inheritdoc IGaugeController
+    function getTotalWeight() external view returns (uint256) {
         return points_total[time_total];
     }
 
-    /// @notice Get sum of gauge weights per type
-    /// @param type_id Type id
-    /// @return Sum of gauge weights
-    function get_weights_sum_per_type(int128 type_id) external view returns (uint256) {
+    /// @inheritdoc IGaugeController
+    function getWeightsSumPerType(int128 type_id) external view returns (uint256) {
         return points_sum[type_id][time_sum[uint256(int256(type_id))]].bias;
     }
 
-    /// @notice Get gauge type for address
-    /// @param _addr Gauge address
-    /// @return Gauge type id
-    function gauge_types(address _addr) external view returns (int128) {
-        int128 gauge_type = gauge_types_[_addr];
+    /// @inheritdoc IGaugeController
+    function gaugeTypes(address _gauge) external view returns (int128) {
+        int128 gauge_type = gauge_types_[_gauge];
         require(gauge_type != 0, "gauge type not set");
 
         return gauge_type - 1;
     }
 
-    /// @notice Get Gauge relative weight (not more than 1.0) normalized to 1e18
-    //          (e.g. 1.0 == 1e18). Inflation which will be received by it is
-    //          inflation_rate * relative_weight / 1e18
-    /// @param addr Gauge address
-    /// @param time Relative weight at the specified timestamp in the past or present
-    /// @return Value of relative weight normalized to 1e18
-    function gauge_relative_weight(address addr, uint256 time) external view returns (uint256) {
-        return _gauge_relative_weight(addr, time);
+    /// @inheritdoc IGaugeController
+    function gaugeRelativeWeight(address _gauge, uint256 _time) external view returns (uint256) {
+        return _gaugeRelativeWeight(_gauge, _time);
     }
 
-    // todo
+    /// @inheritdoc IGaugeController
     function epoch() external view returns (uint256) {
         return _currentEpoch;
     }
 
-    // todo
+    /// @inheritdoc IGaugeController
     function epochTimeframe(uint256 _epoch) external view returns (uint256, uint256) {
         return (epochData[_epoch].startTime, epochData[_epoch].endTime);
     }
 
-    // todo
+    /// @inheritdoc IGaugeController
     function gaugeWeightForEpoch(uint256 _epoch, address _gauge) external view returns (uint256) {
         return epochData[_epoch].gaugeWeights[_gauge];
     }
 
-    // todo
+    /// @inheritdoc IGaugeController
     function hasEpochEnded(uint256 _epoch) external view returns (bool) {
         return epochData[_epoch].hasEnded;
     }
 
     // mutated functions
 
-    /// @notice Get gauge weight normalized to 1e18 and also fill all the unfilled values for type and gauge records
-    /// @dev Any address can call, however nothing is recorded if the values are filled already
-    /// @param addr Gauge address
-    /// @param time Relative weight at the specified timestamp in the past or present
-    /// @return Value of relative weight normalized to 1e18
-    function gauge_relative_weight_write(address addr, uint256 time) external returns (uint256) {
-        _get_weight(addr);
-        _get_total(); // Also calculates get_sum
-        return _gauge_relative_weight(addr, time);
+    /// @inheritdoc IGaugeController
+    function gaugeRelativeWeightWrite(address addr, uint256 time) external returns (uint256) {
+        _getWeight(addr);
+        _getTotal(); // Also calculates get_sum
+        return _gaugeRelativeWeight(addr, time);
     }
 
-    /// @notice Checkpoint to fill data common for all gauges
+    /// @inheritdoc IGaugeController
     function checkpoint() external {
-        _get_total();
+        _getTotal();
     }
 
-    /// @notice Checkpoint to fill data for both a specific gauge and common for all gauges
-    /// @param addr Gauge address
-    function checkpoint_gauge(address addr) external {
-        _get_weight(addr);
-        _get_total();
+    /// @inheritdoc IGaugeController
+    function checkpointGauge(address _gauge) external {
+        _getWeight(_gauge);
+        _getTotal();
     }
 
-    /// @notice Add gauge `addr` of type `gauge_type` with weight `weight`
-    /// @param addr Gauge address
-    /// @param gauge_type Gauge type
-    /// @param weight Gauge weight
-    function add_gauge(address addr, int128 gauge_type, uint256 weight) external {
+    /// @inheritdoc IGaugeController
+    function addGauge(address _gauge, int128 _gaugeType, uint256 _weight) external {
         require(msg.sender == admin, "dev: admin only");
-        require(gauge_type >= 0 && gauge_type < n_gauge_types, "dev: invalid gauge type");
-        require(gauge_types_[addr] == 0, "dev: cannot add the same gauge twice");
+        require(_gaugeType >= 0 && _gaugeType < n_gauge_types, "dev: invalid gauge type");
+        require(gauge_types_[_gauge] == 0, "dev: cannot add the same gauge twice");
 
         int128 n = n_gauges;
         n_gauges = n + 1;
-        gauges[uint256(int256(n))] = addr; // todo - safecast
+        gauges[uint256(int256(n))] = _gauge; // todo - safecast
 
-        gauge_types_[addr] = gauge_type + 1;
+        gauge_types_[_gauge] = _gaugeType + 1;
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
 
-        if (weight > 0) {
-            uint256 _type_weight = _get_type_weight(gauge_type);
-            uint256 _old_sum = _get_sum(gauge_type);
-            uint256 _old_total = _get_total();
+        if (_weight > 0) {
+            uint256 _type_weight = _getTypeWeight(_gaugeType);
+            uint256 _old_sum = _getSum(_gaugeType);
+            uint256 _old_total = _getTotal();
 
-            points_sum[gauge_type][next_time].bias = weight + _old_sum;
-            time_sum[uint256(int256(gauge_type))] = next_time; // todo - safecast
-            points_total[next_time] = _old_total + _type_weight * weight;
+            points_sum[_gaugeType][next_time].bias = _weight + _old_sum;
+            time_sum[uint256(int256(_gaugeType))] = next_time; // todo - safecast
+            points_total[next_time] = _old_total + _type_weight * _weight;
             time_total = next_time;
 
-            points_weight[addr][next_time].bias = weight;
+            points_weight[_gauge][next_time].bias = _weight;
         }
 
-        if (time_sum[uint256(int256(gauge_type))] == 0) { // todo - safecast
-            time_sum[uint256(int256(gauge_type))] = next_time; // todo - safecast
+        if (time_sum[uint256(int256(_gaugeType))] == 0) { // todo - safecast
+            time_sum[uint256(int256(_gaugeType))] = next_time; // todo - safecast
         }
-        time_weight[addr] = next_time;
+        time_weight[_gauge] = next_time;
 
-        emit NewGauge(addr, gauge_type, weight);
+        emit NewGauge(_gauge, _gaugeType, _weight);
     }
 
-    /// @notice Add gauge type with name `_name` and weight `weight`
-    /// @param _name Name of gauge type
-    /// @param weight Weight of gauge type
-    function add_type(string memory _name, uint256 weight) external {
+    /// @inheritdoc IGaugeController
+    function addType(string memory _name, uint256 _weight) external {
         require(msg.sender == admin, "only admin");
         int128 type_id = n_gauge_types;
         gauge_type_names[type_id] = _name;
         n_gauge_types = type_id + 1;
-        if (weight != 0) {
-            _change_type_weight(type_id, weight);
+        if (_weight != 0) {
+            _changeTypeWeight(type_id, _weight);
             emit AddType(_name, type_id);
         }
     }
 
-    /// @notice Change gauge type `type_id` weight to `weight`
-    /// @param type_id Gauge type id
-    /// @param weight New Gauge weight
-    function change_type_weight(int128 type_id, uint256 weight) external {
+    /// @inheritdoc IGaugeController
+    function changeTypeWeight(int128 _typeID, uint256 _weight) external {
         require(msg.sender == admin, "only admin");
-        _change_type_weight(type_id, weight);
+        _changeTypeWeight(_typeID, _weight);
     }
 
-    /// @notice Change weight of gauge `addr` to `weight`
-    /// @param addr `GaugeController` contract address
-    /// @param weight New Gauge weight
-    function change_gauge_weight(address addr, uint256 weight) external {
+    /// @inheritdoc IGaugeController
+    function changeGaugeWeight(address _gauge, uint256 _weight) external {
         require(msg.sender == admin, "only admin");
-        _change_gauge_weight(addr, weight);
+        _changeGaugeWeight(_gauge, _weight);
     }
 
-    /// @notice Allocate voting power for changing pool weights
-    /// @param _gauge_addr Gauge which `msg.sender` votes for
-    /// @param _user_weight Weight for a gauge in bps (units of 0.01%). Minimal is 0.01%. Ignored if 0
-    function vote_for_gauge_weights(address _gauge_addr, uint256 _user_weight) external {
-        require(_user_weight >= 0 && _user_weight <= 10000, "You used all your voting power");
+    /// @inheritdoc IGaugeController
+    function voteForGaugeWeights(address _gauge, uint256 _userWeight) external {
+        require(_userWeight >= 0 && _userWeight <= 10000, "You used all your voting power");
         require(_currentEpoch != 0, "Epoch is not set yet");
-        require(_currentEpoch > last_user_vote[msg.sender][_gauge_addr], "Already voted for this epoch");
+        require(_currentEpoch > last_user_vote[msg.sender][_gauge], "Already voted for this epoch");
 
         uint256 lock_end = IVotingEscrow(voting_escrow).lockedEnd(msg.sender);
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
         require(lock_end > next_time, "Your token lock expires too soon");
 
-        int128 gauge_type = gauge_types_[_gauge_addr] - 1;
+        int128 gauge_type = gauge_types_[_gauge] - 1;
         require(gauge_type >= 0, "Gauge not added");
 
-        VotedSlope memory old_slope = vote_user_slopes[msg.sender][_gauge_addr];
-        uint256 old_bias = old_slope.slope * _old_dt(old_slope.end, next_time);
-        VotedSlope memory new_slope = _createNewSlope(_user_weight, lock_end);
+        VotedSlope memory old_slope = vote_user_slopes[msg.sender][_gauge];
+        uint256 old_bias = old_slope.slope * _oldDT(old_slope.end, next_time);
+        VotedSlope memory new_slope = _createNewSlope(_userWeight, lock_end);
 
         _updatePowerUsed(new_slope.power, old_slope.power);
-        _updateSlopes(_gauge_addr, gauge_type, old_slope, new_slope, next_time, old_bias, lock_end);
-        _get_total();
+        _updateSlopes(_gauge, gauge_type, old_slope, new_slope, next_time, old_bias, lock_end);
+        _getTotal();
 
-        vote_user_slopes[msg.sender][_gauge_addr] = new_slope;
+        vote_user_slopes[msg.sender][_gauge] = new_slope;
 
-        last_user_vote[msg.sender][_gauge_addr] = _currentEpoch;
+        last_user_vote[msg.sender][_gauge] = _currentEpoch;
 
-        emit VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight);
+        emit VoteForGauge(block.timestamp, msg.sender, _gauge, _userWeight);
     }
 
-    // todo
+    /// @inheritdoc IGaugeController
     function initializeEpoch() external {
         require(msg.sender == admin, "admin only");
         require(_currentEpoch == 0, "already initialized");
@@ -321,15 +295,15 @@ contract GaugeController is IGaugeController {
         IPuppet(token).updateMiningParameters();
     }
 
-    // todo
+    /// @inheritdoc IGaugeController
     function advanceEpoch() external {
         require(_currentEpoch != 0, "Epoch is not set yet");
         require(block.timestamp >= currentEpochEndTime, "Epoch has not ended yet");
 
         uint256 _n_gauges = uint256(int256(n_gauges)); // todo - safecast
         for (uint256 i = 0; i < _n_gauges; i++) {
-            _get_weight(gauges[i]);
-            _get_total();
+            _getWeight(gauges[i]);
+            _getTotal();
         }
 
         EpochData storage _epochData = epochData[_currentEpoch];
@@ -337,7 +311,7 @@ contract GaugeController is IGaugeController {
             address _gauge = gauges[i];
             if (IScoreGauge(_gauge).isKilled()) continue;
 
-            _epochData.gaugeWeights[_gauge] = _gauge_relative_weight(_gauge, block.timestamp);
+            _epochData.gaugeWeights[_gauge] = _gaugeRelativeWeight(_gauge, block.timestamp);
         }
 
         _epochData.startTime = currentEpochEndTime - WEEK;
@@ -349,16 +323,15 @@ contract GaugeController is IGaugeController {
     }
 
 
-    /// @notice Transfer ownership of GaugeController to `addr`
-    /// @param addr Address to have ownership transferred to
-    function commit_transfer_ownership(address addr) external {
+    /// @inheritdoc IGaugeController
+    function commitTransferOwnership(address _futureAdmin) external {
         require(msg.sender == admin, "admin only");
-        future_admin = addr;
-        emit CommitOwnership(addr);
+        future_admin = _futureAdmin;
+        emit CommitOwnership(_futureAdmin);
     }
 
-    /// @notice Apply pending ownership transfer
-    function apply_transfer_ownership() external {
+    /// @inheritdoc IGaugeController
+    function applyTransferOwnership() external {
         require(msg.sender == admin, "admin only");
         address _admin = future_admin;
         require(_admin != address(0), "admin not set");
@@ -384,7 +357,7 @@ contract GaugeController is IGaugeController {
     /// @notice Fill historic type weights week-over-week for missed checkins and return the type weight for the future week
     /// @param gauge_type Gauge type id
     /// @return Type weight
-    function _get_type_weight(int128 gauge_type) internal returns (uint256) {
+    function _getTypeWeight(int128 gauge_type) internal returns (uint256) {
         uint256 t = time_type_weight[uint256(int256(gauge_type))]; // todo - safecast
         if (t > 0) {
             uint256 w = points_type_weight[gauge_type][t];
@@ -407,7 +380,7 @@ contract GaugeController is IGaugeController {
     /// @notice Fill sum of gauge weights for the same type week-over-week for missed checkins and return the sum for the future week
     /// @param gauge_type Gauge type id
     /// @return Sum of weights
-    function _get_sum(int128 gauge_type) internal returns (uint256) {
+    function _getSum(int128 gauge_type) internal returns (uint256) {
         uint256 t = time_sum[uint256(int256(gauge_type))]; // todo - safecast
         if (t > 0) {
             Point memory pt = points_sum[gauge_type][t];
@@ -438,7 +411,7 @@ contract GaugeController is IGaugeController {
 
     /// @notice Fill historic total weights week-over-week for missed checkins and return the total for the future week
     /// @return Total weight
-    function _get_total() internal returns (uint256) {
+    function _getTotal() internal returns (uint256) {
         uint256 t = time_total;
         int128 _n_gauge_types = n_gauge_types;
         if (t > block.timestamp) {
@@ -451,8 +424,8 @@ contract GaugeController is IGaugeController {
             if (gauge_type == _n_gauge_types) {
                 break;
             }
-            _get_sum(gauge_type);
-            _get_type_weight(gauge_type);
+            _getSum(gauge_type);
+            _getTypeWeight(gauge_type);
         }
 
         for (uint256 i = 0; i < 500; i++) {
@@ -482,7 +455,7 @@ contract GaugeController is IGaugeController {
     /// @notice Fill historic gauge weights week-over-week for missed checkins and return the total for the future week
     /// @param gauge_addr Address of the gauge
     /// @return Gauge weight
-    function _get_weight(address gauge_addr) internal returns (uint256) {
+    function _getWeight(address gauge_addr) internal returns (uint256) {
         uint256 t = time_weight[gauge_addr];
         if (t > 0) {
             Point memory pt = points_weight[gauge_addr][t];
@@ -517,7 +490,7 @@ contract GaugeController is IGaugeController {
     /// @param addr Gauge address
     /// @param time Relative weight at the specified timestamp in the past or present
     /// @return Value of relative weight normalized to 1e18
-    function _gauge_relative_weight(address addr, uint256 time) internal view returns (uint256) {
+    function _gaugeRelativeWeight(address addr, uint256 time) internal view returns (uint256) {
         uint256 t = time / WEEK * WEEK;
         uint256 _total_weight = points_total[t];
 
@@ -534,10 +507,10 @@ contract GaugeController is IGaugeController {
     /// @notice Change type weight
     /// @param type_id Type id
     /// @param weight New type weight
-    function _change_type_weight(int128 type_id, uint256 weight) internal {
-        uint256 old_weight = _get_type_weight(type_id);
-        uint256 old_sum = _get_sum(type_id);
-        uint256 _total_weight = _get_total();
+    function _changeTypeWeight(int128 type_id, uint256 weight) internal {
+        uint256 old_weight = _getTypeWeight(type_id);
+        uint256 old_sum = _getSum(type_id);
+        uint256 _total_weight = _getTotal();
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
 
         _total_weight = _total_weight + old_sum * weight - old_sum * old_weight;
@@ -549,14 +522,14 @@ contract GaugeController is IGaugeController {
         emit NewTypeWeight(type_id, next_time, weight, _total_weight);
     }
 
-    function _change_gauge_weight(address addr, uint256 weight) internal {
+    function _changeGaugeWeight(address addr, uint256 weight) internal {
         // Change gauge weight
         // Only needed when testing in reality
         int128 gauge_type = gauge_types_[addr] - 1;
-        uint256 old_gauge_weight = _get_weight(addr);
-        uint256 type_weight = _get_type_weight(gauge_type);
-        uint256 old_sum = _get_sum(gauge_type);
-        uint256 _total_weight = _get_total();
+        uint256 old_gauge_weight = _getWeight(addr);
+        uint256 type_weight = _getTypeWeight(gauge_type);
+        uint256 old_sum = _getSum(gauge_type);
+        uint256 _total_weight = _getTotal();
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
 
         points_weight[addr][next_time].bias = weight;
@@ -573,13 +546,14 @@ contract GaugeController is IGaugeController {
         emit NewGaugeWeight(addr, block.timestamp, weight, _total_weight);
     }
 
-    function _old_dt(uint256 old_slope_end, uint256 next_time) internal pure returns (uint256) {
+    function _oldDT(uint256 old_slope_end, uint256 next_time) internal pure returns (uint256) {
         if (old_slope_end > next_time) {
             return old_slope_end - next_time;
         } else {
             return 0;
         }
     }
+
     function _createNewSlope(uint256 _user_weight, uint256 lock_end) internal view returns (VotedSlope memory) {
         return VotedSlope({
             slope: uint256(int256(IVotingEscrow(voting_escrow).getLastUserSlope(msg.sender))) * _user_weight / 10000,
@@ -587,12 +561,14 @@ contract GaugeController is IGaugeController {
             power: _user_weight
         });
     }
+
     function _updatePowerUsed(uint256 new_slope_power, uint256 old_slope_power) internal {
         uint256 power_used = vote_user_power[msg.sender];
         power_used = power_used + new_slope_power - old_slope_power;
         vote_user_power[msg.sender] = power_used;
         require(power_used >= 0 && power_used <= 10000, "Used too much power");
     }
+
     function _updateSlopes(
         address _gauge_addr,
         int128 gauge_type,
@@ -608,9 +584,9 @@ contract GaugeController is IGaugeController {
         // Remove old and schedule new slope changes
         // Remove slope changes for old slopes
         // Schedule recording of initial slope for next_time
-        uint256 old_weight_bias = _get_weight(_gauge_addr);
+        uint256 old_weight_bias = _getWeight(_gauge_addr);
         uint256 old_weight_slope = points_weight[_gauge_addr][next_time].slope;
-        uint256 old_sum_bias = _get_sum(gauge_type);
+        uint256 old_sum_bias = _getSum(gauge_type);
         uint256 old_sum_slope = points_sum[gauge_type][next_time].slope;
 
         points_weight[_gauge_addr][next_time].bias = max(old_weight_bias + new_bias, old_bias) - old_bias;
@@ -632,6 +608,7 @@ contract GaugeController is IGaugeController {
         changes_weight[_gauge_addr][new_slope.end] += new_slope.slope;
         changes_sum[gauge_type][new_slope.end] += new_slope.slope;
     }
+
     function max(uint256 a, uint256 b) internal pure returns (uint256) {
         return a >= b ? a : b;
     }

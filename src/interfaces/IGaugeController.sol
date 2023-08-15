@@ -159,8 +159,8 @@ interface IGaugeController {
         function advanceEpoch() external;
 
         /// @notice Transfer ownership of GaugeController to `addr`
-        /// @param _newOwner Address to have ownership transferred to
-        function commitTransferOwnership(address _newOwner) external;
+        /// @param _futureAdmin Address to have ownership transferred to
+        function commitTransferOwnership(address _futureAdmin) external;
 
         /// @notice Apply pending ownership transfer
         function applyTransferOwnership() external;
@@ -176,9 +176,9 @@ interface IGaugeController {
 
         event CommitOwnership(address admin);
         event ApplyOwnership(address admin);
-        event AddType(string name, int128 type_id);
-        event NewTypeWeight(int128 type_id, uint256 time, uint256 weight, uint256 total_weight);
-        event NewGaugeWeight(address gauge_address, uint256 time, uint256 weight, uint256 total_weight);
-        event VoteForGauge(uint256 time, address user, address gauge_addr, uint256 weight);
-        event NewGauge(address addr, int128 gauge_type, uint256 weight);
+        event AddType(string name, int128 typeID);
+        event NewTypeWeight(int128 type_id, uint256 time, uint256 weight, uint256 totalWeight);
+        event NewGaugeWeight(address gauge, uint256 time, uint256 weight, uint256 totalWeight);
+        event VoteForGauge(uint256 time, address user, address gauge, uint256 weight);
+        event NewGauge(address addr, int128 gaugeType, uint256 weight);
 }
