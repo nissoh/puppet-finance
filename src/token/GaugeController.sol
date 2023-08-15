@@ -1,53 +1,49 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.19;
 
+// ==============================================================
+//  _____                 _      _____ _                        |
+// |  _  |_ _ ___ ___ ___| |_   |   __|_|___ ___ ___ ___ ___    |
+// |   __| | | . | . | -_|  _|  |   __| |   | .'|   |  _| -_|   |
+// |__|  |___|  _|  _|___|_|    |__|  |_|_|_|__,|_|_|___|___|   |
+//           |_| |_|                                            |
+// ==============================================================
+// ====================== GaugeController =======================
+// ==============================================================
+
+// Modified fork from Curve Finance: https://github.com/curvefi 
+// @title Gauge Controller
+// @author Curve Finance
+// @license MIT
+// @notice Controls liquidity gauges and the issuance of coins through the gauges
+
+// Puppet Finance: https://github.com/GMX-Blueberry-Club/puppet-contracts
+
+// Primary Author
+// johnnyonline: https://github.com/johnnyonline
+
+// Reviewers
+// itburnz: https://github.com/nissoh
+
+// ==============================================================
+
+import {IGaugeController} from "src/interfaces/IGaugeController.sol";
 import {IVotingEscrow} from "src/interfaces/IVotingEscrow.sol";
 import {IScoreGauge} from "src/interfaces/IScoreGauge.sol";
 import {IPuppet} from "src/interfaces/IPuppet.sol";
 
-contract GaugeController {
-
-    // structs
-
-    struct Point {
-        uint256 bias;
-        uint256 slope;
-    }
-
-    struct VotedSlope {
-        uint256 slope;
-        uint256 power;
-        uint256 end;
-    }
-
-    struct EpochData {
-        uint256 startTime;
-        uint256 endTime;
-        bool hasEnded;
-        mapping(address => uint256) gaugeWeights; // gauge_addr -> weight
-    }
-
-    // events
-
-    event CommitOwnership(address admin);
-    event ApplyOwnership(address admin);
-    event AddType(string name, int128 type_id);
-    event NewTypeWeight(int128 type_id, uint256 time, uint256 weight, uint256 total_weight);
-    event NewGaugeWeight(address gauge_address, uint256 time, uint256 weight, uint256 total_weight);
-    event VoteForGauge(uint256 time, address user, address gauge_addr, uint256 weight);
-    event NewGauge(address addr, int128 gauge_type, uint256 weight);
+contract GaugeController is IGaugeController {
 
     // settings
 
-    address public admin; // Can and will be a smart contract
-    address public future_admin; // Can and will be a smart contract
+    address public admin;
+    address public future_admin; // can and will be a smart contract
+    address public token;
+    address public voting_escrow;
 
-    address public token; // CRV token
-    address public voting_escrow; // Voting escrow
-
-    uint256 private _currentEpoch;
     uint256 public currentEpochEndTime;
 
+    uint256 private _currentEpoch;
     uint256 private _profitWeight;
     uint256 private _volumeWeight;
 
@@ -63,9 +59,8 @@ contract GaugeController {
     // we increment values by 1 prior to storing them here so we can rely on a value
     // of zero as meaning the gauge has not been set
     mapping(address => int128) public gauge_types_;
-
-    mapping(address => mapping(address => VotedSlope)) public vote_user_slopes; // user -> gauge_addr -> VotedSlope
     mapping(address => uint256) public vote_user_power; // Total vote power used by user
+    mapping(address => mapping(address => VotedSlope)) public vote_user_slopes; // user -> gauge_addr -> VotedSlope
     mapping(address => mapping(address => uint256)) public last_user_vote; // Last user vote's timestamp for each gauge address
 
     // Past and scheduled points for gauge weight, sum of weights per type, total weight
@@ -91,15 +86,15 @@ contract GaugeController {
     mapping(uint256 => EpochData) public epochData; // epoch -> EpochData
 
     // constants
-    uint256 constant WEEK = 604800; // 7 * 86400 seconds - all future times are rounded by week
-    uint256 constant MULTIPLIER = 10 ** 18;
+    uint256 constant WEEK = 1 weeks;
+    uint256 constant MULTIPLIER = 1e18;
 
     // ============================================================================================
     // Constructor
     // ============================================================================================
 
     /// @notice Contract constructor
-    /// @param _token `ERC20CRV` contract address
+    /// @param _token `ERC20PUPPET` contract address
     /// @param _voting_escrow `VotingEscrow` contract address
     constructor(address _token, address _voting_escrow) {
         require(_token != address(0), "token address cannot be 0");
@@ -120,30 +115,24 @@ contract GaugeController {
 
     // view functions
 
-    /// @notice Get current weight for the profit metric, used for calculating reward distribution
-    /// @return Profit weight
+    /// @inheritdoc IGaugeController
     function profitWeight() external view returns (uint256) {
         return _profitWeight;
     }
 
-    /// @notice Get current weight for the volume metric, used for calculating reward distribution
-    /// @return Volume weight
+    /// @inheritdoc IGaugeController
     function volumeWeight() external view returns (uint256) {
         return _volumeWeight;
     }
 
-    /// @notice Get current gauge weight
-    /// @param addr Gauge address
-    /// @return Gauge weight
-    function get_gauge_weight(address addr) external view returns (uint256) {
-        return points_weight[addr][time_weight[addr]].bias;
+    /// @inheritdoc IGaugeController
+    function getGaugeWeight(address _gauge) external view returns (uint256) {
+        return points_weight[_gauge][time_weight[_gauge]].bias;
     }
 
-    /// @notice Get current type weight
-    /// @param type_id Type id
-    /// @return Type weight
-    function get_type_weight(int128 type_id) external view returns (uint256) {
-        return points_type_weight[type_id][time_type_weight[uint256(int256(type_id))]];
+    /// @inheritdoc IGaugeController
+    function get_type_weight(int128 _typeID) external view returns (uint256) {
+        return points_type_weight[_typeID][time_type_weight[uint256(int256(_typeID))]]; // todo safecast
     }
 
     /// @notice Get current total (type-weighted) weight

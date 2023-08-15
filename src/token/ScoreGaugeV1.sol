@@ -8,8 +8,15 @@ pragma solidity 0.8.19;
 // |__|  |___|  _|  _|___|_|    |__|  |_|_|_|__,|_|_|___|___|   |
 //           |_| |_|                                            |
 // ==============================================================
-// ========================= ScoreGaugeV1 ==============================
+// ====================== ScoreGaugeV1 ==========================
 // ==============================================================
+
+// Modified fork from Curve Finance: https://github.com/curvefi 
+// @title Liquidity Gauge
+// @author Curve Finance
+// @license MIT
+// @notice Used for measuring liquidity and insurance
+
 // Puppet Finance: https://github.com/GMX-Blueberry-Club/puppet-contracts
 
 // Primary Author
@@ -36,9 +43,11 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
 
     using SafeERC20 for IERC20;
 
+    bool private _isKilled;
+
     mapping(uint256 => EpochInfo) public epochInfo; // epoch => EpochInfo
 
-    uint256 internal constant _BASIS_POINTS_DIVISOR = 10000;
+    uint256 internal constant _BASIS_POINTS_DIVISOR = 10_000;
     uint256 internal constant _PRECISION = 1e18;
 
     IERC20 public token;
@@ -72,6 +81,11 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
     }
 
     /// @inheritdoc IScoreGauge
+    function isKilled() external view returns (bool) {
+        return _isKilled;
+    }
+
+    /// @inheritdoc IScoreGauge
     function depositRewards(uint256 _amount) external nonReentrant {
         if (msg.sender != address(minter)) revert NotMinter();
 
@@ -100,7 +114,7 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
     function updateUserScore(uint256 _volumeGenerated, uint256 _profit, address _user) external {
         if (!IOrchestrator(orchestrator).isRoute(msg.sender)) revert NotRoute();
 
-        if (!is_killed) {
+        if (!_isKilled) {
             EpochInfo storage _epochInfo = epochInfo[controller.epoch()];
             _epochInfo.userPerformance[_user].volumeGenerated += _volumeGenerated;
             _epochInfo.userPerformance[_user].profit += _profit;
@@ -128,7 +142,7 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
 
     /// @inheritdoc IScoreGauge
     function killMe() external requiresAuth {
-        is_killed = true;
+        _isKilled = true;
     }
 
     // ============================================================================================

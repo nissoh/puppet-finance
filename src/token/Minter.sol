@@ -1,16 +1,39 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.19;
 
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+// ==============================================================
+//  _____                 _      _____ _                        |
+// |  _  |_ _ ___ ___ ___| |_   |   __|_|___ ___ ___ ___ ___    |
+// |   __| | | . | . | -_|  _|  |   __| |   | .'|   |  _| -_|   |
+// |__|  |___|  _|  _|___|_|    |__|  |_|_|_|__,|_|_|___|___|   |
+//           |_| |_|                                            |
+// ==============================================================
+// ========================== Minter ============================
+// ==============================================================
 
-import {IPuppet} from "src/interfaces/IPuppet.sol";
-import {IGaugeController} from "src/interfaces/IGaugeController.sol";
-
+// Modified fork from Curve Finance: https://github.com/curvefi 
 // @title Token Minter
 // @author Curve Finance
 // @license MIT
 
-contract Minter is ReentrancyGuard {
+// Puppet Finance: https://github.com/GMX-Blueberry-Club/puppet-contracts
+
+// Primary Author
+// johnnyonline: https://github.com/johnnyonline
+
+// Reviewers
+// itburnz: https://github.com/nissoh
+
+// ==============================================================
+
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+import {IMinter} from "src/interfaces/IMinter.sol";
+import {IPuppet} from "src/interfaces/IPuppet.sol";
+import {IScoreGauge} from "src/interfaces/IScoreGauge.sol";
+import {IGaugeController} from "src/interfaces/IGaugeController.sol";
+
+contract Minter is ReentrancyGuard, IMinter {
 
     mapping(uint256 => mapping(address => bool)) public minted; // epoch -> gauge -> hasMinted
 
@@ -30,14 +53,12 @@ contract Minter is ReentrancyGuard {
     // External functions
     // ============================================================================================
 
-    /// @notice Mint everything which belongs to `_gauge` and send to it
-    /// @param _gauge `ScoreGauge` address to mint for
+    /// @inheritdoc IMinter
     function mint(address _gauge) external nonReentrant {
         _mint(_gauge);
     }
 
-    /// @notice Mint for multiple gauges
-    /// @param _gauges List of `ScoreGauge` addresses
+    /// @inheritdoc IMinter
     function mintMany(address[] memory _gauges) external nonReentrant {
         for (uint256 i = 0; i < _gauges.length; i++) {
             if (_gauges[i] == address(0)) {
@@ -52,17 +73,17 @@ contract Minter is ReentrancyGuard {
     // ============================================================================================
 
     function _mint(address _gauge) internal {
-        require(!IScoreGauge(_gauge).isKilled(), "gauge is killed");
+        if (IScoreGauge(_gauge).isKilled()) revert GaugeIsKilled();
 
         IGaugeController _controller = controller;
-        require(_controller.gauge_types(_gauge) >= 0, "gauge is not added");
+        if (_controller.gaugeTypes(_gauge) <= 0) revert GaugeNotAdded();
 
         uint256 _epoch = _controller.epoch() - 1; // underflows if epoch() is 0
-        require(_controller.hasEpochEnded(_epoch), "epoch has not ended yet");
-        require(!minted[_epoch][_gauge], "already minted for this epoch");
+        if (!_controller.hasEpochEnded(_epoch)) revert EpochHasNotEnded();
+        if (minted[_epoch][_gauge]) revert AlreadyMinted();
 
         (uint256 _epochStartTime, uint256 _epochEndTime) = _controller.epochTimeframe(_epoch);
-        require(block.timestamp >= _epochEndTime, "epoch has not ended yet1");
+        if (block.timestamp < _epochEndTime) revert EpochHasNotEnded();
 
         uint256 _totalMint = token.mintableInTimeframe(_epochStartTime, _epochEndTime);
         uint256 _mintForGauge = _totalMint * _controller.gaugeWeightForEpoch(_epoch, _gauge) / 1e18;
@@ -75,10 +96,4 @@ contract Minter is ReentrancyGuard {
             emit Minted(_gauge, _mintForGauge);
         }
     }
-
-    // ============================================================================================
-    // Events
-    // ============================================================================================
-
-    event Minted(address indexed gauge, uint256 minted);
 }

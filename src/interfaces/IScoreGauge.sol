@@ -8,8 +8,15 @@ pragma solidity 0.8.19;
 // |__|  |___|  _|  _|___|_|    |__|  |_|_|_|__,|_|_|___|___|   |
 //           |_| |_|                                            |
 // ==============================================================
-// ======================== IScoreGauge =======================
+// ========================= IScoreGauge ========================
 // ==============================================================
+
+// Modified fork from Curve Finance: https://github.com/curvefi 
+// @title Liquidity Gauge
+// @author Curve Finance
+// @license MIT
+// @notice Used for measuring liquidity and insurance
+
 // Puppet Finance: https://github.com/GMX-Blueberry-Club/puppet-contracts
 
 // Primary Author
@@ -41,8 +48,12 @@ interface IScoreGauge {
     /// @notice The ```claimableRewards``` returns the amount of rewards claimable by a user for a given epoch
     /// @param _epoch The uint256 value of the epoch
     /// @param _user The address of the user
-    /// @return _userReward The uint256 value of the claimable rewards, USD denominated, with 30 decimals
+    /// @return _userReward The uint256 value of the claimable rewards, with 18 decimals
     function claimableRewards(uint256 _epoch, address _user) external view returns (uint256 _userReward);
+
+    /// @notice The ```isKilled``` function returns whether the gauge is killed or not
+    /// @return _isKilled The bool value of the gauge status
+    function isKilled() external view returns (bool _isKilled);
 
     /// @notice The ```depositRewards``` function allows the minter to mint rewards for the current epoch
     /// @param _amount The uint256 value of the amount of minted rewards, with 18 decimals
@@ -50,7 +61,7 @@ interface IScoreGauge {
 
     /// @notice The ```claim``` function allows a user to claim rewards for a given epoch
     /// @param _epoch The uint256 value of the epoch
-    /// @return _userReward The uint256 value of the claimable rewards, USD denominated, with 30 decimals
+    /// @return _userReward The uint256 value of the claimable rewards, with 18 decimals
     function claim(uint256 _epoch) external returns (uint256 _userReward);
 
     /// @notice The ```updateUserScore``` is called by Routes when a trade is settled, for each user (Trader/Puppet)
