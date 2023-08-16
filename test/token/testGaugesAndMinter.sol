@@ -16,7 +16,7 @@ import {ScoreGaugeV1} from "src/token/ScoreGaugeV1.sol";
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-// todo - test score gauge
+
 contract testGaugesAndMinter is Test, DeployerUtilities {
 
     address public owner = makeAddr("owner");
@@ -223,8 +223,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.getTotalWeight(), 0, "_preGaugeTypeAddAsserts: E3");
         assertEq(gaugeController.getWeightsSumPerType(0), 0, "_preGaugeTypeAddAsserts: E4");
 
-        bytes4 selector = bytes4(keccak256("NotAdmin()"));
-        vm.expectRevert(); // vm.expectRevert(); // "only admin"
+        vm.expectRevert(bytes4(keccak256("NotAdmin()")));
         gaugeController.addType("Arbitrum", 0);
     }
 
@@ -245,13 +244,12 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge1V1), block.timestamp), 0, "_preGaugeAddAsserts: E5");
 
         int128 _n_gauge_types = gaugeController.n_gauge_types();
-        
-        bytes4 selector = bytes4(keccak256("NotAdmin()"));
-        vm.expectRevert(selector); // "dev: admin only" // todo
+
+        vm.expectRevert(bytes4(keccak256("NotAdmin()")));
         gaugeController.addGauge(address(scoreGauge1V1), _n_gauge_types, 0);
 
         vm.startPrank(owner);
-        vm.expectRevert(); // vm.expectRevert("dev: invalid gauge type");
+        vm.expectRevert(bytes4(keccak256("InvalidGaugeType()")));
         gaugeController.addGauge(address(scoreGauge1V1), _n_gauge_types, 0);
         vm.stopPrank();
     }
@@ -266,7 +264,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 0, "_postGauge1AddAsserts: E6"); // same here
 
         vm.startPrank(owner);
-        vm.expectRevert(); // vm.expectRevert("dev: cannot add the same gauge twice");
+        vm.expectRevert(bytes4(keccak256("GaugeAlreadyAdded()")));
         gaugeController.addGauge(address(scoreGauge1V1), 0, 0);
         vm.stopPrank();
     }
@@ -280,11 +278,11 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
 
         int128 _n_gauge_types = gaugeController.n_gauge_types();
 
-        vm.expectRevert(); // vm.expectRevert("dev: admin only");
+        vm.expectRevert(bytes4(keccak256("NotAdmin()")));
         gaugeController.addGauge(address(scoreGauge2V1), _n_gauge_types, 0);
 
         vm.startPrank(owner);
-        vm.expectRevert(); // vm.expectRevert("dev: invalid gauge type");
+        vm.expectRevert(bytes4(keccak256("InvalidGaugeType()")));
         gaugeController.addGauge(address(scoreGauge1V1), _n_gauge_types, 0);
         vm.stopPrank();
     }
@@ -298,7 +296,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge2V1), block.timestamp), 0, "_postGauge2AddAsserts: E5");
 
         vm.startPrank(owner);
-        vm.expectRevert(); // vm.expectRevert("dev: cannot add the same gauge twice");
+        vm.expectRevert(bytes4(keccak256("GaugeAlreadyAdded()")));
         gaugeController.addGauge(address(scoreGauge2V1), 0, 0);
         vm.stopPrank();
     }
@@ -310,7 +308,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.getTotalWeight(), 1000000000000000000, "_preGauge2TypeAddAsserts: E3");
         assertEq(gaugeController.getWeightsSumPerType(1), 0, "_preGauge2TypeAddAsserts: E4");
 
-        vm.expectRevert(); // vm.expectRevert("only admin");
+        vm.expectRevert(bytes4(keccak256("NotAdmin()")));
         gaugeController.addType("Optimism", 0);
     }
 
@@ -331,11 +329,11 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
 
         int128 _n_gauge_types = gaugeController.n_gauge_types();
 
-        vm.expectRevert(); // vm.expectRevert("dev: admin only");
+        vm.expectRevert(bytes4(keccak256("NotAdmin()")));
         gaugeController.addGauge(address(scoreGauge3V1), _n_gauge_types, 0);
 
         vm.startPrank(owner);
-        vm.expectRevert(); // vm.expectRevert("dev: invalid gauge type");
+        vm.expectRevert(bytes4(keccak256("InvalidGaugeType()")));
         gaugeController.addGauge(address(scoreGauge3V1), _n_gauge_types, 0);
         vm.stopPrank();
     }
@@ -349,35 +347,35 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge3V1), block.timestamp), 0, "_postGaugeAddAsserts: E5");
 
         vm.startPrank(owner);
-        vm.expectRevert(); // vm.expectRevert("dev: cannot add the same gauge twice");
+        vm.expectRevert(bytes4(keccak256("GaugeAlreadyAdded()")));
         gaugeController.addGauge(address(scoreGauge3V1), 0, 0);
         vm.stopPrank();
     }
 
     function _preInitEpochAsserts() internal {
-        vm.expectRevert(); // vm.expectRevert(); // revert with ```Arithmetic over/underflow```
+        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
         minterContract.mint(address(scoreGauge1V1));
-        vm.expectRevert(); // vm.expectRevert(); // revert with ```Arithmetic over/underflow```
+        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
         minterContract.mint(address(scoreGauge2V1));
-        vm.expectRevert(); // vm.expectRevert(); // revert with ```Arithmetic over/underflow```
+        vm.expectRevert(); // revert with ```Arithmetic over/underflow```
         minterContract.mint(address(scoreGauge3V1));
 
         vm.startPrank(alice);
-        vm.expectRevert(); // vm.expectRevert("Epoch is not set yet");
+        vm.expectRevert(bytes4(keccak256("EpochNotSet()")));
         gaugeController.voteForGaugeWeights(address(scoreGauge1V1), 10000);
         vm.stopPrank();
 
-        vm.expectRevert(); // vm.expectRevert("Epoch is not set yet");
+        vm.expectRevert(bytes4(keccak256("EpochNotSet()")));
         gaugeController.advanceEpoch();
 
         assertEq(gaugeController.epoch(), 0, "_preInitEpochAsserts: E0");
         assertEq(puppetERC20.mintableInTimeframe(block.timestamp, block.timestamp + 1 weeks), 0, "_preInitEpochAsserts: E1"); // must wait _INFLATION_DELAY
 
-        vm.expectRevert(); // vm.expectRevert("admin only");
+        vm.expectRevert(bytes4(keccak256("NotAdmin()")));
         gaugeController.initializeEpoch();
 
         vm.startPrank(owner);
-        vm.expectRevert(); // vm.expectRevert("too soon!");
+        vm.expectRevert("too soon!");
         gaugeController.initializeEpoch(); // must wait _INFLATION_DELAY
         vm.stopPrank();
 
@@ -396,10 +394,10 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(_startTime, 0, "_postInitEpochAsserts: E5");
         assertEq(_endTime, 0, "_postInitEpochAsserts: E6");
 
-        vm.expectRevert(); // vm.expectRevert("epoch has not ended yet");
+        vm.expectRevert(bytes4(keccak256("EpochNotEnded()")));
         minterContract.mint(address(scoreGauge1V1));
 
-        vm.expectRevert(); // vm.expectRevert("Epoch has not ended yet");
+        vm.expectRevert(bytes4(keccak256("EpochNotEnded()")));
         gaugeController.advanceEpoch();
     }
 
@@ -453,7 +451,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge2V1)), 0, "_postMintRewardsAsserts: E1");
         assertEq(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge3V1)), 0, "_postMintRewardsAsserts: E2");
 
-        vm.expectRevert(); // vm.expectRevert("already minted for this epoch");
+        vm.expectRevert(bytes4(keccak256("AlreadyMinted()")));
         minterContract.mint(address(scoreGauge1V1));
     }
 
@@ -461,10 +459,10 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         vm.startPrank(_user);
         gaugeController.voteForGaugeWeights(address(scoreGauge2V1), 10000);
 
-        vm.expectRevert(); // vm.expectRevert("Already voted for this epoch");
+        vm.expectRevert(bytes4(keccak256("AlreadyVoted()")));
         gaugeController.voteForGaugeWeights(address(scoreGauge2V1), 10000);
 
-        vm.expectRevert(); // vm.expectRevert("Used too much power");
+        vm.expectRevert(bytes4(keccak256("TooMuchPowerUsed()")));
         gaugeController.voteForGaugeWeights(address(scoreGauge1V1), 1);
 
         vm.stopPrank();
@@ -513,7 +511,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertApproxEqAbs(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge2V1)), _totalMintable, 1e5, "_postMintFor2ndEpochRewardsAsserts: E1");
         assertEq(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge3V1)), 0, "_postMintFor2ndEpochRewardsAsserts: E2");
 
-        vm.expectRevert(); // vm.expectRevert("already minted for this epoch");
+        vm.expectRevert(bytes4(keccak256("AlreadyMinted()")));
         minterContract.mint(address(scoreGauge2V1));
     }
 
@@ -522,13 +520,13 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         gaugeController.voteForGaugeWeights(address(scoreGauge2V1), 5000);
         gaugeController.voteForGaugeWeights(address(scoreGauge1V1), 5000);
 
-        vm.expectRevert(); // vm.expectRevert("Already voted for this epoch");
+        vm.expectRevert(bytes4(keccak256("AlreadyVoted()")));
         gaugeController.voteForGaugeWeights(address(scoreGauge1V1), 10000);
 
-        vm.expectRevert(); // vm.expectRevert("Already voted for this epoch");
+        vm.expectRevert(bytes4(keccak256("AlreadyVoted()")));
         gaugeController.voteForGaugeWeights(address(scoreGauge2V1), 10000);
 
-        vm.expectRevert(); // vm.expectRevert("Used too much power");
+        vm.expectRevert(bytes4(keccak256("TooMuchPowerUsed()")));
         gaugeController.voteForGaugeWeights(address(scoreGauge3V1), 1);
 
         vm.stopPrank();
@@ -585,10 +583,10 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertApproxEqAbs(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge2V1)), _gauge2BalanceBefore + (_totalMintable / 2), 1e5, "_postMintFor3rdEpochRewardsAsserts: E1");
         assertEq(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge3V1)), 0, "_postMintFor3rdEpochRewardsAsserts: E2");
 
-        vm.expectRevert(); // vm.expectRevert("already minted for this epoch");
+        vm.expectRevert(bytes4(keccak256("AlreadyMinted()")));
         minterContract.mint(address(scoreGauge1V1));
 
-        vm.expectRevert(); // vm.expectRevert("already minted for this epoch");
+        vm.expectRevert(bytes4(keccak256("AlreadyMinted()")));
         minterContract.mint(address(scoreGauge2V1));
     }
 
@@ -598,13 +596,13 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         gaugeController.voteForGaugeWeights(address(scoreGauge1V1), 0);
         gaugeController.voteForGaugeWeights(address(scoreGauge3V1), 10000);
 
-        vm.expectRevert(); // vm.expectRevert("Already voted for this epoch");
+        vm.expectRevert(bytes4(keccak256("AlreadyVoted()")));
         gaugeController.voteForGaugeWeights(address(scoreGauge1V1), 10000);
 
-        vm.expectRevert(); // vm.expectRevert("Already voted for this epoch");
+        vm.expectRevert(bytes4(keccak256("AlreadyVoted()")));
         gaugeController.voteForGaugeWeights(address(scoreGauge2V1), 10000);
 
-        vm.expectRevert(); // vm.expectRevert("Already voted for this epoch");
+        vm.expectRevert(bytes4(keccak256("AlreadyVoted()")));
         gaugeController.voteForGaugeWeights(address(scoreGauge3V1), 10000);
 
         vm.stopPrank();

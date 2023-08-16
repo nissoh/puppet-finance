@@ -72,6 +72,6 @@ interface IMinter {
 
     error GaugeIsKilled();
     error GaugeNotAdded();
-    error EpochHasNotEnded();
+    error EpochNotEnded();
     error AlreadyMinted();
 }

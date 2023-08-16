@@ -89,11 +89,11 @@ contract Minter is ReentrancyGuard, IMinter {
         if (__controller.gaugeTypes(_gauge) < 0) revert GaugeNotAdded();
 
         uint256 _epoch = __controller.epoch() - 1; // underflows if epoch() is 0
-        if (!__controller.hasEpochEnded(_epoch)) revert EpochHasNotEnded();
+        if (!__controller.hasEpochEnded(_epoch)) revert EpochNotEnded();
         if (minted[_epoch][_gauge]) revert AlreadyMinted();
 
         (uint256 _epochStartTime, uint256 _epochEndTime) = __controller.epochTimeframe(_epoch);
-        if (block.timestamp < _epochEndTime) revert EpochHasNotEnded();
+        if (block.timestamp < _epochEndTime) revert EpochNotEnded();
 
         uint256 _totalMint = _token.mintableInTimeframe(_epochStartTime, _epochEndTime);
         uint256 _mintForGauge = _totalMint * __controller.gaugeWeightForEpoch(_epoch, _gauge) / 1e18;
