@@ -44,6 +44,14 @@ interface IMinter {
         uint256 profit;
     }
 
+    /// @notice Returns the address of the token
+    /// @return _token The address of the token
+    function token() external view returns (address _token);
+
+    /// @notice Returns the address of the controller
+    /// @return _controller The address of the controller
+    function controller() external view returns (address _controller);
+
     /// @notice Mint everything which belongs to `_gauge` and send to it
     /// @param _gauge `ScoreGauge` address to mint for
     function mint(address _gauge) external;

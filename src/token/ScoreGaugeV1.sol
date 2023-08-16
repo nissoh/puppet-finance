@@ -67,11 +67,23 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
     /// @param _minter The Minter address
     /// @param _orchestrator The Orchestrator address
     constructor(address _admin, address _minter, address _orchestrator) {
+        admin = _admin;
+
         minter = IMinter(_minter);
         orchestrator = IOrchestrator(_orchestrator);
 
         token = IERC20(IMinter(_minter).token());
         controller = IGaugeController(IMinter(_minter).controller());
+    }
+
+    // ============================================================================================
+    // Modifiers
+    // ============================================================================================
+
+    /// @notice Modifier that ensures the caller is the contract's Admin
+    modifier onlyAdmin() {
+        if (msg.sender != admin) revert NotAdmin();
+        _;
     }
 
     // ============================================================================================
@@ -145,37 +157,25 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
 
     /// @inheritdoc IScoreGauge
     function killMe() external onlyAdmin {
-        require(msg.sender == admin, "admin only");
         _isKilled = true;
     }
 
     /// @inheritdoc IScoreGauge
     function commitTransferOwnership(address _futureAdmin) external onlyAdmin {
-        require(msg.sender == admin, "admin only");
         future_admin = _futureAdmin;
+
         emit CommitOwnership(_futureAdmin);
     }
 
     /// @inheritdoc IScoreGauge
     function applyTransferOwnership() external onlyAdmin {
-        require(msg.sender == admin, "admin only");
         address _admin = future_admin;
         require(_admin != address(0), "admin not set");
+
         admin = _admin;
+
         emit ApplyOwnership(_admin);
     }
-
-
-    @external
-    def apply_transfer_ownership():
-        """
-        @notice Apply pending ownership transfer
-        """
-        assert msg.sender == self.admin  # dev: admin only
-        _admin: address = self.future_admin
-        assert _admin != ZERO_ADDRESS  # dev: admin not set
-        self.admin = _admin
-        log ApplyOwnership(_admin)
 
     // ============================================================================================
     // Internal Functions

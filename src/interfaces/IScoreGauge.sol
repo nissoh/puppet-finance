@@ -31,12 +31,12 @@ interface IScoreGauge {
 
     struct EpochInfo {
         uint256 rewards;
-        uint256 claimed;
         uint256 totalScore;
         uint256 totalProfit;
         uint256 totalVolumeGenerated;
         uint256 profitWeight;
         uint256 volumeWeight;
+        mapping(address => bool) claimed;
         mapping(address => UserPerformance) userPerformance;
     }
 
@@ -71,7 +71,14 @@ interface IScoreGauge {
     function updateUserScore(uint256 _volumeGenerated, uint256 _profit, address _user) external;
 
     /// @notice The ```killMe``` is called by the admin to kill the gauge
-    function killMe() external;    
+    function killMe() external;
+
+    /// @notice Transfer ownership of GaugeController to `_futureAdmin`
+    /// @param _futureAdmin Address to have ownership transferred to
+    function commitTransferOwnership(address _futureAdmin) external;
+
+    /// @notice Apply pending ownership transfer
+    function applyTransferOwnership() external;
 
     // ============================================================================================
     // Events
@@ -80,6 +87,8 @@ interface IScoreGauge {
     event DepositRewards(uint256 amount);
     event Claim(uint256 indexed epoch, uint256 userReward, address indexed user);
     event UserScoreUpdate(address indexed user, uint256 volumeGenerated, uint256 profit);
+    event CommitOwnership(address futureAdmin);
+    event ApplyOwnership(address admin);
 
     // ============================================================================================
     // Errors
@@ -89,4 +98,6 @@ interface IScoreGauge {
     error InvalidEpoch();
     error AlreadyClaimed();
     error NotRoute();
+    error NotAdmin();
+    error InvalidWeights();
 }

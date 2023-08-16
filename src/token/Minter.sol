@@ -37,21 +37,31 @@ contract Minter is ReentrancyGuard, IMinter {
 
     mapping(uint256 => mapping(address => bool)) public minted; // epoch -> gauge -> hasMinted
 
-    IPuppet public token;
-    IGaugeController public controller;
+    IPuppet private _token;
+    IGaugeController private _controller;
 
     // ============================================================================================
     // Constructor
     // ============================================================================================
 
-    constructor(address _token, address _controller) {
-        token = IPuppet(_token);
-        controller = IGaugeController(_controller);
+    constructor(address _tokenAddr, address _controllerAddr) {
+        _token = IPuppet(_tokenAddr);
+        _controller = IGaugeController(_controllerAddr);
     }
 
     // ============================================================================================
     // External functions
     // ============================================================================================
+
+    /// @inheritdoc IMinter
+    function token() external view returns (address) {
+        return address(_token);
+    }
+
+    /// @inheritdoc IMinter
+    function controller() external view returns (address) {
+        return address(_controller);
+    }
 
     /// @inheritdoc IMinter
     function mint(address _gauge) external nonReentrant {
@@ -75,22 +85,22 @@ contract Minter is ReentrancyGuard, IMinter {
     function _mint(address _gauge) internal {
         if (IScoreGauge(_gauge).isKilled()) revert GaugeIsKilled();
 
-        IGaugeController _controller = controller;
-        if (_controller.gaugeTypes(_gauge) <= 0) revert GaugeNotAdded();
+        IGaugeController __controller = _controller;
+        if (__controller.gaugeTypes(_gauge) < 0) revert GaugeNotAdded();
 
-        uint256 _epoch = _controller.epoch() - 1; // underflows if epoch() is 0
-        if (!_controller.hasEpochEnded(_epoch)) revert EpochHasNotEnded();
+        uint256 _epoch = __controller.epoch() - 1; // underflows if epoch() is 0
+        if (!__controller.hasEpochEnded(_epoch)) revert EpochHasNotEnded();
         if (minted[_epoch][_gauge]) revert AlreadyMinted();
 
-        (uint256 _epochStartTime, uint256 _epochEndTime) = _controller.epochTimeframe(_epoch);
+        (uint256 _epochStartTime, uint256 _epochEndTime) = __controller.epochTimeframe(_epoch);
         if (block.timestamp < _epochEndTime) revert EpochHasNotEnded();
 
-        uint256 _totalMint = token.mintableInTimeframe(_epochStartTime, _epochEndTime);
-        uint256 _mintForGauge = _totalMint * _controller.gaugeWeightForEpoch(_epoch, _gauge) / 1e18;
+        uint256 _totalMint = _token.mintableInTimeframe(_epochStartTime, _epochEndTime);
+        uint256 _mintForGauge = _totalMint * __controller.gaugeWeightForEpoch(_epoch, _gauge) / 1e18;
 
         if (_mintForGauge > 0) {
             minted[_epoch][_gauge] = true;
-            token.mint(_gauge, _mintForGauge);
+            _token.mint(_gauge, _mintForGauge);
             IScoreGauge(_gauge).depositRewards(_mintForGauge);
 
             emit Minted(_gauge, _mintForGauge);

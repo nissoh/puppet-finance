@@ -181,4 +181,24 @@ interface IGaugeController {
         event NewGaugeWeight(address gauge, uint256 time, uint256 weight, uint256 totalWeight);
         event VoteForGauge(uint256 time, address user, address gauge, uint256 weight);
         event NewGauge(address addr, int128 gaugeType, uint256 weight);
+
+        // ============================================================================================
+        // Errors
+        // ============================================================================================
+
+        error TooMuchPowerUsed();
+        error InvalidWeights();
+        error AdminNotSet();
+        error EpochNotEnded();
+        error EpochNotSet();
+        error AlreadyInitialized();
+        error GaugeNotAdded();
+        error TokenLockExpiresTooSoon();
+        error AlreadyVoted();
+        error InvalidUserWeight();
+        error GaugeAlreadyAdded();
+        error InvalidGaugeType();
+        error GaugeTypeNotSet();
+        error NotAdmin();
+        error ZeroAddress();
 }

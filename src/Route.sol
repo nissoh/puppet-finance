@@ -856,7 +856,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
                     if (_puppetsProfitInUSD > 0) {
                         _puppetProfitInUSD = _convertToAssets(_puppetsProfitInUSD, _totalSupply, _shares);
                     }
-                    IScoreGauge(_gauge).updateUserScore(_puppetVolumeGenerated, _puppetProfitInUSD, _puppets[i], false);
+                    IScoreGauge(_gauge).updateUserScore(_puppetVolumeGenerated, _puppetProfitInUSD, _puppets[i]);
                 }
             }
 
@@ -867,7 +867,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
                     * ((traderPnL * -1).toUint256()) / _collateralTokenDecimals;
             }
 
-            IScoreGauge(_gauge).updateUserScore(_traderVolumeGenerated, _traderProfitInUSD, route.trader, true);
+            IScoreGauge(_gauge).updateUserScore(_traderVolumeGenerated, _traderProfitInUSD, route.trader);
 
             emit UpdateScoreGauge(puppetsPnL, traderPnL, _traderProfitInUSD, _puppetsProfitInUSD, _cumulativeVolumeGenerated);
         }

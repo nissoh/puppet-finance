@@ -27,6 +27,8 @@ pragma solidity 0.8.19;
 
 // ==============================================================
 
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+
 import {IGaugeController} from "src/interfaces/IGaugeController.sol";
 import {IVotingEscrow} from "src/interfaces/IVotingEscrow.sol";
 import {IScoreGauge} from "src/interfaces/IScoreGauge.sol";
@@ -34,12 +36,14 @@ import {IPuppet} from "src/interfaces/IPuppet.sol";
 
 contract GaugeController is IGaugeController {
 
+    using SafeCast for int256;
+
     // settings
 
     address public admin;
     address public future_admin; // can and will be a smart contract
     address public token;
-    address public voting_escrow;
+    address public votingEscrow;
 
     uint256 public currentEpochEndTime;
 
@@ -78,7 +82,7 @@ contract GaugeController is IGaugeController {
     uint256[1000000000] public time_sum; // type_id -> last scheduled time (next week)
 
     mapping(uint256 => uint256) public points_total; // time -> total weight
-    uint256 public time_total; // last scheduled time
+    uint256 public timeTotal; // last scheduled time
 
     mapping(int128 => mapping(uint256 => uint256)) public points_type_weight; // type_id -> time -> type weight
     uint256[1000000000] public time_type_weight; // type_id -> last scheduled time (next week)
@@ -95,18 +99,28 @@ contract GaugeController is IGaugeController {
 
     /// @notice Contract constructor
     /// @param _token `ERC20PUPPET` contract address
-    /// @param _voting_escrow `VotingEscrow` contract address
-    constructor(address _token, address _voting_escrow) {
-        require(_token != address(0), "token address cannot be 0");
-        require(_voting_escrow != address(0), "voting escrow address cannot be 0");
+    /// @param _votingEscrow `VotingEscrow` contract address
+    constructor(address _token, address _votingEscrow) {
+        if (_token == address(0)) revert ZeroAddress();
+        if (_votingEscrow == address(0)) revert ZeroAddress();
 
         admin = msg.sender;
         token = _token;
-        voting_escrow = _voting_escrow;
-        time_total = block.timestamp / WEEK * WEEK;
+        votingEscrow = _votingEscrow;
+        timeTotal = block.timestamp / WEEK * WEEK;
 
         _profitWeight = 2000; // 20%
         _volumeWeight = 8000; // 80%
+    }
+
+    // ============================================================================================
+    // Modifiers
+    // ============================================================================================
+
+    /// @notice Modifier that ensures the caller is the contract's Admin
+    modifier onlyAdmin() {
+        if (msg.sender != admin) revert NotAdmin();
+        _;
     }
 
     // ============================================================================================
@@ -132,12 +146,12 @@ contract GaugeController is IGaugeController {
 
     /// @inheritdoc IGaugeController
     function getTypeWeight(int128 _typeID) external view returns (uint256) {
-        return points_type_weight[_typeID][time_type_weight[uint256(int256(_typeID))]]; // todo safecast
+        return points_type_weight[_typeID][time_type_weight[int256(_typeID).toUint256()]];
     }
 
     /// @inheritdoc IGaugeController
     function getTotalWeight() external view returns (uint256) {
-        return points_total[time_total];
+        return points_total[timeTotal];
     }
 
     /// @inheritdoc IGaugeController
@@ -148,7 +162,7 @@ contract GaugeController is IGaugeController {
     /// @inheritdoc IGaugeController
     function gaugeTypes(address _gauge) external view returns (int128) {
         int128 gauge_type = gauge_types_[_gauge];
-        require(gauge_type != 0, "gauge type not set");
+        if (gauge_type == 0) revert GaugeTypeNotSet();
 
         return gauge_type - 1;
     }
@@ -199,14 +213,13 @@ contract GaugeController is IGaugeController {
     }
 
     /// @inheritdoc IGaugeController
-    function addGauge(address _gauge, int128 _gaugeType, uint256 _weight) external {
-        require(msg.sender == admin, "dev: admin only");
-        require(_gaugeType >= 0 && _gaugeType < n_gauge_types, "dev: invalid gauge type");
-        require(gauge_types_[_gauge] == 0, "dev: cannot add the same gauge twice");
+    function addGauge(address _gauge, int128 _gaugeType, uint256 _weight) external onlyAdmin {
+        if (_gaugeType < 0 || _gaugeType >= n_gauge_types) revert InvalidGaugeType();
+        if (gauge_types_[_gauge] != 0) revert GaugeAlreadyAdded();
 
         int128 n = n_gauges;
         n_gauges = n + 1;
-        gauges[uint256(int256(n))] = _gauge; // todo - safecast
+        gauges[int256(n).toUint256()] = _gauge;
 
         gauge_types_[_gauge] = _gaugeType + 1;
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
@@ -217,15 +230,15 @@ contract GaugeController is IGaugeController {
             uint256 _old_total = _getTotal();
 
             points_sum[_gaugeType][next_time].bias = _weight + _old_sum;
-            time_sum[uint256(int256(_gaugeType))] = next_time; // todo - safecast
+            time_sum[int256(_gaugeType).toUint256()] = next_time;
             points_total[next_time] = _old_total + _type_weight * _weight;
-            time_total = next_time;
+            timeTotal = next_time;
 
             points_weight[_gauge][next_time].bias = _weight;
         }
 
-        if (time_sum[uint256(int256(_gaugeType))] == 0) { // todo - safecast
-            time_sum[uint256(int256(_gaugeType))] = next_time; // todo - safecast
+        if (time_sum[int256(_gaugeType).toUint256()] == 0) {
+            time_sum[int256(_gaugeType).toUint256()] = next_time;
         }
         time_weight[_gauge] = next_time;
 
@@ -233,8 +246,7 @@ contract GaugeController is IGaugeController {
     }
 
     /// @inheritdoc IGaugeController
-    function addType(string memory _name, uint256 _weight) external {
-        require(msg.sender == admin, "only admin");
+    function addType(string memory _name, uint256 _weight) external onlyAdmin {
         int128 type_id = n_gauge_types;
         gauge_type_names[type_id] = _name;
         n_gauge_types = type_id + 1;
@@ -245,29 +257,27 @@ contract GaugeController is IGaugeController {
     }
 
     /// @inheritdoc IGaugeController
-    function changeTypeWeight(int128 _typeID, uint256 _weight) external {
-        require(msg.sender == admin, "only admin");
+    function changeTypeWeight(int128 _typeID, uint256 _weight) external onlyAdmin {
         _changeTypeWeight(_typeID, _weight);
     }
 
     /// @inheritdoc IGaugeController
-    function changeGaugeWeight(address _gauge, uint256 _weight) external {
-        require(msg.sender == admin, "only admin");
+    function changeGaugeWeight(address _gauge, uint256 _weight) external onlyAdmin {
         _changeGaugeWeight(_gauge, _weight);
     }
 
     /// @inheritdoc IGaugeController
     function voteForGaugeWeights(address _gauge, uint256 _userWeight) external {
-        require(_userWeight >= 0 && _userWeight <= 10000, "You used all your voting power");
-        require(_currentEpoch != 0, "Epoch is not set yet");
-        require(_currentEpoch > last_user_vote[msg.sender][_gauge], "Already voted for this epoch");
+        if (_userWeight > 10000) revert InvalidUserWeight();
+        if (_currentEpoch == 0) revert EpochNotSet();
+        if (last_user_vote[msg.sender][_gauge] >= _currentEpoch) revert AlreadyVoted();
 
-        uint256 lock_end = IVotingEscrow(voting_escrow).lockedEnd(msg.sender);
+        uint256 lock_end = IVotingEscrow(votingEscrow).lockedEnd(msg.sender);
         uint256 next_time = (block.timestamp + WEEK) / WEEK * WEEK;
-        require(lock_end > next_time, "Your token lock expires too soon");
+        if (lock_end <= next_time) revert TokenLockExpiresTooSoon();
 
         int128 gauge_type = gauge_types_[_gauge] - 1;
-        require(gauge_type >= 0, "Gauge not added");
+        if (gauge_type < 0) revert GaugeNotAdded();
 
         VotedSlope memory old_slope = vote_user_slopes[msg.sender][_gauge];
         uint256 old_bias = old_slope.slope * _oldDT(old_slope.end, next_time);
@@ -285,9 +295,8 @@ contract GaugeController is IGaugeController {
     }
 
     /// @inheritdoc IGaugeController
-    function initializeEpoch() external {
-        require(msg.sender == admin, "admin only");
-        require(_currentEpoch == 0, "already initialized");
+    function initializeEpoch() external onlyAdmin {
+        if (_currentEpoch != 0) revert AlreadyInitialized();
 
         _currentEpoch = 1;
         currentEpochEndTime = block.timestamp + WEEK;
@@ -297,17 +306,17 @@ contract GaugeController is IGaugeController {
 
     /// @inheritdoc IGaugeController
     function advanceEpoch() external {
-        require(_currentEpoch != 0, "Epoch is not set yet");
-        require(block.timestamp >= currentEpochEndTime, "Epoch has not ended yet");
+        if (_currentEpoch == 0) revert EpochNotSet();
+        if (block.timestamp < currentEpochEndTime) revert EpochNotEnded();
 
-        uint256 _n_gauges = uint256(int256(n_gauges)); // todo - safecast
+        uint256 _n_gauges = int256(n_gauges).toUint256();
         for (uint256 i = 0; i < _n_gauges; i++) {
             _getWeight(gauges[i]);
             _getTotal();
         }
 
         EpochData storage _epochData = epochData[_currentEpoch];
-        for (uint256 i = 0; i < _n_gauges; i++) { // todo - safecast
+        for (uint256 i = 0; i < _n_gauges; i++) {
             address _gauge = gauges[i];
             if (IScoreGauge(_gauge).isKilled()) continue;
 
@@ -324,25 +333,25 @@ contract GaugeController is IGaugeController {
 
 
     /// @inheritdoc IGaugeController
-    function commitTransferOwnership(address _futureAdmin) external {
-        require(msg.sender == admin, "admin only");
+    function commitTransferOwnership(address _futureAdmin) external onlyAdmin {
         future_admin = _futureAdmin;
+
         emit CommitOwnership(_futureAdmin);
     }
 
     /// @inheritdoc IGaugeController
-    function applyTransferOwnership() external {
-        require(msg.sender == admin, "admin only");
+    function applyTransferOwnership() external onlyAdmin {
         address _admin = future_admin;
-        require(_admin != address(0), "admin not set");
+        if (_admin == address(0)) revert AdminNotSet();
+
         admin = _admin;
+
         emit ApplyOwnership(_admin);
     }
 
     /// @inheritdoc IGaugeController
-    function setWeights(uint256 _profit, uint256 _volume) external {
-        require(msg.sender == admin, "admin only");
-        require (_profit + _volume == 10000, "sum of weights must be 10000");
+    function setWeights(uint256 _profit, uint256 _volume) external onlyAdmin {
+        if (_profit + _volume != 10000) revert InvalidWeights();
 
         _profitWeight = _profit;
         _volumeWeight = _volume;
@@ -358,7 +367,7 @@ contract GaugeController is IGaugeController {
     /// @param gauge_type Gauge type id
     /// @return Type weight
     function _getTypeWeight(int128 gauge_type) internal returns (uint256) {
-        uint256 t = time_type_weight[uint256(int256(gauge_type))]; // todo - safecast
+        uint256 t = time_type_weight[int256(gauge_type).toUint256()];
         if (t > 0) {
             uint256 w = points_type_weight[gauge_type][t];
             for (uint256 i = 0; i < 500; i++) {
@@ -368,7 +377,7 @@ contract GaugeController is IGaugeController {
                 t += WEEK;
                 points_type_weight[gauge_type][t] = w;
                 if (t > block.timestamp) {
-                    time_type_weight[uint256(int256(gauge_type))] = t; // todo - safecast
+                    time_type_weight[int256(gauge_type).toUint256()] = t;
                 }
             }
             return w;
@@ -381,7 +390,7 @@ contract GaugeController is IGaugeController {
     /// @param gauge_type Gauge type id
     /// @return Sum of weights
     function _getSum(int128 gauge_type) internal returns (uint256) {
-        uint256 t = time_sum[uint256(int256(gauge_type))]; // todo - safecast
+        uint256 t = time_sum[int256(gauge_type).toUint256()];
         if (t > 0) {
             Point memory pt = points_sum[gauge_type][t];
             for (uint256 i = 0; i < 500; i++) {
@@ -400,7 +409,7 @@ contract GaugeController is IGaugeController {
                 }
                 points_sum[gauge_type][t] = pt;
                 if (t > block.timestamp) {
-                    time_sum[uint256(int256(gauge_type))] = t; // todo - safecast
+                    time_sum[int256(gauge_type).toUint256()] = t;
                 }
             }
             return pt.bias;
@@ -412,7 +421,7 @@ contract GaugeController is IGaugeController {
     /// @notice Fill historic total weights week-over-week for missed checkins and return the total for the future week
     /// @return Total weight
     function _getTotal() internal returns (uint256) {
-        uint256 t = time_total;
+        uint256 t = timeTotal;
         int128 _n_gauge_types = n_gauge_types;
         if (t > block.timestamp) {
             // If we have already checkpointed - still need to change the value
@@ -446,7 +455,7 @@ contract GaugeController is IGaugeController {
             points_total[t] = pt;
 
             if (t > block.timestamp) {
-                time_total = t;
+                timeTotal = t;
             }
         }
         return pt;
@@ -516,8 +525,8 @@ contract GaugeController is IGaugeController {
         _total_weight = _total_weight + old_sum * weight - old_sum * old_weight;
         points_total[next_time] = _total_weight;
         points_type_weight[type_id][next_time] = weight;
-        time_total = next_time;
-        time_type_weight[uint256(int256(type_id))] = next_time; // todo - safecast
+        timeTotal = next_time;
+        time_type_weight[int256(type_id).toUint256()] = next_time;
 
         emit NewTypeWeight(type_id, next_time, weight, _total_weight);
     }
@@ -537,11 +546,11 @@ contract GaugeController is IGaugeController {
 
         uint256 new_sum = old_sum + weight - old_gauge_weight;
         points_sum[gauge_type][next_time].bias = new_sum;
-        time_sum[uint256(int256(gauge_type))] = next_time; // todo - safecast
+        time_sum[int256(gauge_type).toUint256()] = next_time;
 
         _total_weight = _total_weight + new_sum * type_weight - old_sum * type_weight;
         points_total[next_time] = _total_weight;
-        time_total = next_time;
+        timeTotal = next_time;
 
         emit NewGaugeWeight(addr, block.timestamp, weight, _total_weight);
     }
@@ -556,7 +565,7 @@ contract GaugeController is IGaugeController {
 
     function _createNewSlope(uint256 _user_weight, uint256 lock_end) internal view returns (VotedSlope memory) {
         return VotedSlope({
-            slope: uint256(int256(IVotingEscrow(voting_escrow).getLastUserSlope(msg.sender))) * _user_weight / 10000,
+            slope: uint256(int256(IVotingEscrow(votingEscrow).getLastUserSlope(msg.sender))) * _user_weight / 10000,
             end: lock_end,
             power: _user_weight
         });
@@ -566,7 +575,7 @@ contract GaugeController is IGaugeController {
         uint256 power_used = vote_user_power[msg.sender];
         power_used = power_used + new_slope_power - old_slope_power;
         vote_user_power[msg.sender] = power_used;
-        require(power_used >= 0 && power_used <= 10000, "Used too much power");
+        if (power_used > 10000) revert TooMuchPowerUsed();
     }
 
     function _updateSlopes(
