@@ -320,7 +320,7 @@ contract GaugeController is IGaugeController {
             address _gauge = gauges[i];
             if (IScoreGauge(_gauge).isKilled()) continue;
 
-            _epochData.gaugeWeights[_gauge] = _gaugeRelativeWeight(_gauge, block.timestamp);
+            _epochData.gaugeWeights[_gauge] = _gaugeRelativeWeight(_gauge, currentEpochEndTime);
         }
 
         _epochData.startTime = currentEpochEndTime - WEEK;

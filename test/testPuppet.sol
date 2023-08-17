@@ -19,8 +19,13 @@ import {Route} from "src/Route.sol";
 import {RouteFactory} from "src/RouteFactory.sol";
 import {DecreaseSizeResolver} from "src/keeper/DecreaseSizeResolver.sol";
 import {Dictator} from "src/Dictator.sol";
+import {ScoreGaugeV1} from "src/token/ScoreGaugeV1.sol";
+import {Puppet} from "src/token/Puppet.sol";
+import {VotingEscrow} from "src/token/VotingEscrow.sol";
+import {GaugeController} from "src/token/GaugeController.sol";
+import {Minter} from "src/token/Minter.sol";
 
-import {ScoreGaugeMock} from "test/mocks/ScoreGaugeMock.sol";
+// import {ScoreGaugeMock} from "test/mocks/ScoreGaugeMock.sol";
 
 import {DeployerUtilities} from "script/utilities/DeployerUtilities.sol";
 
@@ -79,6 +84,7 @@ contract testPuppet is Test, DeployerUtilities {
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
     address yossi = makeAddr("yossi");
+    address gauge = makeAddr("gauge");
 
     address GMXPositionRouterKeeper = address(0x11D62807dAE812a0F1571243460Bf94325F43BB7);
 
@@ -93,7 +99,12 @@ contract testPuppet is Test, DeployerUtilities {
     Route route;
     Orchestrator orchestrator;
     DecreaseSizeResolver decreaseSizeResolver;
-    ScoreGaugeMock scoreGaugeMock;
+    ScoreGaugeV1 scoreGaugeV1;
+
+    Puppet puppetERC20;
+    VotingEscrow votingEscrow;
+    GaugeController gaugeController;
+    Minter minterContract;
 
     function setUp() public {
 
@@ -108,6 +119,16 @@ contract testPuppet is Test, DeployerUtilities {
         vm.deal(bob, 100 ether);
         vm.deal(yossi, 100 ether);
 
+        vm.startPrank(owner);
+        puppetERC20 = new Puppet("Puppet Finance Token", "PUPPET", 18);
+
+        votingEscrow = new VotingEscrow(address(puppetERC20), "Vote-escrowed PUPPET", "vePUPPET", "1.0.0");
+
+        gaugeController = new GaugeController(address(puppetERC20), address(votingEscrow));
+
+        minterContract = new Minter(address(puppetERC20), address(gaugeController));
+        vm.stopPrank();
+
         Dictator _dictator = new Dictator(owner);
         RouteFactory _routeFactory = new RouteFactory();
 
@@ -118,7 +139,7 @@ contract testPuppet is Test, DeployerUtilities {
 
         decreaseSizeResolver = new DecreaseSizeResolver(_dictator, orchestrator);
 
-        scoreGaugeMock = new ScoreGaugeMock();
+        scoreGaugeV1 = new ScoreGaugeV1(owner, address(minterContract), address(orchestrator));
 
         bytes4 setRouteTypeSig = orchestrator.setRouteType.selector;
         bytes4 setScoreGaugeSig = orchestrator.setScoreGauge.selector;
@@ -143,7 +164,7 @@ contract testPuppet is Test, DeployerUtilities {
         orchestrator.setRouteType(_weth, _weth, true);
         orchestrator.setRouteType(_usdc, _weth, false);
         orchestrator.setPlatformFeesRecipient(owner);
-        orchestrator.setScoreGauge(address(scoreGaugeMock));
+        orchestrator.setScoreGauge(address(scoreGaugeV1));
         orchestrator.setTraderWhitelist(trader, true);
         vm.stopPrank();
     }
@@ -704,7 +725,7 @@ contract testPuppet is Test, DeployerUtilities {
         if (isLong) {
             // TODO: long position
             // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
-            _sizeDelta =  56114325853597714538714066903928447121 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+            _sizeDelta =  59417053116956094321478364319667953839 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
             _sizeDelta = _sizeDelta / 10;
             _acceptablePrice = type(uint256).max;
             _amountInTrader = 10 ether;
@@ -1115,17 +1136,19 @@ contract testPuppet is Test, DeployerUtilities {
             // artifically add funds to Route, as if position was closed in profit
             _dealERC20(route.collateralToken(), address(route), 20 ether);
 
-            vm.startPrank(GMXPositionRouterKeeper); // keeper
-            // uint256 _cumulativeVolumeGenerated = 0; // todo testing trader/puppet pnl + _cumulativeVolumeGenerated and update on ScoreGauge
-            // (,,,uint256 _totalSupply,) = route.positions(route.positionIndex());
-            // uint256 _traderProfit = 20 ether * route.traderShares() / _totalSupply;
-            // uint256 _puppetsProfit = 20 ether - _traderProfit;
-            // uint256 _traderProfitInUSD = _traderProfit * orchestrator.getPrice(route.collateralToken()) / 1e18;
-            // uint256 _puppetsProfitInUSD = _puppetsProfit * orchestrator.getPrice(route.collateralToken()) / 1e18;
+            // todo testing trader/puppet pnl + _cumulativeVolumeGenerated and update on ScoreGauge
+            (,,,uint256 _totalSupply,) = route.positions(route.positionIndex());
+            uint256 _traderProfit = 20 ether * route.traderShares() / _totalSupply;
+            uint256 _puppetsProfit = 20 ether - _traderProfit;
+            uint256 _traderProfitInUSD = _traderProfit * orchestrator.getPrice(route.collateralToken()) / 1e18;
+            uint256 _puppetsProfitInUSD = _puppetsProfit * orchestrator.getPrice(route.collateralToken()) / 1e18;
             // vm.expectEmit(address(route));
             // emit UpdateScoreGauge(int256(_puppetsProfit), int256(_traderProfit), _traderProfitInUSD, _puppetsProfitInUSD, _cumulativeVolumeGenerated);
+            vm.startPrank(GMXPositionRouterKeeper); // keeper
             IGMXPositionRouter(_gmxPositionRouter).executeDecreasePositions(type(uint256).max, payable(address(route)));
             vm.stopPrank();
+
+            _checkScoreGauge(_puppetsProfitInUSD, _traderProfitInUSD, _puppetsProfit, _traderProfit);
 
             assertEq(IERC20(collateralToken).balanceOf(address(route)), 0, "_testClosePosition: E02");
             assertEq(address(route).balance, 0, "_testClosePosition: E03");
@@ -1218,7 +1241,7 @@ contract testPuppet is Test, DeployerUtilities {
         // TODO: get data dynamically
         // Available amount in USD: PositionRouter.maxGlobalLongSizes(indexToken) - Vault.guaranteedUsd(indexToken)
         // uint256 _size = IGMXPositionRouter(orchestrator.getGMXPositionRouter()).maxGlobalLongSizes(indexToken) - IGMXVault(orchestrator.getGMXVault()).guaranteedUsd(indexToken);
-        uint256 _size = 56114325853597714538714066903928447121 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
+        uint256 _size = 59417053116956094321478364319667953839 - IVault(orchestrator.gmxVault()).guaranteedUsd(indexToken);
 
         // the USD value of the change in position size
         uint256 _sizeDelta = _size / 20;
@@ -1542,6 +1565,32 @@ contract testPuppet is Test, DeployerUtilities {
         assertEq(orchestrator.puppetAccountBalanceAfterFee(alice, _token, false), _puppetBalanceAfterFee, "_setManagementFee: E4");
 
         vm.stopPrank();
+    }
+
+    function _checkScoreGauge(uint256 _puppetsProfitInUSD, uint256 _traderProfitInUSD, uint256 _puppetsProfit, uint256 _traderProfit) internal {
+        // epochInfo
+        // cumulativeVolumeGenerated
+        // struct EpochInfo {
+        //     uint256 rewards;
+        //     uint256 totalScore;
+        //     uint256 totalProfit;
+        //     uint256 totalVolumeGenerated;
+        //     uint256 profitWeight;
+        //     uint256 volumeWeight;
+        //     mapping(address => bool) claimed;
+        //     mapping(address => UserPerformance) userPerformance;
+        // }
+        (uint256 _rewards, uint256 _totalScore, uint256 _totalProfit, uint256 _totalVolumeGenerated, uint256 _profitWeight, uint256 _volumeWeight) = scoreGaugeV1.epochInfo(0);
+        (uint256 _volume ,uint256 _traderProfitInUSDFromGauge) = scoreGaugeV1.userPerformance(0, trader);
+
+        assertEq(_rewards, 0, "_checkScoreGauge: E0");
+        assertTrue(_totalScore > 0, "_checkScoreGauge: E1");
+        assertApproxEqAbs(_totalProfit, _puppetsProfitInUSD + _traderProfitInUSD, 1e34, "_checkScoreGauge: E2");
+        assertTrue(_totalVolumeGenerated > 0, "_checkScoreGauge: E3");
+        assertEq(_profitWeight, 2000, "_checkScoreGauge: E4");
+        assertEq(_volumeWeight, 8000, "_checkScoreGauge: E5");
+        assertApproxEqAbs(_traderProfitInUSDFromGauge, _traderProfitInUSD, 1e34, "_checkScoreGauge: E6");
+        // assertEq(scoreGaugeV1.epochInfo(0).userPerformance[trader].volumeGenerated, _traderProfitInUSD, "_checkScoreGauge: E7");
     }
 
     function _dealERC20(address _token, address _recipient , uint256 _amount) internal {

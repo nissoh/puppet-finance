@@ -96,6 +96,17 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
     }
 
     /// @inheritdoc IScoreGauge
+    function userPerformance(uint256 _epoch, address _user) external view returns (uint256 _volumeGenerated, uint256 _profit) {
+        _volumeGenerated = epochInfo[_epoch].userPerformance[_user].volumeGenerated;
+        _profit = epochInfo[_epoch].userPerformance[_user].profit;
+    }
+
+    /// @inheritdoc IScoreGauge
+    function hasClaimed(uint256 _epoch, address _user) external view returns (bool) {
+        return epochInfo[_epoch].claimed[_user];
+    }
+
+    /// @inheritdoc IScoreGauge
     function isKilled() external view returns (bool) {
         return _isKilled;
     }

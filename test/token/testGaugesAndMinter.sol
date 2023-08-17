@@ -149,6 +149,10 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         vm.stopPrank();
         _postInitEpochAsserts(); // epoch has not ended yet
 
+        // TRADE 1st EPOCH (update ScoreGauge) // todo
+        _updateScoreGauge(address(scoreGauge1V1));
+
+        // FINISH 1st EPOCH
         skip(86400 * 7); // skip epoch duration (1 week)
         _preAdvanceEpochAsserts(); // epoch has ended
         gaugeController.advanceEpoch();
@@ -162,6 +166,8 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         minterContract.mintMany(_gauges);
         _postMintRewardsAsserts();
 
+        // CLAIM 1st EPOCH // todo
+
         // VOTE FOR 2nd EPOCH (gauge2 gets all rewards) (we vote immediately after minting, if we wait a few days, votes will be valid for 3rd epoch)
         _preVote2ndEpochAsserts();
         _userVote2ndEpoch(alice);
@@ -170,14 +176,16 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
 
         // ON 2nd EPOCH END
         skip(86400 * 7); // skip 1 epoch (1 week)
-        _pre2ndEpochEndAsserts(); // (before calling advanceEpoch())
+        _pre1stEpochEndAsserts(); // (before calling advanceEpoch())
         gaugeController.advanceEpoch();
-        _post2ndEpochEndAsserts();
+        _post1stEpochEndAsserts();
 
         // MINT REWARDS FOR 2nd EPOCH
         uint256 _gauge1BalanceBefore = puppetERC20.balanceOf(address(scoreGauge1V1));
         minterContract.mintMany(_gauges);
-        _postMintFor2ndEpochRewardsAsserts(_gauge1BalanceBefore);
+        _postMintFor1stEpochRewardsAsserts(_gauge1BalanceBefore);
+
+        // CLAIM 2nd EPOCH (claim rewards from ScoreGauge) // todo
 
         // VOTE FOR 3rd EPOCH (gauge1 gets half of rewards, gauge2 gets half of rewards)
         // skip(86400 * 1); // skip 5 days, just to make it more realistic
@@ -186,17 +194,21 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         _userVote3rdEpoch(yossi);
         _postVote3rdEpochAsserts();
 
-        // ON 3rd EPOCH END
-        skip(86400 * 7); // skip the 2 days left in the epoch
-        _pre3rdEpochEndAsserts(); // (before calling advanceEpoch())
-        gaugeController.advanceEpoch();
-        _post3rdEpochEndAsserts();
+        // TRADE 3rd EPOCH (update ScoreGauge) // todo
 
-        // MINT REWARDS FOR 3rd EPOCH
+        // ON 2nd EPOCH END
+        skip(86400 * 7); // skip the 2 days left in the epoch
+        _pre2ndEpochEndAsserts(); // (before calling advanceEpoch())
+        gaugeController.advanceEpoch();
+        _post2ndEpochEndAsserts();
+
+        // MINT REWARDS FOR 2nd EPOCH
         _gauge1BalanceBefore = puppetERC20.balanceOf(address(scoreGauge1V1));
         uint256 _gauge2BalanceBefore = puppetERC20.balanceOf(address(scoreGauge2V1));
         minterContract.mintMany(_gauges);
         _postMintFor3rdEpochRewardsAsserts(_gauge1BalanceBefore, _gauge2BalanceBefore);
+
+        // CLAIM 3rd EPOCH (claim rewards from ScoreGauge) // todo
 
         // VOTE FOR 4th EPOCH (gauge3 gets all rewards)
         skip(86400 * 2); // skip 2 days, just to make it more realistic
@@ -205,11 +217,16 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         _userVote4thEpoch(yossi);
         _postVote4thEpochAsserts();
 
+        // TRADE 4th EPOCH (update ScoreGauge) // todo
+
         // ON 4th EPOCH END
         skip(86400 * 5); // skip the 5 days left in the epoch
         _pre4thEpochEndAsserts(); // (before calling advanceEpoch())
         gaugeController.advanceEpoch();
         _post4thEpochEndAsserts();
+
+        // MINT 4th EPOCH (update ScoreGauge) // todo
+        // CLAIM 4th EPOCH (update ScoreGauge) // todo
     }
 
     // =======================================================
@@ -375,7 +392,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         gaugeController.initializeEpoch();
 
         vm.startPrank(owner);
-        vm.expectRevert("too soon!");
+        vm.expectRevert(bytes4(keccak256("TooSoon()")));
         gaugeController.initializeEpoch(); // must wait _INFLATION_DELAY
         vm.stopPrank();
 
@@ -475,41 +492,41 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge3V1), block.timestamp + 1 weeks), 0, "_userVote2ndEpoch: E5");
     }
 
-    function _pre2ndEpochEndAsserts() internal {
-        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 0, "_pre2ndEpochEndAsserts: E0");
-        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge2V1), block.timestamp), 1e18, 1e5, "_pre2ndEpochEndAsserts: E1");
-        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge3V1), block.timestamp), 0, "_pre2ndEpochEndAsserts: E2");
+    function _pre1stEpochEndAsserts() internal {
+        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 0, "_pre1stEpochEndAsserts: E0");
+        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge2V1), block.timestamp), 1e18, 1e5, "_pre1stEpochEndAsserts: E1");
+        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge3V1), block.timestamp), 0, "_pre1stEpochEndAsserts: E2");
 
-        assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge1V1), block.timestamp), 0, "_pre2ndEpochEndAsserts: E3");
-        assertApproxEqAbs(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge2V1), block.timestamp), 1e18, 1e5, "_pre2ndEpochEndAsserts: E4");
-        assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge3V1), block.timestamp), 0, "_pre2ndEpochEndAsserts: E5");
+        assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge1V1), block.timestamp), 0, "_pre1stEpochEndAsserts: E3");
+        assertApproxEqAbs(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge2V1), block.timestamp), 1e18, 1e5, "_pre1stEpochEndAsserts: E4");
+        assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge3V1), block.timestamp), 0, "_pre1stEpochEndAsserts: E5");
     }
 
-    function _post2ndEpochEndAsserts() internal {
-        assertEq(gaugeController.epoch(), 3, "_post2ndEpochEndAsserts: E0");
+    function _post1stEpochEndAsserts() internal {
+        assertEq(gaugeController.epoch(), 3, "_post1stEpochEndAsserts: E0");
         (uint256 _start, uint256 _end) = gaugeController.epochTimeframe(2);
-        assertEq(_end, block.timestamp, "_post2ndEpochEndAsserts: E1");
-        assertEq(_start, block.timestamp - 1 weeks, "_post2ndEpochEndAsserts: E2");
-        assertEq(gaugeController.gaugeWeightForEpoch(2, address(scoreGauge1V1)), 0, "_post2ndEpochEndAsserts: E3");
-        assertApproxEqAbs(gaugeController.gaugeWeightForEpoch(2, address(scoreGauge2V1)), 1e18, 1e5, "_post2ndEpochEndAsserts: E4");
-        assertEq(gaugeController.gaugeWeightForEpoch(2, address(scoreGauge3V1)), 0, "_post2ndEpochEndAsserts: E5");
-        assertTrue(gaugeController.hasEpochEnded(1), "_post2ndEpochEndAsserts: E6");
-        assertTrue(gaugeController.hasEpochEnded(2), "_post2ndEpochEndAsserts: E7");
-        assertTrue(!gaugeController.hasEpochEnded(3), "_post2ndEpochEndAsserts: E71");
+        assertEq(_end, block.timestamp, "_post1stEpochEndAsserts: E1");
+        assertEq(_start, block.timestamp - 1 weeks, "_post1stEpochEndAsserts: E2");
+        assertEq(gaugeController.gaugeWeightForEpoch(2, address(scoreGauge1V1)), 0, "_post1stEpochEndAsserts: E3");
+        assertApproxEqAbs(gaugeController.gaugeWeightForEpoch(2, address(scoreGauge2V1)), 1e18, 1e5, "_post1stEpochEndAsserts: E4");
+        assertEq(gaugeController.gaugeWeightForEpoch(2, address(scoreGauge3V1)), 0, "_post1stEpochEndAsserts: E5");
+        assertTrue(gaugeController.hasEpochEnded(1), "_post1stEpochEndAsserts: E6");
+        assertTrue(gaugeController.hasEpochEnded(2), "_post1stEpochEndAsserts: E7");
+        assertTrue(!gaugeController.hasEpochEnded(3), "_post1stEpochEndAsserts: E71");
 
-        assertTrue(puppetERC20.mintableInTimeframe(_start, _end) > 20000 * 1e18, "_post2ndEpochEndAsserts: E9");
+        assertTrue(puppetERC20.mintableInTimeframe(_start, _end) > 20000 * 1e18, "_post1stEpochEndAsserts: E9");
 
-        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 0, "_post2ndEpochEndAsserts: E10");
-        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge2V1), block.timestamp), 1e18, 1e5, "_post2ndEpochEndAsserts: E11");
-        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge3V1), block.timestamp), 0, "_post2ndEpochEndAsserts: E12");
+        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 0, "_post1stEpochEndAsserts: E10");
+        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge2V1), block.timestamp), 1e18, 1e5, "_post1stEpochEndAsserts: E11");
+        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge3V1), block.timestamp), 0, "_post1stEpochEndAsserts: E12");
     }
 
-    function _postMintFor2ndEpochRewardsAsserts(uint256 _gauge1BalanceBefore) internal {
+    function _postMintFor1stEpochRewardsAsserts(uint256 _gauge1BalanceBefore) internal {
         (uint256 _start, uint256 _end) = gaugeController.epochTimeframe(2);
         uint256 _totalMintable = puppetERC20.mintableInTimeframe(_start, _end);
-        assertEq(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge1V1)), _gauge1BalanceBefore, "_postMintFor2ndEpochRewardsAsserts: E0");
-        assertApproxEqAbs(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge2V1)), _totalMintable, 1e5, "_postMintFor2ndEpochRewardsAsserts: E1");
-        assertEq(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge3V1)), 0, "_postMintFor2ndEpochRewardsAsserts: E2");
+        assertEq(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge1V1)), _gauge1BalanceBefore, "_postMintFor1stEpochRewardsAsserts: E0");
+        assertApproxEqAbs(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge2V1)), _totalMintable, 1e5, "_postMintFor1stEpochRewardsAsserts: E1");
+        assertEq(IERC20(address(puppetERC20)).balanceOf(address(scoreGauge3V1)), 0, "_postMintFor1stEpochRewardsAsserts: E2");
 
         vm.expectRevert(bytes4(keccak256("AlreadyMinted()")));
         minterContract.mint(address(scoreGauge2V1));
@@ -542,38 +559,38 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge3V1), block.timestamp + 1 weeks), 0, "_postVote3rdEpochAsserts: E2");
     }
 
-    function _pre3rdEpochEndAsserts() internal {
-        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 1e18 / 2, 1e5, "_pre3rdEpochEndAsserts: E0");
-        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge2V1), block.timestamp), 1e18 / 2, 1e5, "_pre3rdEpochEndAsserts: E1");
-        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge3V1), block.timestamp), 0, "_pre3rdEpochEndAsserts: E2");
+    function _pre2ndEpochEndAsserts() internal {
+        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 1e18 / 2, 1e5, "_pre2ndEpochEndAsserts: E0");
+        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge2V1), block.timestamp), 1e18 / 2, 1e5, "_pre2ndEpochEndAsserts: E1");
+        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge3V1), block.timestamp), 0, "_pre2ndEpochEndAsserts: E2");
 
-        assertApproxEqAbs(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge1V1), block.timestamp), 1e18 / 2, 1e5, "_pre3rdEpochEndAsserts: E3");
-        assertApproxEqAbs(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge2V1), block.timestamp), 1e18 / 2, 1e5, "_pre3rdEpochEndAsserts: E4");
-        assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge3V1), block.timestamp), 0, "_pre3rdEpochEndAsserts: E5");
-        assertTrue(gaugeController.getTypeWeight(0) > 0, "_pre3rdEpochEndAsserts: E6");
-        assertEq(gaugeController.getTypeWeight(1), 1000000000000000000, "_pre3rdEpochEndAsserts: E7");
+        assertApproxEqAbs(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge1V1), block.timestamp), 1e18 / 2, 1e5, "_pre2ndEpochEndAsserts: E3");
+        assertApproxEqAbs(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge2V1), block.timestamp), 1e18 / 2, 1e5, "_pre2ndEpochEndAsserts: E4");
+        assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge3V1), block.timestamp), 0, "_pre2ndEpochEndAsserts: E5");
+        assertTrue(gaugeController.getTypeWeight(0) > 0, "_pre2ndEpochEndAsserts: E6");
+        assertEq(gaugeController.getTypeWeight(1), 1000000000000000000, "_pre2ndEpochEndAsserts: E7");
     }
 
-    function _post3rdEpochEndAsserts() internal {
-        assertEq(gaugeController.epoch(), 4, "_post3rdEpochEndAsserts: E0");
+    function _post2ndEpochEndAsserts() internal {
+        assertEq(gaugeController.epoch(), 4, "_post2ndEpochEndAsserts: E0");
         (uint256 _start, uint256 _end) = gaugeController.epochTimeframe(3);
-        assertEq(_end, block.timestamp, "_post3rdEpochEndAsserts: E1");
-        assertEq(_start, block.timestamp - 1 weeks, "_post3rdEpochEndAsserts: E2");
-        assertApproxEqAbs(gaugeController.gaugeWeightForEpoch(3, address(scoreGauge1V1)), 1e18 / 2, 1e5, "_post3rdEpochEndAsserts: E3");
-        assertApproxEqAbs(gaugeController.gaugeWeightForEpoch(3, address(scoreGauge2V1)), 1e18 / 2, 1e5, "_post3rdEpochEndAsserts: E4");
-        assertEq(gaugeController.gaugeWeightForEpoch(3, address(scoreGauge3V1)), 0, "_post3rdEpochEndAsserts: E5");
-        assertTrue(gaugeController.hasEpochEnded(1), "_post3rdEpochEndAsserts: E6");
-        assertTrue(gaugeController.hasEpochEnded(2), "_post3rdEpochEndAsserts: E7");
-        assertTrue(gaugeController.hasEpochEnded(3), "_post3rdEpochEndAsserts: E8");
-        assertTrue(!gaugeController.hasEpochEnded(4), "_post3rdEpochEndAsserts: E9");
+        assertEq(_end, block.timestamp, "_post2ndEpochEndAsserts: E1");
+        assertEq(_start, block.timestamp - 1 weeks, "_post2ndEpochEndAsserts: E2");
+        assertApproxEqAbs(gaugeController.gaugeWeightForEpoch(3, address(scoreGauge1V1)), 1e18 / 2, 1e5, "_post2ndEpochEndAsserts: E3");
+        assertApproxEqAbs(gaugeController.gaugeWeightForEpoch(3, address(scoreGauge2V1)), 1e18 / 2, 1e5, "_post2ndEpochEndAsserts: E4");
+        assertEq(gaugeController.gaugeWeightForEpoch(3, address(scoreGauge3V1)), 0, "_post2ndEpochEndAsserts: E5");
+        assertTrue(gaugeController.hasEpochEnded(1), "_post2ndEpochEndAsserts: E6");
+        assertTrue(gaugeController.hasEpochEnded(2), "_post2ndEpochEndAsserts: E7");
+        assertTrue(gaugeController.hasEpochEnded(3), "_post2ndEpochEndAsserts: E8");
+        assertTrue(!gaugeController.hasEpochEnded(4), "_post2ndEpochEndAsserts: E9");
 
-        assertTrue(puppetERC20.mintableInTimeframe(_start, _end) > 20000 * 1e18, "_post3rdEpochEndAsserts: E10");
+        assertTrue(puppetERC20.mintableInTimeframe(_start, _end) > 20000 * 1e18, "_post2ndEpochEndAsserts: E10");
 
-        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 1e18 / 2, 1e5, "_post3rdEpochEndAsserts: E11");
-        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge2V1), block.timestamp), 1e18 / 2, 1e5, "_post3rdEpochEndAsserts: E12");
-        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge3V1), block.timestamp), 0, "_post3rdEpochEndAsserts: E13");
-        assertTrue(gaugeController.getTypeWeight(0) > 0, "_post3rdEpochEndAsserts: E14");
-        assertEq(gaugeController.getTypeWeight(1), 1e18, "_post3rdEpochEndAsserts: E15");
+        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 1e18 / 2, 1e5, "_post2ndEpochEndAsserts: E11");
+        assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge2V1), block.timestamp), 1e18 / 2, 1e5, "_post2ndEpochEndAsserts: E12");
+        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge3V1), block.timestamp), 0, "_post2ndEpochEndAsserts: E13");
+        assertTrue(gaugeController.getTypeWeight(0) > 0, "_post2ndEpochEndAsserts: E14");
+        assertEq(gaugeController.getTypeWeight(1), 1e18, "_post2ndEpochEndAsserts: E15");
     }
 
     function _postMintFor3rdEpochRewardsAsserts(uint256 _gauge1BalanceBefore, uint256 _gauge2BalanceBefore) internal {
@@ -653,5 +670,9 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertApproxEqAbs(gaugeController.gaugeRelativeWeight(address(scoreGauge3V1), block.timestamp), 1e18, 1e5, "_post4thEpochEndAsserts: E13");
         assertEq(gaugeController.getTypeWeight(0), 1e18, "_post4thEpochEndAsserts: E14");
         assertEq(gaugeController.getTypeWeight(1), 1e18, "_post4thEpochEndAsserts: E15");
+    }
+
+    function _updateScoreGauge(address _gauge) internal {
+
     }
 }
