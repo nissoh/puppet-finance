@@ -101,9 +101,9 @@ contract Minter is ReentrancyGuard, IMinter {
         if (_mintForGauge > 0) {
             minted[_epoch][_gauge] = true;
             _token.mint(_gauge, _mintForGauge);
-            IScoreGauge(_gauge).depositRewards(_mintForGauge);
+            IScoreGauge(_gauge).depositRewards(_epoch, _mintForGauge);
 
-            emit Minted(_gauge, _mintForGauge);
+            emit Minted(_gauge, _mintForGauge, _epoch);
         }
     }
 }

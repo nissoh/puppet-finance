@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.19;
 
+import {ScoreGaugeV1} from "src/token/ScoreGaugeV1.sol";
+import {Puppet} from "src/token/Puppet.sol";
+import {VotingEscrow} from "src/token/VotingEscrow.sol";
+import {GaugeController} from "src/token/GaugeController.sol";
+import {Minter} from "src/token/Minter.sol";
+
 import {RouteFactory} from "src/RouteFactory.sol";
 import {Orchestrator} from "src/Orchestrator.sol";
 
@@ -24,21 +30,33 @@ contract DeployPuppet is DeployerUtilities {
 
         address _platformFeeRecipient = _deployer;
 
-        address _scoreGauge = address(0);
+        Puppet _puppetERC20 = new Puppet("Puppet Finance Token - TEST", "PUPPET-TEST", 18);
+
+        VotingEscrow _votingEscrow = new VotingEscrow(address(_puppetERC20), "Vote-escrowed PUPPET - TEST", "vePUPPET-TEST", "1.0.0");
+
+        GaugeController _gaugeController = new GaugeController(address(_puppetERC20), address(_votingEscrow));
+
+        Minter _minterContract = new Minter(address(_puppetERC20), address(_gaugeController));
+        _puppetERC20.setMinter(address(_minterContract));
 
         Dictator _dictator = Dictator(_dictatorAddr);
 
         RouteFactory _routeFactory = new RouteFactory();
 
-        Orchestrator _orchestrator = new Orchestrator(_dictator, address(_routeFactory), _keeperAddr, _scoreGauge, _platformFeeRecipient, _weth, _referralCode, _gmxInfo);
+        Orchestrator _orchestrator = new Orchestrator(_dictator, address(_routeFactory), _keeperAddr, _platformFeeRecipient, _weth, _referralCode, _gmxInfo);
 
-        bytes4 functionSig = _orchestrator.setRouteType.selector;
+        ScoreGaugeV1 _scoreGaugeV1 = new ScoreGaugeV1(_deployer, address(_minterContract), address(_orchestrator));
 
-        _setRoleCapability(_dictator, 0, address(_orchestrator), functionSig, true);
+        bytes4 setRouteTypeFunctionSig = _orchestrator.setRouteType.selector;
+        bytes4 setScoreGaugeFunctionSig = _orchestrator.setScoreGauge.selector;
+
+        _setRoleCapability(_dictator, 0, address(_orchestrator), setRouteTypeFunctionSig, true);
+        _setRoleCapability(_dictator, 0, address(_orchestrator), setScoreGaugeFunctionSig, true);
         _setUserRole(_dictator, _deployer, 0, true);
 
         // set route type
         _orchestrator.setRouteType(_weth, _weth, true);
+        _orchestrator.setScoreGauge(address(_scoreGaugeV1));
 
         console.log("Deployed Addresses");
         console.log("==============================================");
@@ -46,9 +64,27 @@ contract DeployPuppet is DeployerUtilities {
         console.log("dictator: %s", address(_dictator));
         console.log("routeFactory: %s", address(_routeFactory));
         console.log("orchestrator: %s", address(_orchestrator));
+        console.log("puppetERC20: %s", address(_puppetERC20));
+        console.log("votingEscrow: %s", address(_votingEscrow));
+        console.log("gaugeController: %s", address(_gaugeController));
+        console.log("minterContract: %s", address(_minterContract));
+        console.log("scoreGauge1V1: %s", address(_scoreGaugeV1));
         console.log("==============================================");
         console.log("==============================================");
 
         vm.stopBroadcast();
     }
 }
+
+// puppetERC20: 0x16e55B1a06eEdC9e08E47434D0dB2735eA589Db7
+//   votingEscrow: 0x4c2892E20CDeb7495A5357Eb5C0a6d7E67172A14
+//   gaugeController: 0xf5372c0c9E35353Bc14E3aB8067234A20AbB40D1
+//   minterContract: 0x1a566519E821756DC5Bed52579F388e602007eE7
+// dictator: 0xA12a6281c1773F267C274c3BE1B71DB2BACE06Cb
+//   routeFactory: 0x24A8843c03b894ff449F1F69dd1D60327004c147
+//   orchestrator: 0x446fb2e318632135a34CF395840FfE6a483274C7
+
+//   scoreGauge1V1: 0x920C10F42c3F5Dba70Cd2c7567918D3A400FA876
+
+forge verify-contract --constructor-args $ARGS --watch --chain-id 42161 --compiler-version v0.8.19+commit.7dd6d404 --verifier-url https://api.arbiscan.io/api $CONTRACT_ADDRESS src/Orchestrator.sol:Orchestrator
+000000000000000000000000a12a6281c1773f267c274c3be1b71db2bace06cb00000000000000000000000024a8843c03b894ff449f1f69dd1d60327004c1470000000000000000000000000000000000000000000000000000000000000000000000000000000000000000189b21eda0cff16461913d616a0a4f711cd986cb00000000000000000000000082af49447d8a07e3bd95bd0d56f35241523fbab1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000002d68011bca022ed0e474264145f46cc4de96a002000000000000000000000000abbc5f99639c9b6bcb58544ddf04efa6802f4064000000000000000000000000489ee077994b6658eafa855c308275ead8097c4a000000000000000000000000b87a436b93ffe9d75c5cfa7bacfff96430b0986800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000

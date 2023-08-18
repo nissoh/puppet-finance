@@ -27,7 +27,7 @@ pragma solidity 0.8.19;
 // itburnz: https://github.com/nissoh
 
 // ==============================================================
-// todo - finish interface
+
 import {IPuppet} from "src/interfaces/IPuppet.sol";
 
 contract Puppet is IPuppet {
@@ -127,15 +127,12 @@ contract Puppet is IPuppet {
 
     // view functions
 
-    /// @notice Current number of tokens in existence (claimed or unclaimed)
+    /// @inheritdoc IPuppet
     function availableSupply() external view returns (uint256) {
         return _availableSupply();
     }
 
-    /// @notice How much supply is mintable from start timestamp till end timestamp
-    /// @param start Start of the time interval (timestamp)
-    /// @param end End of the time interval (timestamp)
-    /// @return Tokens mintable from `start` till `end`
+    /// @inheritdoc IPuppet
     function mintableInTimeframe(uint256 start, uint256 end) external view returns (uint256) {
         if (start > end) revert StartGreaterThanEnd();
 
@@ -184,31 +181,26 @@ contract Puppet is IPuppet {
         return _toMint;
     }
 
-    /// @notice Total number of tokens in existence.
+    /// @inheritdoc IPuppet
     function totalSupply() external view returns (uint256) {
         return _totalSupply;
     }
 
-    /// @notice Check the amount of tokens that an owner allowed to a spender
-    /// @param _owner The address which owns the funds
-    /// @param _spender The address which will spend the funds
-    /// @return uint256 specifying the amount of tokens still available for the spender
+    /// @inheritdoc IPuppet
     function allowance(address _owner, address _spender) external view returns (uint256) {
         return allowances[_owner][_spender];
     }
 
     // mutated functions
 
-    /// @notice Update mining rate and supply at the start of the epoch
-    /// @dev Callable by any address, but only once per epoch. Total supply becomes slightly larger if this function is called late
+    /// @inheritdoc IPuppet
     function updateMiningParameters() external {
         if (block.timestamp < startEpochTime + _RATE_REDUCTION_TIME) revert TooSoon();
 
         _updateMiningParameters();
     }
 
-    /// @notice Get timestamp of the current mining epoch start while simultaneously updating mining parameters
-    /// @return Timestamp of the epoch
+    /// @inheritdoc IPuppet
     function startEpochTimeWrite() external returns (uint256) {
         uint256 _startEpochTime = startEpochTime;
         if (block.timestamp >= _startEpochTime + _RATE_REDUCTION_TIME) {
@@ -219,8 +211,7 @@ contract Puppet is IPuppet {
         }
     }
 
-    /// @notice Get timestamp of the next mining epoch start while simultaneously updating mining parameters
-    /// @return Timestamp of the next epoch
+    /// @inheritdoc IPuppet
     function futureEpochTimeWrite() external returns (uint256) {
         uint256 _startEpochTime = startEpochTime;
         if (block.timestamp >= _startEpochTime + _RATE_REDUCTION_TIME) {
@@ -231,9 +222,7 @@ contract Puppet is IPuppet {
         }
     }
 
-    /// @notice Set the minter address
-    /// @dev Only callable once, when minter has not yet been set
-    /// @param _minter Address of the minter
+    /// @inheritdoc IPuppet
     function setMinter(address _minter) external onlyAdmin {
         if (minter != address(0)) revert MinterAlreadySet();
 
@@ -242,20 +231,14 @@ contract Puppet is IPuppet {
         emit SetMinter(_minter);
     }
 
-    /// @notice Set the new admin.
-    /// @dev After all is set up, admin only can change the token name
-    /// @param _admin New admin address
+    /// @inheritdoc IPuppet
     function setAdmin(address _admin) external onlyAdmin {
         admin = _admin;
 
         emit SetAdmin(_admin);
     }
 
-    /// @notice Transfer `_value` tokens from `msg.sender` to `_to`
-    /// @dev Vyper/Solidity does not allow underflows, so the subtraction in this function will revert on an insufficient balance
-    /// @param _to The address to transfer to
-    /// @param _value The amount to be transferred
-    /// @return bool success
+    /// @inheritdoc IPuppet
     function transfer(address _to, uint256 _value) external returns (bool) {
         if (_to == address(0)) revert ZeroAddress();
 
@@ -267,11 +250,7 @@ contract Puppet is IPuppet {
         return true;
     }
 
-    /// @notice Transfer `_value` tokens from `_from` to `_to`
-    /// @param _from address The address which you want to send tokens from
-    /// @param _to address The address which you want to transfer to
-    /// @param _value uint256 the amount of tokens to be transferred
-    /// @return bool success
+    /// @inheritdoc IPuppet
     function transferFrom(address _from, address _to, uint256 _value) external returns (bool) {
         if (_to == address(0)) revert ZeroAddress();
 
@@ -285,13 +264,7 @@ contract Puppet is IPuppet {
         return true;
     }
 
-    /// @notice Approve `_spender` to transfer `_value` tokens on behalf of `msg.sender`
-    /// @dev Approval may only be from zero -> nonzero or from nonzero -> zero in order 
-    /// to mitigate the potential race condition described here:
-    /// https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
-    /// @param _spender The address which will spend the funds
-    /// @param _value The amount of tokens to be spent
-    /// @return bool success
+    /// @inheritdoc IPuppet
     function approve(address _spender, uint256 _value) external returns (bool) {
         if (_value != 0 && allowances[msg.sender][_spender] != 0) revert NonZeroApproval();
 
@@ -302,11 +275,7 @@ contract Puppet is IPuppet {
         return true;
     }
 
-    /// @notice Mint `_value` tokens and assign them to `_to`
-    /// @dev Emits a Transfer event originating from 0x00
-    /// @param _to The account that will receive the created tokens
-    /// @param _value The amount that will be created
-    /// @return bool success
+    /// @inheritdoc IPuppet
     function mint(address _to, uint256 _value) external onlyMinter returns (bool) {
         if (_to == address(0)) revert ZeroAddress();
 
@@ -325,10 +294,7 @@ contract Puppet is IPuppet {
         return true;
     }
 
-    /// @notice Burn `_value` tokens belonging to `msg.sender`
-    /// @dev Emits a Transfer event with a destination of 0x00
-    /// @param _value The amount that will be burned
-    /// @return bool success
+    /// @inheritdoc IPuppet
     function burn(uint256 _value) external returns (bool) {
         balanceOf[msg.sender] -= _value;
         _totalSupply -= _value;

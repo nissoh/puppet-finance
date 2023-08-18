@@ -74,8 +74,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
     bytes32 private _referralCode;
 
-    mapping(address => bool) public traderWhitelist; // allows a Trader to be a contract
-
     GMXInfo private _gmxInfo;
 
     // routes info
@@ -98,7 +96,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @param _authority The Authority contract instance
     /// @param _routeFactory The RouteFactory contract address
     /// @param _keeperAddr The address of the keeper
-    /// @param _scoreGaugeAddr The address of the score gauge
     /// @param _platformFeeRecipient The address of the platform fee recipient
     /// @param _wethAddr The WETH contract address
     /// @param _refCode The GMX referral code
@@ -107,7 +104,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         Authority _authority,
         address _routeFactory,
         address _keeperAddr,
-        address _scoreGaugeAddr,
         address _platformFeeRecipient,
         address _wethAddr,
         bytes32 _refCode,
@@ -118,7 +114,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         routeFactory = _routeFactory;
         _keeper = _keeperAddr;
-        _scoreGauge = _scoreGaugeAddr;
         platformFeeRecipient = _platformFeeRecipient;
 
         (
@@ -374,7 +369,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         bool _isLong
     ) public nonReentrant notPaused returns (bytes32 _routeKey) {
         if (_collateralToken == address(0) || _indexToken == address(0)) revert ZeroAddress();
-        if (msg.sender != tx.origin && !traderWhitelist[msg.sender]) revert NotWhitelisted();
 
         bytes32 _routeTypeKey = getRouteTypeKey(_collateralToken, _indexToken, _isLong);
         if (!routeType[_routeTypeKey].isRegistered) revert RouteTypeNotRegistered();
@@ -674,13 +668,6 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         IRoute(_route).rescueTokenFunds(_amount, _token, _receiver);
 
         emit RescueRouteFunds(_amount, _token, _receiver, _route);
-    }
-
-    /// @inheritdoc IOrchestrator
-    function setTraderWhitelist(address _trader, bool _isWhitelisted) external requiresAuth nonReentrant {
-        traderWhitelist[_trader] = _isWhitelisted;
-
-        emit SetTraderWhitelist(_trader, _isWhitelisted);
     }
 
     /// @inheritdoc IOrchestrator

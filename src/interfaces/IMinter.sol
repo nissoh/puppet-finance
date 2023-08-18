@@ -64,7 +64,7 @@ interface IMinter {
     // Events
     // ============================================================================================
 
-    event Minted(address indexed gauge, uint256 minted);
+    event Minted(address indexed gauge, uint256 minted, uint256 epoch);
 
     // ============================================================================================
     // Errors

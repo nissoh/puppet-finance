@@ -8,6 +8,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {DeployerUtilities} from "script/utilities/DeployerUtilities.sol";
 
+import {OrchestratorMock} from "test/mocks/OrchestratorMock.sol";
+import {RouteMock} from "test/mocks/RouteMock.sol";
+
 import {Puppet} from "src/token/Puppet.sol";
 import {VotingEscrow} from "src/token/VotingEscrow.sol";
 import {GaugeController} from "src/token/GaugeController.sol";
@@ -19,11 +22,20 @@ import "forge-std/console.sol";
 
 contract testGaugesAndMinter is Test, DeployerUtilities {
 
+    struct ScoreGaugeTotals {
+        uint256 totalScore;
+        uint256 totalProfit;
+        uint256 totalVolumeGenerated;
+    }
+
     address public owner = makeAddr("owner");
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
     address public yossi = makeAddr("yossi");
     address public minter = makeAddr("minter");
+
+    address orchestratorMock;
+    address routeMock;
 
     Puppet public puppetERC20;
     Minter public minterContract;
@@ -54,9 +66,12 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         minterContract = new Minter(address(puppetERC20), address(gaugeController));
         puppetERC20.setMinter(address(minterContract));
 
-        scoreGauge1V1 = new ScoreGaugeV1(owner, address(minterContract), address(gaugeController));
-        scoreGauge2V1 = new ScoreGaugeV1(owner, address(minterContract), address(gaugeController));
-        scoreGauge3V1 = new ScoreGaugeV1(owner, address(minterContract), address(gaugeController));
+        orchestratorMock = address(new OrchestratorMock(address(scoreGauge1V1)));
+        routeMock = OrchestratorMock(orchestratorMock).deployRouteMock();
+
+        scoreGauge1V1 = new ScoreGaugeV1(owner, address(minterContract), address(orchestratorMock));
+        scoreGauge2V1 = new ScoreGaugeV1(owner, address(minterContract), address(orchestratorMock));
+        scoreGauge3V1 = new ScoreGaugeV1(owner, address(minterContract), address(orchestratorMock));
 
         vm.stopPrank();
 
@@ -149,8 +164,11 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         vm.stopPrank();
         _postInitEpochAsserts(); // epoch has not ended yet
 
-        // TRADE 1st EPOCH (update ScoreGauge) // todo
-        _updateScoreGauge(address(scoreGauge1V1));
+        // TRADE 1st EPOCH (update ScoreGauge)
+        _updateScoreGauge(alice);
+        _updateScoreGauge(bob);
+        _updateScoreGauge(yossi);
+        _checkScoreGaugeTotals();
 
         // FINISH 1st EPOCH
         skip(86400 * 7); // skip epoch duration (1 week)
@@ -166,13 +184,23 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         minterContract.mintMany(_gauges);
         _postMintRewardsAsserts();
 
-        // CLAIM 1st EPOCH // todo
+        // CLAIM 1st EPOCH
+        uint256 _aliceClaimedRewards = _claimForUser(alice);
+        uint256 _bobClaimedRewards = _claimForUser(bob);
+        uint256 _yossiClaimedRewards = _claimForUser(yossi);
+        _postClaimRewardsAsserts(_aliceClaimedRewards, _bobClaimedRewards, _yossiClaimedRewards);
 
         // VOTE FOR 2nd EPOCH (gauge2 gets all rewards) (we vote immediately after minting, if we wait a few days, votes will be valid for 3rd epoch)
         _preVote2ndEpochAsserts();
         _userVote2ndEpoch(alice);
         _userVote2ndEpoch(bob);
         _userVote2ndEpoch(yossi);
+
+        // TRADE 2nd EPOCH (update ScoreGauge)
+        _updateScoreGauge(alice);
+        _updateScoreGauge(bob);
+        _updateScoreGauge(yossi);
+        _checkScoreGaugeTotals();
 
         // ON 2nd EPOCH END
         skip(86400 * 7); // skip 1 epoch (1 week)
@@ -185,7 +213,11 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         minterContract.mintMany(_gauges);
         _postMintFor1stEpochRewardsAsserts(_gauge1BalanceBefore);
 
-        // CLAIM 2nd EPOCH (claim rewards from ScoreGauge) // todo
+        // CLAIM 2nd EPOCH (NO REWARDS FOR GAUGE1!)
+        // _aliceClaimedRewards = _claimForUser(alice);
+        // _bobClaimedRewards = _claimForUser(bob);
+        // _yossiClaimedRewards = _claimForUser(yossi);
+        // _postClaimRewardsAsserts(_aliceClaimedRewards, _bobClaimedRewards, _yossiClaimedRewards);
 
         // VOTE FOR 3rd EPOCH (gauge1 gets half of rewards, gauge2 gets half of rewards)
         // skip(86400 * 1); // skip 5 days, just to make it more realistic
@@ -194,7 +226,11 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         _userVote3rdEpoch(yossi);
         _postVote3rdEpochAsserts();
 
-        // TRADE 3rd EPOCH (update ScoreGauge) // todo
+        // TRADE 3rd EPOCH (update ScoreGauge)
+        _updateScoreGauge(alice);
+        _updateScoreGauge(bob);
+        _updateScoreGauge(yossi);
+        _checkScoreGaugeTotals();
 
         // ON 2nd EPOCH END
         skip(86400 * 7); // skip the 2 days left in the epoch
@@ -208,7 +244,11 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         minterContract.mintMany(_gauges);
         _postMintFor3rdEpochRewardsAsserts(_gauge1BalanceBefore, _gauge2BalanceBefore);
 
-        // CLAIM 3rd EPOCH (claim rewards from ScoreGauge) // todo
+        // CLAIM 3rd EPOCH (claim rewards from ScoreGauge)
+        _aliceClaimedRewards = _claimForUser(alice);
+        _bobClaimedRewards = _claimForUser(bob);
+        _yossiClaimedRewards = _claimForUser(yossi);
+        _postClaimRewardsAsserts(_aliceClaimedRewards, _bobClaimedRewards, _yossiClaimedRewards);
 
         // VOTE FOR 4th EPOCH (gauge3 gets all rewards)
         skip(86400 * 2); // skip 2 days, just to make it more realistic
@@ -217,16 +257,11 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         _userVote4thEpoch(yossi);
         _postVote4thEpochAsserts();
 
-        // TRADE 4th EPOCH (update ScoreGauge) // todo
-
         // ON 4th EPOCH END
         skip(86400 * 5); // skip the 5 days left in the epoch
         _pre4thEpochEndAsserts(); // (before calling advanceEpoch())
         gaugeController.advanceEpoch();
         _post4thEpochEndAsserts();
-
-        // MINT 4th EPOCH (update ScoreGauge) // todo
-        // CLAIM 4th EPOCH (update ScoreGauge) // todo
     }
 
     // =======================================================
@@ -435,7 +470,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
     }
 
     function _preAdvanceEpochAsserts() internal {
-        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 0, "_preAdvanceEpochAsserts: E0");
+        assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge1V1), block.timestamp), 1e18, "_preAdvanceEpochAsserts: E0");
         assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge2V1), block.timestamp), 0, "_preAdvanceEpochAsserts: E1");
         assertEq(gaugeController.gaugeRelativeWeight(address(scoreGauge3V1), block.timestamp), 0, "_preAdvanceEpochAsserts: E2");
         assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge1V1), block.timestamp), 1e18, "_preAdvanceEpochAsserts: E3");
@@ -672,7 +707,105 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(gaugeController.getTypeWeight(1), 1e18, "_post4thEpochEndAsserts: E15");
     }
 
-    function _updateScoreGauge(address _gauge) internal {
+    function _updateScoreGauge(address _user) internal {
+        // uint256 _volumeGenerated = 2876763763041700041795401421222374997;
+        // uint256 _profit = 31287038234711120027588025294117645;
 
+        // uint256 _currentEpoch = gaugeController.epoch();
+        (uint256 _volumeGeneratedBefore, uint256 _profitBefore) = scoreGauge1V1.userPerformance(gaugeController.epoch(), _user);
+
+        (
+            ,
+            uint256 _totalScoreBefore,
+            uint256 _totalProfitBefore,
+            uint256 _totalVolumeGeneratedBefore,
+            ,
+        ) = scoreGauge1V1.epochInfo(gaugeController.epoch());
+
+        scoreGauge1V1.updateUserScore(2876763763041700041795401421222374997, 31287038234711120027588025294117645, _user);
+
+        (
+            ,
+            ,
+            ,
+            ,
+            uint256 _profitWeight,
+            uint256 _volumeWeight
+        ) = scoreGauge1V1.epochInfo(gaugeController.epoch());
+
+        assertEq(scoreGauge1V1.claimableRewards(gaugeController.epoch(), _user), 0, "_updateScoreGauge: E0");
+
+        (
+            uint256 _rewards,
+            uint256 _totalScoreAfter,
+            uint256 _totalProfitAfter,
+            uint256 _totalVolumeGeneratedAfter,,
+        ) = scoreGauge1V1.epochInfo(gaugeController.epoch());
+
+        assertEq(_rewards, 0, "_updateScoreGauge: E1");
+        assertTrue(_totalScoreAfter > _totalScoreBefore, "_updateScoreGauge: E2");
+        assertEq(_totalProfitAfter, _totalProfitBefore + 31287038234711120027588025294117645, "_updateScoreGauge: E3");
+        assertEq(_totalVolumeGeneratedAfter, _totalVolumeGeneratedBefore + 2876763763041700041795401421222374997, "_updateScoreGauge: E4");
+
+        assertEq(_profitWeight, 2000, "_updateScoreGauge: E5");
+        assertEq(_volumeWeight, 8000, "_updateScoreGauge: E6");
+        assertTrue(!scoreGauge1V1.hasClaimed(gaugeController.epoch(), _user), "_updateScoreGauge: E7");
+        _updateScoreGaugeExtension(_volumeGeneratedBefore, _profitBefore, _user);        
+    }
+
+    function _updateScoreGaugeExtension(uint256 _volumeGeneratedBefore, uint256 _profitBefore, address _user) internal {
+        (uint256 _volumeGeneratedAfter, uint256 _profitAfter) = scoreGauge1V1.userPerformance(gaugeController.epoch(), _user);
+        assertEq(_volumeGeneratedBefore + 2876763763041700041795401421222374997, _volumeGeneratedAfter, "_updateScoreGauge: E8");
+        assertEq(_profitBefore + 31287038234711120027588025294117645, _profitAfter, "_updateScoreGauge: E9");
+    }
+
+    function _checkScoreGaugeTotals() internal {
+        (uint256 _aliceVolumeGenerated, uint256 _aliceProfit) = scoreGauge1V1.userPerformance(gaugeController.epoch(), alice);
+        (uint256 _bobVolumeGenerated, uint256 _bobProfit) = scoreGauge1V1.userPerformance(gaugeController.epoch(), bob);
+        (uint256 _yossiVolumeGenerated, uint256 _yossiProfit) = scoreGauge1V1.userPerformance(gaugeController.epoch(), yossi);
+
+        assertEq(_aliceVolumeGenerated, _bobVolumeGenerated, "_checkScoreGaugeTotals: E0");
+        assertEq(_aliceVolumeGenerated, _yossiVolumeGenerated, "_checkScoreGaugeTotals: E1");
+        assertEq(_aliceProfit, _bobProfit, "_checkScoreGaugeTotals: E2");
+        assertEq(_aliceProfit, _yossiProfit, "_checkScoreGaugeTotals: E3");
+    }
+
+    function _claimForUser(address _user) internal returns (uint256 _rewards) {
+        uint256 _epoch = gaugeController.epoch();
+        uint256 _userBalanceBefore = puppetERC20.balanceOf(_user);
+
+        (uint256 _totalRewards,,,,,) = scoreGauge1V1.epochInfo(gaugeController.epoch() - 1);
+        assertTrue(_totalRewards > 0, "_claimForUser: E00");
+        (uint256 _totalRewards1,,,,,) = scoreGauge1V1.epochInfo(gaugeController.epoch());
+        assertEq(_totalRewards1, 0, "_claimForUser: E001");
+
+        uint256 _claimableRewards = scoreGauge1V1.claimableRewards(_epoch - 1, _user);
+        
+        vm.expectRevert(bytes4(keccak256("NoRewards()")));
+        scoreGauge1V1.claim(_epoch - 1, _user);
+
+        vm.startPrank(_user);
+        uint256 _claimedRewards = scoreGauge1V1.claim(_epoch - 1, _user);
+
+        vm.expectRevert(bytes4(keccak256("AlreadyClaimed()")));
+        scoreGauge1V1.claim(_epoch - 1, _user);
+
+        vm.expectRevert();
+        scoreGauge1V1.claimableRewards(_epoch, _user);
+
+        vm.stopPrank();
+
+        assertEq(scoreGauge1V1.claimableRewards(_epoch - 1, _user), 0, "_claimForUser: E0");
+        assertEq(_claimableRewards, _claimedRewards, "_claimForUser: E1");
+        assertEq(puppetERC20.balanceOf(_user), _userBalanceBefore + _claimedRewards, "_claimForUser: E2");
+        assertTrue(_claimedRewards > 0, "_claimForUser: E3");
+
+        return _claimedRewards;
+    }
+
+    function _postClaimRewardsAsserts(uint256 _aliceClaimedRewards, uint256 _bobClaimedRewards, uint256 _yossiClaimedRewards) internal {
+        assertApproxEqAbs(puppetERC20.balanceOf(address(scoreGauge1V1)), 0, 1e5, "_postClaimRewardsAsserts: E0");
+        assertEq(_aliceClaimedRewards, _bobClaimedRewards, "_postClaimRewardsAsserts: E1");
+        assertEq(_aliceClaimedRewards, _yossiClaimedRewards, "_postClaimRewardsAsserts: E2");
     }
 }

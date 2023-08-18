@@ -68,14 +68,16 @@ interface IScoreGauge {
     /// @return _isKilled The bool value of the gauge status
     function isKilled() external view returns (bool _isKilled);
 
-    /// @notice The ```depositRewards``` function allows the minter to mint rewards for the current epoch
+    /// @notice The ```depositRewards``` function allows the minter to mint rewards for the specified epoch
+    /// @param _epoch The uint256 value of the epoch
     /// @param _amount The uint256 value of the amount of minted rewards, with 18 decimals
-    function depositRewards(uint256 _amount) external;
+    function depositRewards(uint256 _epoch, uint256 _amount) external;
 
     /// @notice The ```claim``` function allows a user to claim rewards for a given epoch
     /// @param _epoch The uint256 value of the epoch
+    /// @param _receiver The address of the receiver of rewards
     /// @return _userReward The uint256 value of the claimable rewards, with 18 decimals
-    function claim(uint256 _epoch) external returns (uint256 _userReward);
+    function claim(uint256 _epoch, address _receiver) external returns (uint256 _userReward);
 
     /// @notice The ```updateUserScore``` is called by Routes when a trade is settled, for each user (Trader/Puppet)
     /// @param _volumeGenerated The uint256 value of the cumulative volume generated, USD denominated, with 30 decimals
@@ -98,7 +100,7 @@ interface IScoreGauge {
     // ============================================================================================
 
     event DepositRewards(uint256 amount);
-    event Claim(uint256 indexed epoch, uint256 userReward, address indexed user);
+    event Claim(uint256 indexed epoch, uint256 userReward, address indexed user, address indexed receiver);
     event UserScoreUpdate(address indexed user, uint256 volumeGenerated, uint256 profit);
     event CommitOwnership(address futureAdmin);
     event ApplyOwnership(address admin);
@@ -113,4 +115,5 @@ interface IScoreGauge {
     error NotRoute();
     error NotAdmin();
     error InvalidWeights();
+    error NoRewards();
 }

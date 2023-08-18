@@ -112,28 +112,29 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
     }
 
     /// @inheritdoc IScoreGauge
-    function depositRewards(uint256 _amount) external nonReentrant {
+    function depositRewards(uint256 _epoch, uint256 _amount) external nonReentrant {
         if (msg.sender != address(minter)) revert NotMinter();
 
-        epochInfo[controller.epoch()].rewards += _amount;
+        epochInfo[_epoch].rewards += _amount;
 
         emit DepositRewards(_amount);
     }
 
     /// @inheritdoc IScoreGauge
-    function claim(uint256 _epoch) external nonReentrant returns (uint256 _userReward) {
+    function claim(uint256 _epoch, address _receiver) external nonReentrant returns (uint256 _userReward) {
         if (_epoch >= IGaugeController(controller).epoch()) revert InvalidEpoch();
 
         EpochInfo storage _epochInfo = epochInfo[_epoch];
         if (_epochInfo.claimed[msg.sender]) revert AlreadyClaimed();
 
         _userReward = _claimableRewards(_epoch, msg.sender);
+        if (_userReward == 0) revert NoRewards();
 
         _epochInfo.claimed[msg.sender] = true;
 
-        IERC20(token).safeTransfer(msg.sender, _userReward);
+        IERC20(token).safeTransfer(_receiver, _userReward);
 
-        emit Claim(_epoch, _userReward, msg.sender);
+        emit Claim(_epoch, _userReward, msg.sender, _receiver);
     }
 
     /// @inheritdoc IScoreGauge
@@ -196,8 +197,8 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
         EpochInfo storage _epochInfo = epochInfo[_epoch];
         if (_epochInfo.claimed[_user]) return 0;
 
-        uint256 _userProfit = _epochInfo.userPerformance[msg.sender].profit;
-        uint256 _userVolumeGenerated = _epochInfo.userPerformance[msg.sender].volumeGenerated;
+        uint256 _userProfit = _epochInfo.userPerformance[_user].profit;
+        uint256 _userVolumeGenerated = _epochInfo.userPerformance[_user].volumeGenerated;
 
         uint256 _userScore = ((_userProfit * _epochInfo.profitWeight + _userVolumeGenerated * _epochInfo.volumeWeight) / _BASIS_POINTS_DIVISOR);
         uint256 _userScoreShare = _userScore * _PRECISION / _epochInfo.totalScore;

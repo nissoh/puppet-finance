@@ -331,12 +331,6 @@ interface IOrchestrator {
     /// @param _route The address of the Route
     function rescueRouteFunds(uint256 _amount, address _token, address _receiver, address _route) external;
 
-    /// @notice The ```setTraderWhitelist``` function is called by the Authority to set a Trader's whitelist status
-    /// @dev allows a Trader to be a smart contract
-    /// @param _trader The address of the Trader
-    /// @param _isWhitelisted The boolean value of the whitelist status
-    function setTraderWhitelist(address _trader, bool _isWhitelisted) external;
-
     /// @notice The ```setMultiSubscriber``` function is called by the Authority to set the MultiSubscriber address
     /// @param _multiSubscriber The address of the new MultiSubscriber
     function serMultiSubscriber(address _multiSubscriber) external; 
@@ -410,7 +404,6 @@ interface IOrchestrator {
     event SetKeeper(address keeper);
     event SetScoreGauge(address scoreGauge);
     event RescueRouteFunds(uint256 amount, address token, address indexed receiver, address indexed route);
-    event SetTraderWhitelist(address trader, bool isWhitelisted);
     event SetMultiSubscriber(address multiSubscriber);
 
     // ============================================================================================
