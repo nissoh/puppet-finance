@@ -28,13 +28,19 @@ pragma solidity 0.8.19;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import {IRevenueDistributer} from "src/interfaces/IRevenueDistributer.sol";
 
+import {VotingEscrow} from "src/token/VotingEscrow.sol";
+
 contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
 
     using SafeERC20 for IERC20;
+
+    using SafeCast for uint256;
+    using SafeCast for int256;
 
     uint256 constant WEEK = 7 * 86400;
     uint256 constant TOKEN_CHECKPOINT_DEADLINE = 86400;
@@ -83,55 +89,48 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
     }
 
     // ============================================================================================
+    // Modifiers
+    // ============================================================================================
+
+    /// @notice Modifier that ensures the caller is the contract's Admin
+    modifier onlyAdmin() {
+        if (msg.sender != admin) revert NotAdmin();
+        _;
+    }
+
+    // ============================================================================================
     // External Functions
     // ============================================================================================
 
     // View functions
 
-    /// @notice Get the vePUPPET balance for `_user` at `_timestamp`
-    /// @param _user Address to query balance for
-    /// @param _timestamp Epoch time
-    /// @return uint256 vePUPPET balance
-    function ve_for_at(address _user, uint256 _timestamp) external view returns (uint256) {
+    /// @inheritdoc IRevenueDistributer
+    function veForAt(address _user, uint256 _timestamp) external view returns (uint256) {
         address _ve = voting_escrow;
-        uint256 _max_user_epoch = IVotingEscrow(_ve).user_point_epoch(_user);
+        uint256 _max_user_epoch = VotingEscrow(_ve).userPointEpoch(_user);
         uint256 _epoch = _find_timestamp_user_epoch(_ve, _user, _timestamp, _max_user_epoch);
-        IVotingEscrow.Point memory pt = IVotingEscrow(_ve).user_point_history(_user, _epoch);
+        Point memory pt = Point(0, 0, 0, 0);
+        (pt.bias, pt.slope, pt.ts,) = VotingEscrow(_ve).userPointHistory(_user, _epoch);
 
-        return uint256(int128(pt.bias) - pt.slope * int128(_timestamp - pt.ts)); // todo - safecast
-        //     return convert(max(pt.bias - pt.slope * convert(_timestamp - pt.ts, int128), 0), uint256)
+        return int256(pt.bias - pt.slope).toUint256() * _timestamp - pt.ts;
     }
 
     // Mutated functions
 
-    /// @notice Update the token checkpoint
-    /// @dev Calculates the total number of tokens to be distributed in a given week.
-    ///      During setup for the initial distribution this function is only callable
-    ///      by the contract owner. Beyond initial distro, it can be enabled for anyone
-    ///      to call.
-    function checkpoint_token() external {
+    /// @inheritdoc IRevenueDistributer
+    function checkpointToken() external {
         if (msg.sender != admin && !(can_checkpoint_token && block.timestamp > last_token_time + TOKEN_CHECKPOINT_DEADLINE)) revert NotAuthorized();
         _checkpoint_token();
     }
 
-    /// @notice Update the veCRV total supply checkpoint
-    /// @dev The checkpoint is also updated by the first claimant each
-    ///      new epoch week. This function may be called independently
-    ///      of a claim, to reduce claiming gas costs.
-    function checkpoint_total_supply() external {
+    /// @inheritdoc IRevenueDistributer
+    function checkpointTotalSupply() external {
         _checkpoint_total_supply();
     }
 
-    /// @notice Claim fees for `_addr`
-    /// @dev Each call to claim look at a maximum of 50 user veCRV points.
-    ///      For accounts with many veCRV related actions, this function
-    ///      may need to be called more than once to claim all available
-    ///      fees. In the `Claimed` event that fires, if `claim_epoch` is
-    ///      less than `max_epoch`, the account may claim again.
-    /// @param _addr Address to claim fees for
-    /// @return uint256 Amount of fees claimed in the call
+    /// @inheritdoc IRevenueDistributer
     function claim(address _addr) external nonReentrant returns (uint256) {
-        if (is_killed) revert Killed();
+        if (is_killed) revert Dead();
 
         if (block.timestamp >= time_cursor) _checkpoint_total_supply();
 
@@ -154,15 +153,9 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
         return _amount;
     }
 
-    /// @notice Make multiple fee claims in a single call
-    /// @dev Used to claim for many accounts at once, or to make
-    ///      multiple claims for the same address when that address
-    ///      has significant veCRV history
-    /// @param _receivers List of addresses to claim for. Claiming
-    ///                   terminates at the first `ZERO_ADDRESS`.
-    /// @return bool success
-    function claim_many(address[20] calldata _receivers) external nonReentrant returns (bool) {
-        if (is_killed) revert Killed();
+    /// @inheritdoc IRevenueDistributer
+    function claimMany(address[20] calldata _receivers) external nonReentrant returns (bool) {
+        if (is_killed) revert Dead();
 
         if (block.timestamp >= time_cursor) _checkpoint_total_supply();
 
@@ -180,7 +173,7 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
 
         for (uint256 i = 0; i < 20; i++) {
             address _addr = _receivers[i];
-            if (_addr == ZERO_ADDRESS) {
+            if (_addr == address(0)) {
                 break;
             }
 
@@ -198,16 +191,15 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
         return true;
     }
 
-    /// @notice Commit transfer of ownership
-    /// @param _addr New admin address
-    function commit_admin(address _addr) external onlyAdmin {
+    /// @inheritdoc IRevenueDistributer
+    function commitAdmin(address _addr) external onlyAdmin {
         future_admin = _addr;
 
         emit CommitAdmin(_addr);
     }
 
-    /// @notice Apply transfer of ownership
-    function apply_admin() external onlyAdmin {
+    /// @inheritdoc IRevenueDistributer
+    function applyAdmin() external onlyAdmin {
         if (future_admin == address(0)) revert ZeroAddress();
 
         admin = future_admin;
@@ -215,30 +207,26 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
         emit ApplyAdmin(future_admin);
     }
 
-    /// @notice Toggle permission for checkpointing by any account
-    function toggle_allow_checkpoint_token() external onlyAdmin {
+    /// @inheritdoc IRevenueDistributer
+    function toggleAllowCheckpointToken() external onlyAdmin {
         bool _flag = !can_checkpoint_token;
         can_checkpoint_token = _flag;
 
         emit ToggleAllowCheckpointToken(_flag);
     }
 
-    /// @notice Kill the contract
-    /// @dev Killing transfers the entire 3CRV balance to the emergency return address
-    ///      and blocks the ability to claim or burn. The contract cannot be unkilled.
-    function kill_me() external onlyAdmin {
+    /// @inheritdoc IRevenueDistributer
+    function killMe() external onlyAdmin {
         is_killed = true;
 
         address _token = token;
         IERC20(_token).safeTransfer(emergency_return, IERC20(_token).balanceOf(address(this)));
 
-        emit Kill();
+        emit Killed();
     }
 
-    /// @notice Recover ERC20 tokens from this contract
-    /// @dev Tokens are sent to the emergency return address.
-    /// @return bool success
-    function recover_balance() external onlyAdmin returns (bool) {
+    /// @inheritdoc IRevenueDistributer
+    function recoverBalance() external onlyAdmin returns (bool) {
         address _token = token;
         uint256 _amount = IERC20(_token).balanceOf(address(this));
         IERC20(_token).safeTransfer(emergency_return, _amount);
@@ -267,7 +255,8 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
                 break;
             }
             uint256 _mid = (_min + _max + 2) / 2;
-            Point memory pt = IVotingEscrow(_ve).user_point_history(_user, _mid);
+            Point memory pt = Point(0, 0, 0, 0);
+            (pt.bias, pt.slope, pt.ts, pt.blk) = VotingEscrow(_ve).userPointHistory(_user, _mid);
             if (pt.ts <= _timestamp) {
                 _min = _mid;
             } else {
@@ -313,15 +302,16 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
         emit CheckpointToken(block.timestamp, to_distribute);
     }
 
-    function _find_timestamp_epoch(address _ve, uint256 _timestamp) internal returns (uint256) {
+    function _find_timestamp_epoch(address _ve, uint256 _timestamp) internal view returns (uint256) {
         uint256 _min = 0;
-        uint256 _max = IVotingEscrow(_ve).epoch();
+        uint256 _max = VotingEscrow(_ve).epoch();
         for (uint256 i = 0; i < 128; i++) {
             if (_min >= _max) {
                 break;
             }
             uint256 _mid = (_min + _max + 2) / 2;
-            Point memory pt = IVotingEscrow(_ve).point_history(_mid);
+            Point memory pt = Point(0, 0, 0, 0);
+            (pt.bias, pt.slope, pt.ts, pt.blk) = VotingEscrow(_ve).pointHistory(_mid);
             if (pt.ts <= _timestamp) {
                 _min = _mid;
             } else {
@@ -333,26 +323,25 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
     }
 
     function _checkpoint_total_supply() internal {
-        uint256 _ve = voting_escrow;
+        address _ve = voting_escrow;
         uint256 _t = time_cursor;
         uint256 _rounded_timestamp = block.timestamp / WEEK * WEEK;
-        IVotingEscrow(_ve).checkpoint();
+        VotingEscrow(_ve).checkpoint();
 
         for (uint256 i = 0; i < 20; i++) {
             if (_t > _rounded_timestamp) {
                 break;
             } else {
                 uint256 epoch = _find_timestamp_epoch(_ve, _t);
-                Point memory _pt = IVotingEscrow(_ve).point_history(epoch);
+                Point memory _pt = Point(0, 0, 0, 0);
+                (_pt.bias, _pt.slope, _pt.ts, _pt.blk) = VotingEscrow(_ve).pointHistory(epoch);
                 int128 _dt = 0;
                 if (_t > _pt.ts) {
                     // If the point is at 0 epoch, it can actually be earlier than the first deposit
                     // Then make dt 0
-                    _dt = int128(_t - _pt.ts); // todo - safecast
-                    // dt = convert(t - pt.ts, int128)
+                    _dt = int256(_t - _pt.ts).toInt128();
                 }
-                ve_supply[_t] = uint256(int128(_pt.bias) - _pt.slope * _dt); // todo - safecast
-                // self.ve_supply[t] = convert(max(pt.bias - pt.slope * dt, 0), uint256)
+                ve_supply[_t] = int256(_pt.bias - _pt.slope * _dt).toUint256();
             }
             _t += WEEK;
         }
@@ -365,7 +354,7 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
         uint256 _user_epoch = 0;
         uint256 _to_distribute = 0;
 
-        uint256 _max_user_epoch = IVotingEscrow(_ve).user_point_epoch(_addr);
+        uint256 _max_user_epoch = VotingEscrow(_ve).userPointEpoch(_addr);
         uint256 _start_time = start_time;
 
         if (_max_user_epoch == 0) {
@@ -385,7 +374,13 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
             _user_epoch = 1;
         }
 
-        Point memory _user_point = IVotingEscrow(_ve).user_point_history(_addr, _user_epoch);
+        Point memory _user_point = Point(0, 0, 0, 0);
+        (
+            _user_point.bias,
+            _user_point.slope,
+            _user_point.ts,
+            _user_point.blk
+        ) = VotingEscrow(_ve).userPointHistory(_addr, _user_epoch);
 
         if (_week_cursor == 0) {
             _week_cursor = (_user_point.ts + WEEK - 1) / WEEK * WEEK;
@@ -412,15 +407,18 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
                 if (_user_epoch > _max_user_epoch) {
                     _user_point = Point(0, 0, 0, 0);
                 } else {
-                    _user_point = IVotingEscrow(_ve).user_point_history(_addr, _user_epoch);
+                    (
+                        _user_point.bias,
+                        _user_point.slope,
+                        _user_point.ts,
+                        _user_point.blk
+                     ) = VotingEscrow(_ve).userPointHistory(_addr, _user_epoch);
                 }
             } else {
                 // Calc
                 // + i * 2 is for rounding errors
-                int128 dt = convert(_week_cursor - _old_user_point.ts, int128); // todo - safeCast
-                //             dt: int128 = convert(week_cursor - old_user_point.ts, int128)
-                uint256 balance_of = convert(max(_old_user_point.bias - dt * _old_user_point.slope, 0), uint256); // todo - safeCast
-                //             balance_of: uint256 = convert(max(old_user_point.bias - dt * old_user_point.slope, 0), uint256)
+                int128 dt = int256(_week_cursor - _old_user_point.ts).toInt128();
+                uint256 balance_of = max(int256(_old_user_point.bias - dt * _old_user_point.slope).toUint256(), 0);
                 if (balance_of == 0 && _user_epoch > _max_user_epoch) {
                     break;
                 }
@@ -432,12 +430,20 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
             }
         }
 
-        user_epoch = min(_max_user_epoch, _user_epoch - 1);
+        _user_epoch = min(_max_user_epoch, _user_epoch - 1);
         user_epoch_of[_addr] = _user_epoch;
         time_cursor_of[_addr] = _week_cursor;
 
         emit Claimed(_addr, _to_distribute, _user_epoch, _max_user_epoch);
 
         return _to_distribute;
+    }
+
+    function min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
+    }
+
+    function max(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a > b ? a : b;
     }
 }
