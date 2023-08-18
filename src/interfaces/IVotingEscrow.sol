@@ -7,3 +7,4 @@ interface IVotingEscrow {
 
         function lockedEnd(address addr) external view returns (uint256);
 }
+// todo finish this
