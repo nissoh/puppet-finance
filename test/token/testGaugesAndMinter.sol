@@ -16,6 +16,7 @@ import {VotingEscrow} from "src/token/VotingEscrow.sol";
 import {GaugeController} from "src/token/GaugeController.sol";
 import {Minter} from "src/token/Minter.sol";
 import {ScoreGaugeV1} from "src/token/ScoreGaugeV1.sol";
+import {RevenueDistributer} from "src/token/RevenueDistributer.sol";
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
@@ -44,6 +45,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
     ScoreGaugeV1 public scoreGauge1V1;
     ScoreGaugeV1 public scoreGauge2V1;
     ScoreGaugeV1 public scoreGauge3V1;
+    RevenueDistributer public revenueDistributer;
 
     function setUp() public {
 
@@ -72,6 +74,9 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         scoreGauge1V1 = new ScoreGaugeV1(owner, address(minterContract), address(orchestratorMock));
         scoreGauge2V1 = new ScoreGaugeV1(owner, address(minterContract), address(orchestratorMock));
         scoreGauge3V1 = new ScoreGaugeV1(owner, address(minterContract), address(orchestratorMock));
+
+        uint256 _startTime = block.timestamp; // https://www.unixtimestamp.com/index.php?ref=theredish.com%2Fweb (1600300800) // todo - calc next Thursday at 00:00:00 UTC
+        revenueDistributer = new RevenueDistributer(address(votingEscrow), _startTime, _weth, owner, owner);
 
         vm.stopPrank();
 
@@ -189,6 +194,10 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         uint256 _bobClaimedRewards = _claimForUser(bob);
         uint256 _yossiClaimedRewards = _claimForUser(yossi);
         _postClaimRewardsAsserts(_aliceClaimedRewards, _bobClaimedRewards, _yossiClaimedRewards);
+
+        // DEPOSIT REVENUE (to revenueDistributer)
+        _depositToRevenueDistributer();
+        _claimRevenueDistributerRewards();
 
         // VOTE FOR 2nd EPOCH (gauge2 gets all rewards) (we vote immediately after minting, if we wait a few days, votes will be valid for 3rd epoch)
         _preVote2ndEpochAsserts();
@@ -807,5 +816,50 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertApproxEqAbs(puppetERC20.balanceOf(address(scoreGauge1V1)), 0, 1e5, "_postClaimRewardsAsserts: E0");
         assertEq(_aliceClaimedRewards, _bobClaimedRewards, "_postClaimRewardsAsserts: E1");
         assertEq(_aliceClaimedRewards, _yossiClaimedRewards, "_postClaimRewardsAsserts: E2");
+    }
+
+    function _depositToRevenueDistributer() internal {
+        _dealERC20(_weth, owner, 100 ether);
+
+        assertEq(IERC20(_weth).balanceOf(address(revenueDistributer)), 0, "_depositToRevenueDistributer: E0");
+        revenueDistributer.burn();
+        assertEq(IERC20(_weth).balanceOf(address(revenueDistributer)), 0, "_depositToRevenueDistributer: E1");
+        assertEq(revenueDistributer.totalReceived(), 0, "_depositToRevenueDistributer: E2");
+
+        _dealERC20(_weth, address(revenueDistributer), 0.1 ether);
+        vm.startPrank(owner);
+        revenueDistributer.checkpointToken(); // todo
+        revenueDistributer.toggleAllowCheckpointToken();
+        IERC20(_weth).approve(address(revenueDistributer), 100 ether);
+        revenueDistributer.burn();
+        vm.stopPrank();
+
+        assertEq(IERC20(_weth).balanceOf(address(revenueDistributer)), 100 ether, "_depositToRevenueDistributer: E3");
+        assertEq(revenueDistributer.totalReceived(), 100 ether, "_depositToRevenueDistributer: E4");
+    }
+
+    function _claimRevenueDistributerRewards() internal {
+        uint256 _aliceBalanceBefore = IERC20(_weth).balanceOf(alice);
+        uint256 _bobBalanceBefore = IERC20(_weth).balanceOf(bob);
+        uint256 _yossiBalanceBefore = IERC20(_weth).balanceOf(yossi);
+        uint256 _lastTokenBalanceBefore = revenueDistributer.tokenLastBalance();
+        uint256 _rewardsForUser = 100 ether / uint256(3);
+        
+        // claim for alice
+        skip(2 weeks);
+        vm.startPrank(alice);
+        address[20] memory _users;
+        for (uint256 i = 0; i < 20; i++) {
+            _users[i] = alice;
+        }
+        revenueDistributer.claimMany(_users);
+        vm.stopPrank();
+
+        assertEq(IERC20(_weth).balanceOf(alice), _aliceBalanceBefore + _rewardsForUser, "_claimRevenueDistributerRewards: E0");
+        assertEq(revenueDistributer.tokenLastBalance(), _lastTokenBalanceBefore - _rewardsForUser, "_claimRevenueDistributerRewards: E1");
+    }
+
+    function _dealERC20(address _token, address _recipient, uint256 _amount) internal {
+        deal({ token: address(_token), to: _recipient, give: _amount});
     }
 }
