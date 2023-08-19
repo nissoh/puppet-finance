@@ -1,16 +1,39 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.19;
+
+// ==============================================================
+//  _____                 _      _____ _                        |
+// |  _  |_ _ ___ ___ ___| |_   |   __|_|___ ___ ___ ___ ___    |
+// |   __| | | . | . | -_|  _|  |   __| |   | .'|   |  _| -_|   |
+// |__|  |___|  _|  _|___|_|    |__|  |_|_|_|__,|_|_|___|___|   |
+//           |_| |_|                                            |
+// ==============================================================
+// ======================== VotingEscrow ========================
+// ==============================================================
+
+// Modified fork from Curve Finance: https://github.com/curvefi 
+// @title Voting Escrow
+// @author Curve Finance
+// @license MIT
+// @notice Votes have a weight depending on time, so that users are committed to the future of (whatever they are voting for)
+// @dev Vote weight decays linearly over time. Lock time cannot be more than `MAXTIME` (4 years).
+
+// Puppet Finance: https://github.com/GMX-Blueberry-Club/puppet-contracts
+
+// Primary Author
+// johnnyonline: https://github.com/johnnyonline
+
+// Reviewers
+// itburnz: https://github.com/nissoh
+
+// ==============================================================
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-// @title Voting Escrow
-// @author Curve Finance
-// @license MIT
-// @notice Votes have a weight depending on time, so that users are committed to the future of (whatever they are voting for)
-// @dev Vote weight decays linearly over time. Lock time cannot be more than `MAXTIME` (4 years).
+import {IVotingEscrow} from "src/interfaces/IVotingEscrow.sol";
 
 // Voting escrow to have time-weighted votes
 // Votes have a weight depending on time, so that users are committed
@@ -26,37 +49,12 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 //       maxtime (4 years?)
 
 // todo - add (1) auto-max-relock
-contract VotingEscrow is ReentrancyGuard {
+contract VotingEscrow is ReentrancyGuard, IVotingEscrow {
 
     using SafeERC20 for IERC20;
 
     using SafeCast for uint256;
     using SafeCast for int256;
-
-    // structs
-
-    struct Point {
-        int128 bias;
-        int128 slope; // - dweight / dt
-        uint256 ts;
-        uint256 blk; // block
-    }
-    // We cannot really do block numbers per se b/c slope is per time, not per block
-    // and per block could be fairly bad b/c Ethereum changes blocktimes.
-    // What we can do is to extrapolate ***At functions
-
-    struct LockedBalance {
-        int128 amount;
-        uint256 end;
-    }
-
-    // events
-
-    event CommitOwnership(address admin);
-    event ApplyOwnership(address admin);
-    event Deposit(address provider, uint256 value, uint256 locktime, int128 type_, uint256 ts);
-    event Withdraw(address provider, uint256 value, uint256 ts);
-    event Supply(uint256 prevSupply, uint256 supply);
 
     // settings
 
@@ -66,12 +64,14 @@ contract VotingEscrow is ReentrancyGuard {
 
     bool public unlocked;
 
-    address public token;
     address public admin; // Can and will be a smart contract
     address public futureAdmin;
 
+    address public immutable token;
+
     uint256 public supply;
-    uint256 public decimals;
+
+    uint256 public immutable decimals;
 
     // voting weights variables
 
@@ -128,13 +128,21 @@ contract VotingEscrow is ReentrancyGuard {
     // Modifiers
     // ============================================================================================
 
+    /// @notice Ensures that the caller is an EOA or a whitelisted smart contract
     modifier onlyUserOrWhitelist() {
-        if (msg.sender != tx.origin) require(contractsWhitelist[msg.sender], "Smart contract not allowed");
+        if (msg.sender != tx.origin) if (!contractsWhitelist[msg.sender]) revert NotWhitelisted();
         _;
     }
 
+    /// @notice Ensures that the contract is not locked
     modifier notUnlocked() {
-        require(!unlocked, "unlocked globally");
+        if (unlocked) revert Unlocked();
+        _;
+    }
+
+    /// @notice Ensures the caller is the contract's Admin
+    modifier onlyAdmin() {
+        if (msg.sender != admin) revert NotAdmin();
         _;
     }
 
@@ -144,25 +152,18 @@ contract VotingEscrow is ReentrancyGuard {
 
     // view functions
 
-    /// @notice Get the most recently recorded rate of voting power decrease for `addr`
-    /// @param _addr Address of the user wallet
-    /// @return Value of the slope
+    /// @inheritdoc IVotingEscrow
     function getLastUserSlope(address _addr) external view returns (int128) {
         uint256 _uepoch = userPointEpoch[_addr];
         return userPointHistory[_addr][_uepoch].slope;
     }
 
-    /// @notice Get the timestamp for checkpoint `_idx` for `_addr`
-    /// @param _addr User wallet address
-    /// @param _idx User epoch number
-    /// @return Epoch time of the checkpoint
+    /// @inheritdoc IVotingEscrow
     function userPointHistoryTs(address _addr, uint256 _idx) external view returns (uint256) {
         return userPointHistory[_addr][_idx].ts;
     }
 
-    /// @notice Get timestamp when `_addr`'s lock finishes
-    /// @param _addr User wallet
-    /// @return Epoch time of the lock end
+    /// @inheritdoc IVotingEscrow
     function lockedEnd(address _addr) external view returns (uint256) {
         return locked[_addr].end;
     }
@@ -170,40 +171,38 @@ contract VotingEscrow is ReentrancyGuard {
     // NOTE: The following ERC20/minime-compatible methods are not real balanceOf and supply!
     // They measure the weights for the purpose of voting, so they don't represent real coins.
 
-    function balanceOfAtT(address addr, uint256 _t) external view returns (uint256) {
-        return _balanceOf(addr, _t);
+    /// @inheritdoc IVotingEscrow
+    function balanceOfAtT(address _addr, uint256 _t) external view returns (uint256) {
+        return _balanceOf(_addr, _t);
     }
 
-    function balanceOf(address addr) external view returns (uint256) {
-        return _balanceOf(addr, block.timestamp);
+    /// @inheritdoc IVotingEscrow
+    function balanceOf(address _addr) external view returns (uint256) {
+        return _balanceOf(_addr, block.timestamp);
     }
 
-    /// @notice Measure voting power of `addr` at block height `_block`
-    /// @dev Adheres to MiniMe `balanceOfAt` interface: https://github.com/Giveth/minime
-    /// @param addr User's wallet address
-    /// @param _block Block to calculate the voting power at
-    /// @return Voting power
-    function balanceOfAt(address addr, uint256 _block) external view returns (uint256) {
+    /// @inheritdoc IVotingEscrow
+    function balanceOfAt(address _addr, uint256 _block) external view returns (uint256) {
         // Copying and pasting totalSupply code because Vyper cannot pass by
         // reference yet
         require(_block <= block.number);
 
         // Binary search
         uint256 _min = 0;
-        uint256 _max = userPointEpoch[addr];
+        uint256 _max = userPointEpoch[_addr];
         for (uint256 i = 0; i < 128; ++i) { // Will be always enough for 128-bit numbers
             if (_min >= _max) {
                 break;
             }
             uint256 _mid = (_min + _max + 1) / 2;
-            if (userPointHistory[addr][_mid].blk <= _block) {
+            if (userPointHistory[_addr][_mid].blk <= _block) {
                 _min = _mid;
             } else {
                 _max = _mid - 1;
             }
         }
 
-        Point memory upoint = userPointHistory[addr][_min];
+        Point memory upoint = userPointHistory[_addr][_min];
 
         uint256 _maxEpoch = epoch;
         uint256 _epoch = _findBlockEpoch(_block, _maxEpoch);
@@ -231,17 +230,17 @@ contract VotingEscrow is ReentrancyGuard {
         }
     }
 
-    /// @notice Calculate total voting power
-    /// @dev Adheres to the ERC20 `totalSupply` interface for Aragon compatibility
-    /// @return Total voting power
+    /// @inheritdoc IVotingEscrow
     function totalSupply() external view returns (uint256) {
         return _totalSupply(block.timestamp);
     }
 
+    /// @inheritdoc IVotingEscrow
     function totalSupplyAtT(uint256 _t) external view returns (uint256) {
         return _totalSupply(_t);
     }
 
+    /// @inheritdoc IVotingEscrow
     function totalSupplyAt(uint256 _block) external view returns (uint256) {
         require(_block <= block.number);
 
@@ -267,22 +266,18 @@ contract VotingEscrow is ReentrancyGuard {
 
     // mutated functions
 
-    /// @notice Record global data to checkpoint
+    /// @inheritdoc IVotingEscrow
     function checkpoint() external notUnlocked {
         _checkpoint(address(0), LockedBalance(0, 0), LockedBalance(0, 0));
     }
 
-    /// @notice Deposit `_value` tokens for `_addr` and add to the lock
-    /// @dev Anyone (even a smart contract) can deposit for someone else, but 
-    /// cannot extend their locktime and deposit for a brand new user
-    /// @param _addr User's wallet address
-    /// @param _value Amount to add to user's lock
+    /// @inheritdoc IVotingEscrow
     function depositFor(address _addr, uint256 _value) external nonReentrant notUnlocked {
         LockedBalance memory _locked = locked[_addr];
 
-        require(_value > 0, "need non-zero value");
-        require(_locked.amount > 0, "No existing lock found");
-        require(_locked.end > block.timestamp, "Cannot add to expired lock. Withdraw");
+        if (_value == 0) revert ZeroValue();
+        if (_locked.amount <= 0) revert NoLockFound();
+        if (_locked.end <= block.timestamp) revert LockExpired();
 
         _depositFor(_addr, _value, 0, locked[_addr], _DEPOSIT_FOR_TYPE);
     }
@@ -291,50 +286,47 @@ contract VotingEscrow is ReentrancyGuard {
     /// @param _value Amount to deposit
     /// @param _unlockTime Epoch time when tokens unlock, rounded down to whole weeks
     function createLock(uint256 _value, uint256 _unlockTime) external onlyUserOrWhitelist nonReentrant notUnlocked {
-        require(_value > 0, "need non-zero value");
-        require(locked[msg.sender].amount == 0, "Withdraw old tokens first");
+        if (_value == 0) revert ZeroValue();
+        if (locked[msg.sender].amount != 0) revert WithdrawOldTokensFirst();
 
         _unlockTime = (_unlockTime / _WEEK) * _WEEK; // Locktime is rounded down to weeks
-        require(_unlockTime > block.timestamp, "Can only lock until time in the future");
-        require(_unlockTime <= block.timestamp + MAXTIME, "Voting lock can be 4 years max");
+        if (_unlockTime <= block.timestamp) revert LockTimeInThePast();
+        if (_unlockTime > block.timestamp + MAXTIME) revert LockTimeTooLong();
 
         _depositFor(msg.sender, _value, _unlockTime, locked[msg.sender], _CREATE_LOCK_TYPE);
     }
 
-    /// @notice Deposit `_value` additional tokens for `msg.sender` without modifying the unlock time
-    /// @param _value Amount of tokens to deposit and add to the lock
+    /// @inheritdoc IVotingEscrow
     function increaseAmount(uint256 _value) external onlyUserOrWhitelist nonReentrant notUnlocked {
         LockedBalance memory _locked = locked[msg.sender];
 
-        require(_value > 0, "need non-zero value");
-        require(_locked.amount > 0, "No existing lock found");
-        require(_locked.end > block.timestamp, "Cannot add to expired lock. Withdraw");
+        if (_value == 0) revert ZeroValue();
+        if (_locked.amount <= 0) revert NoLockFound();
+        if (_locked.end <= block.timestamp) revert LockExpired(); // Cannot add to expired lock. Withdraw
 
         _depositFor(msg.sender, _value, 0, locked[msg.sender], _INCREASE_LOCK_AMOUNT);
     }
 
-    /// @notice Extend the unlock time for `msg.sender` to `_unlockTime`
-    /// @param _unlockTime New epoch time for unlocking
+    /// @inheritdoc IVotingEscrow
     function increaseUnlockTime(uint256 _unlockTime) external onlyUserOrWhitelist nonReentrant notUnlocked {
         LockedBalance memory _locked = locked[msg.sender];
 
-        require(_locked.amount > 0, "No existing lock found");
-        require(_locked.end > block.timestamp, "Cannot add to expired lock. Withdraw");
+        if (_locked.amount <= 0) revert NoLockFound();
+        if (_locked.end <= block.timestamp) revert LockExpired(); // Cannot add to expired lock. Withdraw
 
         _unlockTime = (_unlockTime / _WEEK) * _WEEK; // Locktime is rounded down to weeks
-        require(_unlockTime > _locked.end, "Can only increase lock duration");
-        require(_unlockTime <= block.timestamp + MAXTIME, "Voting lock can be 4 years max");
+        if (_unlockTime <= block.timestamp) revert LockTimeInThePast();
+        if (_unlockTime > block.timestamp + MAXTIME) revert LockTimeTooLong();
 
         _depositFor(msg.sender, 0, _unlockTime, locked[msg.sender], _INCREASE_UNLOCK_TIME);
     }
 
-    /// @notice Withdraw all tokens for `msg.sender`
-    /// @dev Only possible if the lock has expired
+    /// @inheritdoc IVotingEscrow
     function withdraw() external nonReentrant {
         LockedBalance memory _locked = locked[msg.sender];
 
-        require(_locked.amount > 0, "No existing lock found");
-        if (!unlocked) require(_locked.end <= block.timestamp, "The lock didn't expire");
+        if (_locked.amount <= 0) revert NoLockFound();
+        if (!unlocked) if (_locked.end > block.timestamp) revert LockNotExpired();
 
         uint256 value = int256(_locked.amount).toUint256();
 
@@ -353,40 +345,32 @@ contract VotingEscrow is ReentrancyGuard {
         emit Supply(_supplyBefore, _supplyBefore - value);
     }
 
-    /// @notice Transfer ownership of VotingEscrow contract to `addr`
-    /// @param addr Address to have ownership transferred to
-    function commitTransferOwnership(address addr) external {
-        require(msg.sender == admin, "dev: admin only");
-        futureAdmin = addr;
-        emit CommitOwnership(addr);
+    /// @inheritdoc IVotingEscrow
+    function commitTransferOwnership(address _addr) external onlyAdmin {
+        futureAdmin = _addr;
+        emit CommitOwnership(_addr);
     }
 
-    /// @notice Apply ownership transfer
-    function applyTransferOwnership() external {
-        require(msg.sender == admin, "dev: admin only");
+    /// @inheritdoc IVotingEscrow
+    function applyTransferOwnership() external onlyAdmin {
         address _admin = futureAdmin;
-        require(_admin != address(0), "dev: admin not set");
+        if (_admin == address(0)) revert ZeroAddress();
         admin = _admin;
         emit ApplyOwnership(_admin);
     }
 
-    /// @notice Add address to whitelist smart contract depositors `addr`
-    /// @param addr Address to be whitelisted
-    function addToWhitelist(address addr) external {
-        require(msg.sender == admin, "dev: admin only");
-        contractsWhitelist[addr] = true;
+    /// @inheritdoc IVotingEscrow
+    function addToWhitelist(address _addr) external onlyAdmin {
+        contractsWhitelist[_addr] = true;
     }
 
-    /// @notice Remove a smart contract address from whitelist
-    /// @param addr Address to be removed from whitelist
-    function removeFromWhitelist(address addr) external {
-        require(msg.sender == admin, "dev: admin only");
-        contractsWhitelist[addr] = false;
+    /// @inheritdoc IVotingEscrow
+    function removeFromWhitelist(address _addr) external onlyAdmin {
+        contractsWhitelist[_addr] = false;
     }
 
-    /// @notice Unlock all locked balances
-    function unlock() external {
-        require(msg.sender == admin, "dev: admin only");
+    /// @inheritdoc IVotingEscrow
+    function unlock() external onlyAdmin {
         unlocked = true;
     }
 

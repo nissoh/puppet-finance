@@ -126,6 +126,8 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         _referralCode = _refCode;
 
         ownerFunctionsDeadline = block.timestamp + 16 weeks;
+
+        multiSubscriber = address(0);
     }
 
     // ============================================================================================
@@ -258,10 +260,11 @@ contract Orchestrator is Auth, Base, IOrchestrator {
         PuppetInfo storage __puppetInfo = _puppetInfo[_puppet];
         EnumerableMap.AddressToUintMap storage _allowances = __puppetInfo.allowances;
 
+        address _route;
         uint256 _validCount = 0;
         uint256 _subscriptionCount = EnumerableMap.length(_allowances);
         for (uint256 i = 0; i < _subscriptionCount; i++) {
-            (address _route,) = EnumerableMap.at(_allowances, i);
+            (_route,) = EnumerableMap.at(_allowances, i);
             if (__puppetInfo.subscriptionExpiry[IRoute(_route).routeKey()] > block.timestamp) _validCount++;
         }
 
@@ -269,7 +272,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         uint256 j = 0;
         for (uint256 i = 0; i < _subscriptionCount; i++) {
-            (address _route,) = EnumerableMap.at(_allowances, i);
+            (_route,) = EnumerableMap.at(_allowances, i);
             if (__puppetInfo.subscriptionExpiry[IRoute(_route).routeKey()] > block.timestamp) {
                 _subscriptions[j] = _route;
                 j++;

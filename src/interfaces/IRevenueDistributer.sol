@@ -8,7 +8,7 @@ pragma solidity 0.8.19;
 // |__|  |___|  _|  _|___|_|    |__|  |_|_|_|__,|_|_|___|___|   |
 //           |_| |_|                                            |
 // ==============================================================
-// =========================== Puppet ===========================
+// ===================== IRevenueDistributer ====================
 // ==============================================================
 
 // Modified fork from Curve Finance: https://github.com/curvefi 
@@ -81,6 +81,10 @@ interface IRevenueDistributer {
     /// @return _success bool success
     function claimMany(address[20] calldata _receivers) external returns (bool _success);
 
+    /// @notice Receive `token` into the contract and trigger a token checkpoint
+    /// @return _success bool success
+    function burn() external returns (bool _success);
+
     /// @notice Commit transfer of ownership
     /// @param _addr New admin address
     function commitAdmin(address _addr) external;
@@ -105,12 +109,13 @@ interface IRevenueDistributer {
     // Events
     // ============================================================================================
 
+    event Burn(uint256 amount);
     event CommitAdmin(address admin);
     event ApplyAdmin(address admin);
-    event ToggleAllowCheckpointToken(bool toggle_flag);
+    event ToggleAllowCheckpointToken(bool toggleFlag);
     event CheckpointToken(uint256 time, uint256 tokens);
-    event Claimed(address indexed recipient, uint256 amount, uint256 claim_epoch, uint256 max_epoch);
-    event RecoverBalance(address _token, uint256 _amount);
+    event Claimed(address indexed recipient, uint256 amount, uint256 userEpoch, uint256 maxUserEpoch);
+    event RecoverBalance(address token, uint256 amount);
     event Killed();
 
     // ============================================================================================

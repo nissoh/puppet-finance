@@ -181,6 +181,9 @@ interface IGaugeController {
         event NewGaugeWeight(address gauge, uint256 time, uint256 weight, uint256 totalWeight);
         event VoteForGauge(uint256 time, address user, address gauge, uint256 weight);
         event NewGauge(address addr, int128 gaugeType, uint256 weight);
+        event InitializeEpoch(uint256 timestamp);
+        event AdvanceEpoch(uint256 currentEpoch);
+        event SetWeights(uint256 profitWeight, uint256 volumeWeight);
 
         // ============================================================================================
         // Errors

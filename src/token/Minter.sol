@@ -37,8 +37,8 @@ contract Minter is ReentrancyGuard, IMinter {
 
     mapping(uint256 => mapping(address => bool)) public minted; // epoch -> gauge -> hasMinted
 
-    IPuppet private _token;
-    IGaugeController private _controller;
+    IPuppet private immutable _token;
+    IGaugeController private immutable _controller;
 
     // ============================================================================================
     // Constructor

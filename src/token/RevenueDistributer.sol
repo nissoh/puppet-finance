@@ -8,7 +8,7 @@ pragma solidity 0.8.19;
 // |__|  |___|  _|  _|___|_|    |__|  |_|_|_|__,|_|_|___|___|   |
 //           |_| |_|                                            |
 // ==============================================================
-// =========================== Puppet ===========================
+// ===================== RevenueDistributer =====================
 // ==============================================================
 
 // Modified fork from Curve Finance: https://github.com/curvefi 
@@ -42,50 +42,50 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
     using SafeCast for uint256;
     using SafeCast for int256;
 
-    uint256 constant WEEK = 7 * 86400;
-    uint256 constant TOKEN_CHECKPOINT_DEADLINE = 86400;
+    uint256 public startTime;
+    uint256 public timeCursor;
+    mapping(address => uint256) public timeCursorOf;
+    mapping(address => uint256) public userEpochOf;
 
-    uint256 public start_time;
-    uint256 public time_cursor;
-    mapping(address => uint256) public time_cursor_of;
-    mapping(address => uint256) public user_epoch_of;
+    uint256 public lastTokenTime;
+    uint256[1000000000000000] public tokensPerWeek;
 
-    uint256 public last_token_time;
-    uint256[1000000000000000] public tokens_per_week;
-
-    address public voting_escrow;
+    address public votingEscrow;
     address public token;
-    uint256 public total_received;
-    uint256 public token_last_balance;
+    uint256 public totalReceived;
+    uint256 public tokenLastBalance;
 
-    uint256[1000000000000000] public ve_supply; // VE total supply at week bounds
+    uint256[1000000000000000] public veSupply; // VE total supply at week bounds
 
     address public admin;
-    address public future_admin;
-    bool public can_checkpoint_token;
-    address public emergency_return;
-    bool public is_killed;
+    address public futureAdmin;
+    bool public canCheckpointToken;
+    address public emergencyReturn;
+    bool public isKilled;
+
+    uint256 private constant _WEEK = 1 weeks;
+    uint256 private constant _TOKEN_CHECKPOINT_DEADLINE = 1 days;
 
     // ============================================================================================
     // Constructor
     // ============================================================================================
 
     /// @notice Contract constructor
-    /// @param _voting_escrow VotingEscrow contract address
-    /// @param _start_time Epoch time for fee distribution to start
+    /// @param _votingEscrow VotingEscrow contract address
+    /// @param _startTime Epoch time for fee distribution to start
     /// @param _token Fee token address (3CRV)
     /// @param _admin Admin address
-    /// @param _emergency_return Address to transfer `_token` balance to
+    /// @param _emergencyReturn Address to transfer `_token` balance to
     ///                          if this contract is killed
-    constructor(address _voting_escrow, uint256 _start_time, address _token, address _admin, address _emergency_return) {
-        uint256 t = _start_time / WEEK * WEEK;
-        start_time = t;
-        last_token_time = t;
-        time_cursor = t;
+    constructor(address _votingEscrow, uint256 _startTime, address _token, address _admin, address _emergencyReturn) {
+        uint256 t = _startTime / _WEEK * _WEEK;
+        startTime = t;
+        lastTokenTime = t;
+        timeCursor = t;
         token = _token;
-        voting_escrow = _voting_escrow;
+        votingEscrow = _votingEscrow;
         admin = _admin;
-        emergency_return = _emergency_return;
+        emergencyReturn = _emergencyReturn;
     }
 
     // ============================================================================================
@@ -106,9 +106,9 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
 
     /// @inheritdoc IRevenueDistributer
     function veForAt(address _user, uint256 _timestamp) external view returns (uint256) {
-        address _ve = voting_escrow;
-        uint256 _max_user_epoch = VotingEscrow(_ve).userPointEpoch(_user);
-        uint256 _epoch = _find_timestamp_user_epoch(_ve, _user, _timestamp, _max_user_epoch);
+        address _ve = votingEscrow;
+        uint256 _maxUserEpoch = VotingEscrow(_ve).userPointEpoch(_user);
+        uint256 _epoch = _findTimestampUserEpoch(_ve, _user, _timestamp, _maxUserEpoch);
         Point memory pt = Point(0, 0, 0, 0);
         (pt.bias, pt.slope, pt.ts,) = VotingEscrow(_ve).userPointHistory(_user, _epoch);
 
@@ -118,36 +118,36 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
     // Mutated functions
 
     /// @inheritdoc IRevenueDistributer
-    function checkpointToken() external {
-        if (msg.sender != admin && !(can_checkpoint_token && block.timestamp > last_token_time + TOKEN_CHECKPOINT_DEADLINE)) revert NotAuthorized();
-        _checkpoint_token();
+    function checkpointToken() external nonReentrant {
+        if (msg.sender != admin && !(canCheckpointToken && block.timestamp > lastTokenTime + _TOKEN_CHECKPOINT_DEADLINE)) revert NotAuthorized();
+        _checkpointToken();
     }
 
     /// @inheritdoc IRevenueDistributer
-    function checkpointTotalSupply() external {
-        _checkpoint_total_supply();
+    function checkpointTotalSupply() external nonReentrant {
+        _checkpointTotalSupply();
     }
 
     /// @inheritdoc IRevenueDistributer
     function claim(address _addr) external nonReentrant returns (uint256) {
-        if (is_killed) revert Dead();
+        if (isKilled) revert Dead();
 
-        if (block.timestamp >= time_cursor) _checkpoint_total_supply();
+        if (block.timestamp >= timeCursor) _checkpointTotalSupply();
 
-        uint256 _last_token_time = last_token_time;
+        uint256 _lastTokenTime = lastTokenTime;
 
-        if (can_checkpoint_token && block.timestamp > _last_token_time + TOKEN_CHECKPOINT_DEADLINE) {
-            _checkpoint_token();
-            _last_token_time = block.timestamp;
+        if (canCheckpointToken && block.timestamp > _lastTokenTime + _TOKEN_CHECKPOINT_DEADLINE) {
+            _checkpointToken();
+            _lastTokenTime = block.timestamp;
         }
 
-        _last_token_time = _last_token_time / WEEK * WEEK;
+        _lastTokenTime = _lastTokenTime / _WEEK * _WEEK;
 
-        uint256 _amount = _claim(_addr, voting_escrow, _last_token_time);
+        uint256 _amount = _claim(_addr, votingEscrow, _lastTokenTime);
         if (_amount != 0) {
             address _token = token;
             IERC20(_token).safeTransfer(_addr, _amount);
-            token_last_balance -= _amount;
+            tokenLastBalance -= _amount;
         }
 
         return _amount;
@@ -155,19 +155,19 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
 
     /// @inheritdoc IRevenueDistributer
     function claimMany(address[20] calldata _receivers) external nonReentrant returns (bool) {
-        if (is_killed) revert Dead();
+        if (isKilled) revert Dead();
 
-        if (block.timestamp >= time_cursor) _checkpoint_total_supply();
+        if (block.timestamp >= timeCursor) _checkpointTotalSupply();
 
-        uint256 _last_token_time = last_token_time;
+        uint256 _lastTokenTime = lastTokenTime;
 
-        if (can_checkpoint_token && block.timestamp > _last_token_time + TOKEN_CHECKPOINT_DEADLINE) {
-            _checkpoint_token();
-            _last_token_time = block.timestamp;
+        if (canCheckpointToken && block.timestamp > _lastTokenTime + _TOKEN_CHECKPOINT_DEADLINE) {
+            _checkpointToken();
+            _lastTokenTime = block.timestamp;
         }
 
-        _last_token_time = _last_token_time / WEEK * WEEK;
-        address _ve = voting_escrow;
+        _lastTokenTime = _lastTokenTime / _WEEK * _WEEK;
+        address _ve = votingEscrow;
         address _token = token;
         uint256 _total = 0;
 
@@ -177,7 +177,7 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
                 break;
             }
 
-            uint256 _amount = _claim(_addr, _ve, _last_token_time);
+            uint256 _amount = _claim(_addr, _ve, _lastTokenTime);
             if (_amount != 0) {
                 IERC20(_token).safeTransfer(_addr, _amount);
                 _total += _amount;
@@ -185,42 +185,63 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
         }
 
         if (_total != 0) {
-            token_last_balance -= _total;
+            tokenLastBalance -= _total;
         }
 
         return true;
     }
 
     /// @inheritdoc IRevenueDistributer
+    function burn() external returns (bool) {
+        if (isKilled) revert Dead();
+
+        address _token = token;
+        uint256 _amount = IERC20(_token).balanceOf(msg.sender);
+        if (_amount != 0) {
+            totalReceived += _amount;
+
+            IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+            if (canCheckpointToken && block.timestamp > lastTokenTime + _TOKEN_CHECKPOINT_DEADLINE) {
+                _checkpointToken();
+            }
+
+            emit Burn(_amount);
+        }
+
+        return true;
+    }
+
+
+    /// @inheritdoc IRevenueDistributer
     function commitAdmin(address _addr) external onlyAdmin {
-        future_admin = _addr;
+        futureAdmin = _addr;
 
         emit CommitAdmin(_addr);
     }
 
     /// @inheritdoc IRevenueDistributer
     function applyAdmin() external onlyAdmin {
-        if (future_admin == address(0)) revert ZeroAddress();
+        if (futureAdmin == address(0)) revert ZeroAddress();
 
-        admin = future_admin;
+        admin = futureAdmin;
 
-        emit ApplyAdmin(future_admin);
+        emit ApplyAdmin(futureAdmin);
     }
 
     /// @inheritdoc IRevenueDistributer
     function toggleAllowCheckpointToken() external onlyAdmin {
-        bool _flag = !can_checkpoint_token;
-        can_checkpoint_token = _flag;
+        bool _flag = !canCheckpointToken;
+        canCheckpointToken = _flag;
 
         emit ToggleAllowCheckpointToken(_flag);
     }
 
     /// @inheritdoc IRevenueDistributer
     function killMe() external onlyAdmin {
-        is_killed = true;
+        isKilled = true;
 
         address _token = token;
-        IERC20(_token).safeTransfer(emergency_return, IERC20(_token).balanceOf(address(this)));
+        IERC20(_token).safeTransfer(emergencyReturn, IERC20(_token).balanceOf(address(this)));
 
         emit Killed();
     }
@@ -229,7 +250,7 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
     function recoverBalance() external onlyAdmin returns (bool) {
         address _token = token;
         uint256 _amount = IERC20(_token).balanceOf(address(this));
-        IERC20(_token).safeTransfer(emergency_return, _amount);
+        IERC20(_token).safeTransfer(emergencyReturn, _amount);
 
         emit RecoverBalance(_token, _amount);
 
@@ -242,14 +263,14 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
 
     // View functions
 
-    function _find_timestamp_user_epoch(
+    function _findTimestampUserEpoch(
         address _ve,
         address _user,
         uint256 _timestamp,
-        uint256 _max_user_epoch
+        uint256 _maxUserEpoch
     ) internal view returns (uint256) {
         uint256 _min = 0;
-        uint256 _max = _max_user_epoch;
+        uint256 _max = _maxUserEpoch;
         for (uint256 i = 0; i < 128; i++) {
             if (_min >= _max) {
                 break;
@@ -269,40 +290,40 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
 
     // Mutated functions
 
-    function _checkpoint_token() internal {
-        uint256 token_balance = IERC20(token).balanceOf(address(this));
-        uint256 to_distribute = token_balance - token_last_balance;
-        token_last_balance = token_balance;
+    function _checkpointToken() internal {
+        uint256 _tokenBalance = IERC20(token).balanceOf(address(this));
+        uint256 _toDistribute = _tokenBalance - tokenLastBalance;
+        tokenLastBalance = _tokenBalance;
 
-        uint256 t = last_token_time;
-        uint256 since_last = block.timestamp - t;
-        last_token_time = block.timestamp;
-        uint256 this_week = t / WEEK * WEEK;
-        uint256 next_week = 0;
+        uint256 _t = lastTokenTime;
+        uint256 _sinceLast = block.timestamp - _t;
+        lastTokenTime = block.timestamp;
+        uint256 _thisWeek = _t / _WEEK * _WEEK;
+        uint256 _nextWeek = 0;
 
         for (uint256 i = 0; i < 20; i++) {
-            next_week = this_week + WEEK;
-            if (block.timestamp < next_week) {
-                if (since_last == 0 && block.timestamp == t) {
-                    tokens_per_week[this_week] += to_distribute;
+            _nextWeek = _thisWeek + _WEEK;
+            if (block.timestamp < _nextWeek) {
+                if (_sinceLast == 0 && block.timestamp == _t) {
+                    tokensPerWeek[_thisWeek] += _toDistribute;
                 } else {
-                    tokens_per_week[this_week] += to_distribute * (block.timestamp - t) / since_last;
+                    tokensPerWeek[_thisWeek] += _toDistribute * (block.timestamp - _t) / _sinceLast;
                 }
                 break;
             } else {
-                if (since_last == 0 && next_week == t) {
-                    tokens_per_week[this_week] += to_distribute;
+                if (_sinceLast == 0 && _nextWeek == _t) {
+                    tokensPerWeek[_thisWeek] += _toDistribute;
                 } else {
-                    tokens_per_week[this_week] += to_distribute * (next_week - t) / since_last;
+                    tokensPerWeek[_thisWeek] += _toDistribute * (_nextWeek - _t) / _sinceLast;
                 }
             }
-            t = next_week;
-            this_week = next_week;
+            _t = _nextWeek;
+            _thisWeek = _nextWeek;
         }
-        emit CheckpointToken(block.timestamp, to_distribute);
+        emit CheckpointToken(block.timestamp, _toDistribute);
     }
 
-    function _find_timestamp_epoch(address _ve, uint256 _timestamp) internal view returns (uint256) {
+    function _findTimestampEpoch(address _ve, uint256 _timestamp) internal view returns (uint256) {
         uint256 _min = 0;
         uint256 _max = VotingEscrow(_ve).epoch();
         for (uint256 i = 0; i < 128; i++) {
@@ -322,17 +343,17 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
         return _min;
     }
 
-    function _checkpoint_total_supply() internal {
-        address _ve = voting_escrow;
-        uint256 _t = time_cursor;
-        uint256 _rounded_timestamp = block.timestamp / WEEK * WEEK;
+    function _checkpointTotalSupply() internal {
+        address _ve = votingEscrow;
+        uint256 _t = timeCursor;
+        uint256 _roundedTimestamp = block.timestamp / _WEEK * _WEEK;
         VotingEscrow(_ve).checkpoint();
 
         for (uint256 i = 0; i < 20; i++) {
-            if (_t > _rounded_timestamp) {
+            if (_t > _roundedTimestamp) {
                 break;
             } else {
-                uint256 epoch = _find_timestamp_epoch(_ve, _t);
+                uint256 epoch = _findTimestampEpoch(_ve, _t);
                 Point memory _pt = Point(0, 0, 0, 0);
                 (_pt.bias, _pt.slope, _pt.ts, _pt.blk) = VotingEscrow(_ve).pointHistory(epoch);
                 int128 _dt = 0;
@@ -341,109 +362,103 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
                     // Then make dt 0
                     _dt = int256(_t - _pt.ts).toInt128();
                 }
-                ve_supply[_t] = int256(_pt.bias - _pt.slope * _dt).toUint256();
+                veSupply[_t] = int256(_pt.bias - _pt.slope * _dt).toUint256();
             }
-            _t += WEEK;
+            _t += _WEEK;
         }
 
-        time_cursor = _t;
+        timeCursor = _t;
     }
 
-    function _claim(address _addr, address _ve, uint256 _last_token_time) internal returns (uint256) {
+    function _claim(address _addr, address _ve, uint256 _lastTokenTime) internal returns (uint256) {
         // Minimal user_epoch is 0 (if user had no point)
-        uint256 _user_epoch = 0;
-        uint256 _to_distribute = 0;
+        uint256 _userEpoch = 0;
+        uint256 _toDistribute = 0;
 
-        uint256 _max_user_epoch = VotingEscrow(_ve).userPointEpoch(_addr);
-        uint256 _start_time = start_time;
+        uint256 _maxUserEpoch = VotingEscrow(_ve).userPointEpoch(_addr);
+        uint256 _startTime = startTime;
 
-        if (_max_user_epoch == 0) {
+        if (_maxUserEpoch == 0) {
             // No lock = no fees
             return 0;
         }
 
-        uint256 _week_cursor = time_cursor_of[_addr];
-        if (_week_cursor == 0) {
+        uint256 _weekCursor = timeCursorOf[_addr];
+        if (_weekCursor == 0) {
             // Need to do the initial binary search
-            _user_epoch = _find_timestamp_user_epoch(_ve, _addr, _start_time, _max_user_epoch);
+            _userEpoch = _findTimestampUserEpoch(_ve, _addr, _startTime, _maxUserEpoch);
         } else {
-            _user_epoch = user_epoch_of[_addr];
+            _userEpoch = userEpochOf[_addr];
         }
 
-        if (_user_epoch == 0) {
-            _user_epoch = 1;
+        if (_userEpoch == 0) {
+            _userEpoch = 1;
         }
 
-        Point memory _user_point = Point(0, 0, 0, 0);
+        Point memory _userPoint = Point(0, 0, 0, 0);
+
         (
-            _user_point.bias,
-            _user_point.slope,
-            _user_point.ts,
-            _user_point.blk
-        ) = VotingEscrow(_ve).userPointHistory(_addr, _user_epoch);
+            _userPoint.bias,
+            _userPoint.slope,
+            _userPoint.ts,
+            _userPoint.blk
+        ) = VotingEscrow(_ve).userPointHistory(_addr, _userEpoch);
 
-        if (_week_cursor == 0) {
-            _week_cursor = (_user_point.ts + WEEK - 1) / WEEK * WEEK;
+        if (_weekCursor == 0) {
+            _weekCursor = (_userPoint.ts + _WEEK - 1) / _WEEK * _WEEK;
         }
 
-        if (_week_cursor >= _last_token_time) {
+        if (_weekCursor >= _lastTokenTime) {
             return 0;
         }
 
-        if (_week_cursor < _start_time) {
-            _week_cursor = _start_time;
+        if (_weekCursor < _startTime) {
+            _weekCursor = _startTime;
         }
-        Point memory _old_user_point = Point(0, 0, 0, 0);
+
+        Point memory _oldUserPoint = Point(0, 0, 0, 0);
 
         // Iterate over weeks
         for (uint256 i = 0; i < 50; i++) {
-            if (_week_cursor >= _last_token_time) {
+            if (_weekCursor >= _lastTokenTime) {
                 break;
             }
 
-            if (_week_cursor >= _user_point.ts && _user_epoch <= _max_user_epoch) {
-                _user_epoch += 1;
-                _old_user_point = _user_point;
-                if (_user_epoch > _max_user_epoch) {
-                    _user_point = Point(0, 0, 0, 0);
+            if (_weekCursor >= _userPoint.ts && _userEpoch <= _maxUserEpoch) {
+                _userEpoch += 1;
+                _oldUserPoint = _userPoint;
+                if (_userEpoch > _maxUserEpoch) {
+                    _userPoint = Point(0, 0, 0, 0);
                 } else {
                     (
-                        _user_point.bias,
-                        _user_point.slope,
-                        _user_point.ts,
-                        _user_point.blk
-                     ) = VotingEscrow(_ve).userPointHistory(_addr, _user_epoch);
+                        _userPoint.bias,
+                        _userPoint.slope,
+                        _userPoint.ts,
+                        _userPoint.blk
+                     ) = VotingEscrow(_ve).userPointHistory(_addr, _userEpoch);
                 }
             } else {
                 // Calc
                 // + i * 2 is for rounding errors
-                int128 dt = int256(_week_cursor - _old_user_point.ts).toInt128();
-                uint256 balance_of = max(int256(_old_user_point.bias - dt * _old_user_point.slope).toUint256(), 0);
-                if (balance_of == 0 && _user_epoch > _max_user_epoch) {
+                int128 _dt = int256(_weekCursor - _oldUserPoint.ts).toInt128();
+                uint256 _balanceOf = (_oldUserPoint.bias - _dt * _oldUserPoint.slope) > 0 ? int256(_oldUserPoint.bias - _dt * _oldUserPoint.slope).toUint256() : 0;
+                if (_balanceOf == 0 && _userEpoch > _maxUserEpoch) {
                     break;
                 }
-                if (balance_of > 0) {
-                    _to_distribute += balance_of * tokens_per_week[_week_cursor] / ve_supply[_week_cursor];
+                if (_balanceOf > 0) {
+                    _toDistribute += _balanceOf * tokensPerWeek[_weekCursor] / veSupply[_weekCursor];
                 }
 
-                _week_cursor += WEEK;
+                _weekCursor += _WEEK;
             }
         }
 
-        _user_epoch = min(_max_user_epoch, _user_epoch - 1);
-        user_epoch_of[_addr] = _user_epoch;
-        time_cursor_of[_addr] = _week_cursor;
+        _userEpoch = _maxUserEpoch < (_userEpoch - 1) ? _maxUserEpoch : (_userEpoch - 1);
+        userEpochOf[_addr] = _userEpoch;
+        timeCursorOf[_addr] = _weekCursor;
 
-        emit Claimed(_addr, _to_distribute, _user_epoch, _max_user_epoch);
+        emit Claimed(_addr, _toDistribute, _userEpoch, _maxUserEpoch);
 
-        return _to_distribute;
-    }
-
-    function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a < b ? a : b;
-    }
-
-    function max(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a > b ? a : b;
+        return _toDistribute;
     }
 }

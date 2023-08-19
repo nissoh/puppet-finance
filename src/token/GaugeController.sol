@@ -33,7 +33,7 @@ import {IGaugeController} from "src/interfaces/IGaugeController.sol";
 import {IVotingEscrow} from "src/interfaces/IVotingEscrow.sol";
 import {IScoreGauge} from "src/interfaces/IScoreGauge.sol";
 import {IPuppet} from "src/interfaces/IPuppet.sol";
-
+// todo - cleanup
 contract GaugeController is IGaugeController {
 
     using SafeCast for int256;
@@ -42,8 +42,9 @@ contract GaugeController is IGaugeController {
 
     address public admin;
     address public future_admin; // can and will be a smart contract
-    address public token;
-    address public votingEscrow;
+
+    address public immutable token;
+    address public immutable votingEscrow;
 
     uint256 public currentEpochEndTime;
 
@@ -302,6 +303,8 @@ contract GaugeController is IGaugeController {
         currentEpochEndTime = block.timestamp + WEEK;
 
         IPuppet(token).updateMiningParameters();
+
+        emit InitializeEpoch(block.timestamp);
     }
 
     /// @inheritdoc IGaugeController
@@ -329,6 +332,8 @@ contract GaugeController is IGaugeController {
 
         _currentEpoch += 1;
         currentEpochEndTime += WEEK;
+
+        emit AdvanceEpoch(_currentEpoch);
     }
 
 
@@ -355,6 +360,8 @@ contract GaugeController is IGaugeController {
 
         _profitWeight = _profit;
         _volumeWeight = _volume;
+
+        emit SetWeights(_profit, _volume);
     }
 
     // ============================================================================================

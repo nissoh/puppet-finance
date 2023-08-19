@@ -731,6 +731,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
     /// @param _isKeeperRequest A boolean indicating whether the request was made by a keeper
     /// @param _isIncrease A boolean indicating whether the request is an increase request
     /// @return _performanceFeePaid The amount of performance fee paid to the Trader
+    // slither-disable-next-line reentrancy-no-eth
     function _repayBalance(
         bytes32 _requestKey,
         uint256 _traderAmountIn,
@@ -820,6 +821,7 @@ contract Route is Base, IPositionRouterCallbackReceiver, IRoute {
 
     /// @notice The ```_resetRoute``` function is used to increment the position index, which is used to track the current position
     /// @dev This function is called by ```_repayBalance```, only if there's no open interest
+    // slither-disable-next-line reentrancy-no-eth
     function _resetRoute() internal {
         _updateScoreGauge();
 
