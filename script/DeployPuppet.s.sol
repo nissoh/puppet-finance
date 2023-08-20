@@ -6,6 +6,7 @@ import {Puppet} from "src/token/Puppet.sol";
 import {VotingEscrow} from "src/token/VotingEscrow.sol";
 import {GaugeController} from "src/token/GaugeController.sol";
 import {Minter} from "src/token/Minter.sol";
+import {RevenueDistributer} from "src/token/RevenueDistributer.sol";
 
 import {RouteFactory} from "src/RouteFactory.sol";
 import {Orchestrator} from "src/Orchestrator.sol";
@@ -47,6 +48,11 @@ contract DeployPuppet is DeployerUtilities {
 
         ScoreGaugeV1 _scoreGaugeV1 = new ScoreGaugeV1(_deployer, address(_minterContract), address(_orchestrator));
 
+        // https://www.unixtimestamp.com/index.php?ref=theredish.com%2Fweb (1600300800) // todo - calc next Thursday at 00:00:00 UTC
+        uint256 _startTime = 1692835200; // Thu Aug 24 2023 00:00:00 GMT+0000
+        // todo - on deployment, call revenueDistributer.checkpointToken(), wait a week, then call revenueDistributer.toggleAllowCheckpointToken()
+        RevenueDistributer _revenueDistributer = new RevenueDistributer(address(0x4c2892E20CDeb7495A5357Eb5C0a6d7E67172A14), _startTime, _weth, _deployer, _deployer);
+
         bytes4 setRouteTypeFunctionSig = _orchestrator.setRouteType.selector;
         bytes4 setScoreGaugeFunctionSig = _orchestrator.setScoreGauge.selector;
 
@@ -69,6 +75,7 @@ contract DeployPuppet is DeployerUtilities {
         console.log("gaugeController: %s", address(_gaugeController));
         console.log("minterContract: %s", address(_minterContract));
         console.log("scoreGauge1V1: %s", address(_scoreGaugeV1));
+        console.log("revenueDistributer: %s", address(_revenueDistributer));
         console.log("==============================================");
         console.log("==============================================");
 
@@ -84,3 +91,4 @@ contract DeployPuppet is DeployerUtilities {
 //   routeFactory: 0x24A8843c03b894ff449F1F69dd1D60327004c147
 //   orchestrator: 0x446fb2e318632135a34CF395840FfE6a483274C7
 //   scoreGauge1V1: 0x920C10F42c3F5Dba70Cd2c7567918D3A400FA876
+// revenueDistributer: 0x451971fE0EE93D80Ff1157CCe7f6D816b4559ee2
