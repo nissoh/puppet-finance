@@ -280,8 +280,8 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
     // =======================================================
 
     function _preGaugeTypeAddAsserts() internal {
-        assertEq(gaugeController.gauge_type_names(0), "", "_preGaugeTypeAddAsserts: E0");
-        assertEq(gaugeController.n_gauge_types(), 0, "_preGaugeTypeAddAsserts: E1");
+        assertEq(gaugeController.gaugeTypeNames(0), "", "_preGaugeTypeAddAsserts: E0");
+        assertEq(gaugeController.numberGaugeTypes(), 0, "_preGaugeTypeAddAsserts: E1");
         assertEq(gaugeController.getTypeWeight(0), 0, "_preGaugeTypeAddAsserts: E2");
         assertEq(gaugeController.getTotalWeight(), 0, "_preGaugeTypeAddAsserts: E3");
         assertEq(gaugeController.getWeightsSumPerType(0), 0, "_preGaugeTypeAddAsserts: E4");
@@ -291,34 +291,34 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
     }
 
     function _postGaugeTypeAddAsserts() internal {
-        assertEq(gaugeController.gauge_type_names(0), "Arbitrum", "_postGaugeTypeAddAsserts: E0");
-        assertEq(gaugeController.n_gauge_types(), 1, "_postGaugeTypeAddAsserts: E1");
+        assertEq(gaugeController.gaugeTypeNames(0), "Arbitrum", "_postGaugeTypeAddAsserts: E0");
+        assertEq(gaugeController.numberGaugeTypes(), 1, "_postGaugeTypeAddAsserts: E1");
         assertEq(gaugeController.getTypeWeight(0), 1000000000000000000, "_postGaugeTypeAddAsserts: E2");
         assertEq(gaugeController.getTotalWeight(), 0, "_postGaugeTypeAddAsserts: E3");
         assertEq(gaugeController.getWeightsSumPerType(0), 0, "_postGaugeTypeAddAsserts: E4");
     }
 
     function _preGauge1AddAsserts() internal {
-        assertEq(gaugeController.n_gauges(), 0, "_preGaugeAddAsserts: E0");
+        assertEq(gaugeController.numberGauges(), 0, "_preGaugeAddAsserts: E0");
         assertEq(gaugeController.getGaugeWeight(address(scoreGauge1V1)), 0, "_preGaugeAddAsserts: E1");
         assertEq(gaugeController.getTotalWeight(), 0, "_preGaugeAddAsserts: E2");
         assertEq(gaugeController.getWeightsSumPerType(0), 0, "_preGaugeAddAsserts: E3");
         assertEq(gaugeController.gauges(0), address(0), "_preGaugeAddAsserts: E4");
         assertEq(gaugeController.gaugeRelativeWeightWrite(address(scoreGauge1V1), block.timestamp), 0, "_preGaugeAddAsserts: E5");
 
-        int128 _n_gauge_types = gaugeController.n_gauge_types();
+        int128 _numberGaugeTypes = gaugeController.numberGaugeTypes();
 
         vm.expectRevert(bytes4(keccak256("NotAdmin()")));
-        gaugeController.addGauge(address(scoreGauge1V1), _n_gauge_types, 0);
+        gaugeController.addGauge(address(scoreGauge1V1), _numberGaugeTypes, 0);
 
         vm.startPrank(owner);
         vm.expectRevert(bytes4(keccak256("InvalidGaugeType()")));
-        gaugeController.addGauge(address(scoreGauge1V1), _n_gauge_types, 0);
+        gaugeController.addGauge(address(scoreGauge1V1), _numberGaugeTypes, 0);
         vm.stopPrank();
     }
 
     function _postGauge1AddAsserts() internal {
-        assertEq(gaugeController.n_gauges(), 1, "_postGauge1AddAsserts: E0");
+        assertEq(gaugeController.numberGauges(), 1, "_postGauge1AddAsserts: E0");
         assertEq(gaugeController.getGaugeWeight(address(scoreGauge1V1)), 1, "_postGauge1AddAsserts: E1");
         assertEq(gaugeController.getTotalWeight(), 1000000000000000000, "_postGauge1AddAsserts: E2");
         assertEq(gaugeController.getWeightsSumPerType(0), 1, "_postGauge1AddAsserts: E3");
@@ -333,25 +333,25 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
     }
 
     function _preGauge2AddAsserts() internal {
-        assertEq(gaugeController.n_gauges(), 1, "_preGauge2AddAsserts: E0");
+        assertEq(gaugeController.numberGauges(), 1, "_preGauge2AddAsserts: E0");
         assertEq(gaugeController.getGaugeWeight(address(scoreGauge2V1)), 0, "_preGauge2AddAsserts: E1");
         assertEq(gaugeController.getTotalWeight(), 1000000000000000000, "_preGauge2AddAsserts: E2");
         assertEq(gaugeController.getWeightsSumPerType(0), 1, "_preGauge2AddAsserts: E3");
         assertEq(gaugeController.gauges(1), address(0), "_preGauge2AddAsserts: E4");
 
-        int128 _n_gauge_types = gaugeController.n_gauge_types();
+        int128 _numberGaugeTypes = gaugeController.numberGaugeTypes();
 
         vm.expectRevert(bytes4(keccak256("NotAdmin()")));
-        gaugeController.addGauge(address(scoreGauge2V1), _n_gauge_types, 0);
+        gaugeController.addGauge(address(scoreGauge2V1), _numberGaugeTypes, 0);
 
         vm.startPrank(owner);
         vm.expectRevert(bytes4(keccak256("InvalidGaugeType()")));
-        gaugeController.addGauge(address(scoreGauge1V1), _n_gauge_types, 0);
+        gaugeController.addGauge(address(scoreGauge1V1), _numberGaugeTypes, 0);
         vm.stopPrank();
     }
 
     function _postGauge2AddAsserts() internal {
-        assertEq(gaugeController.n_gauges(), 2, "_postGauge2AddAsserts: E0");
+        assertEq(gaugeController.numberGauges(), 2, "_postGauge2AddAsserts: E0");
         assertEq(gaugeController.getGaugeWeight(address(scoreGauge2V1)), 0, "_postGauge2AddAsserts: E1");
         assertEq(gaugeController.getTotalWeight(), 1000000000000000000, "_postGauge2AddAsserts: E2");
         assertEq(gaugeController.getWeightsSumPerType(0), 1, "_postGauge2AddAsserts: E3");
@@ -365,8 +365,8 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
     }
 
     function _preGauge2TypeAddAsserts() internal {
-        assertEq(gaugeController.gauge_type_names(1), "", "_preGauge2TypeAddAsserts: E0");
-        assertEq(gaugeController.n_gauge_types(), 1, "_preGauge2TypeAddAsserts: E1");
+        assertEq(gaugeController.gaugeTypeNames(1), "", "_preGauge2TypeAddAsserts: E0");
+        assertEq(gaugeController.numberGaugeTypes(), 1, "_preGauge2TypeAddAsserts: E1");
         assertEq(gaugeController.getTypeWeight(1), 0, "_preGauge2TypeAddAsserts: E2");
         assertEq(gaugeController.getTotalWeight(), 1000000000000000000, "_preGauge2TypeAddAsserts: E3");
         assertEq(gaugeController.getWeightsSumPerType(1), 0, "_preGauge2TypeAddAsserts: E4");
@@ -376,33 +376,33 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
     }
 
     function _postGauge2TypeAddAsserts() internal {
-        assertEq(gaugeController.gauge_type_names(1), "Optimism", "_postGauge2TypeAddAsserts: E0");
-        assertEq(gaugeController.n_gauge_types(), 2, "_postGauge2TypeAddAsserts: E1");
+        assertEq(gaugeController.gaugeTypeNames(1), "Optimism", "_postGauge2TypeAddAsserts: E0");
+        assertEq(gaugeController.numberGaugeTypes(), 2, "_postGauge2TypeAddAsserts: E1");
         assertEq(gaugeController.getTypeWeight(1), 1000000000000000000, "_postGauge2TypeAddAsserts: E2");
         assertEq(gaugeController.getTotalWeight(), 1000000000000000000, "_postGauge2TypeAddAsserts: E3");
         assertEq(gaugeController.getWeightsSumPerType(0), 1, "_postGauge2TypeAddAsserts: E4");
     }
 
     function _preGauge3AddAsserts() internal {
-        assertEq(gaugeController.n_gauges(), 2, "_preGaugeAddAsserts: E0");
+        assertEq(gaugeController.numberGauges(), 2, "_preGaugeAddAsserts: E0");
         assertEq(gaugeController.getGaugeWeight(address(scoreGauge3V1)), 0, "_preGaugeAddAsserts: E1");
         assertEq(gaugeController.getTotalWeight(), 1000000000000000000, "_preGaugeAddAsserts: E2");
         assertEq(gaugeController.getWeightsSumPerType(1), 0, "_preGaugeAddAsserts: E3");
         assertEq(gaugeController.gauges(2), address(0), "_preGaugeAddAsserts: E4");
 
-        int128 _n_gauge_types = gaugeController.n_gauge_types();
+        int128 _numberGaugeTypes = gaugeController.numberGaugeTypes();
 
         vm.expectRevert(bytes4(keccak256("NotAdmin()")));
-        gaugeController.addGauge(address(scoreGauge3V1), _n_gauge_types, 0);
+        gaugeController.addGauge(address(scoreGauge3V1), _numberGaugeTypes, 0);
 
         vm.startPrank(owner);
         vm.expectRevert(bytes4(keccak256("InvalidGaugeType()")));
-        gaugeController.addGauge(address(scoreGauge3V1), _n_gauge_types, 0);
+        gaugeController.addGauge(address(scoreGauge3V1), _numberGaugeTypes, 0);
         vm.stopPrank();
     }
 
     function _postGauge3AddAsserts() internal {
-        assertEq(gaugeController.n_gauges(), 3, "_postGaugeAddAsserts: E0");
+        assertEq(gaugeController.numberGauges(), 3, "_postGaugeAddAsserts: E0");
         assertEq(gaugeController.getGaugeWeight(address(scoreGauge3V1)), 0, "_postGaugeAddAsserts: E1");
         assertEq(gaugeController.getTotalWeight(), 1000000000000000000, "_postGaugeAddAsserts: E2");
         assertEq(gaugeController.getWeightsSumPerType(1), 0, "_postGaugeAddAsserts: E3");

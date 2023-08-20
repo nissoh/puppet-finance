@@ -76,7 +76,7 @@ contract RevenueDistributer is ReentrancyGuard, IRevenueDistributer {
     /// @param _token Fee token address (3CRV)
     /// @param _admin Admin address
     /// @param _emergencyReturn Address to transfer `_token` balance to
-    ///                          if this contract is killed
+    ///                         if this contract is killed
     constructor(address _votingEscrow, uint256 _startTime, address _token, address _admin, address _emergencyReturn) {
         uint256 t = _startTime / _WEEK * _WEEK;
         startTime = t;
