@@ -35,18 +35,19 @@ import {IOrchestrator} from "src/interfaces/IOrchestrator.sol";
 import {IMinter} from "src/interfaces/IMinter.sol";
 import {IScoreGauge} from "src/interfaces/IScoreGauge.sol";
 import {IGaugeController} from "src/interfaces/IGaugeController.sol";
-
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
 /// @title ScoreGauge. Modified fork of Curve's LiquidityGauge
 /// @author johnnyonline (Puppet Finance) https://github.com/johnnyonline
 /// @notice Used to measure scores of Traders and Puppets, according to pre defined metrics with configurable weights, and distributes rewards to them
-contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
+contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge, Test {
 
     using SafeERC20 for IERC20;
 
     bool private _isKilled;
 
     address public admin;
-    address public future_admin; // can and will be a smart contract
+    address public futureAdmin; // can and will be a smart contract
 
     mapping(uint256 => EpochInfo) public epochInfo; // epoch => EpochInfo
 
@@ -90,15 +91,18 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
     // External Functions
     // ============================================================================================
 
+    // view functions
+
     /// @inheritdoc IScoreGauge
     function claimableRewards(uint256 _epoch, address _user) external view returns (uint256) {
         return _claimableRewards(_epoch, _user);
     }
 
     /// @inheritdoc IScoreGauge
-    function userPerformance(uint256 _epoch, address _user) external view returns (uint256 _volumeGenerated, uint256 _profit) {
-        _volumeGenerated = epochInfo[_epoch].userPerformance[_user].volumeGenerated;
-        _profit = epochInfo[_epoch].userPerformance[_user].profit;
+    function userPerformance(uint256 _epoch, address _user) external view returns (uint256 _volume, uint256 _profit) {
+        EpochInfo storage _epochInfo = epochInfo[_epoch];
+        _volume = _epochInfo.userPerformance[_user].volume;
+        _profit = _epochInfo.userPerformance[_user].profit;
     }
 
     /// @inheritdoc IScoreGauge
@@ -111,59 +115,60 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
         return _isKilled;
     }
 
+    // mutated functions
+
+    /// @inheritdoc IScoreGauge
+    function claim(uint256 _epoch, address _receiver) public nonReentrant returns (uint256 _rewards) {
+        _rewards = _claim(_epoch, _receiver);
+
+        IERC20(token).safeTransfer(_receiver, _rewards);
+    }
+
+    /// @inheritdoc IScoreGauge
+    function claimMany(uint256[] calldata _epochs, address _receiver) external nonReentrant returns (uint256 _rewards) {
+        for (uint256 i = 0; i < _epochs.length; i++) {
+            _rewards += _claim(_epochs[i], _receiver);
+        }
+        console.log("claimMany: %s", _rewards);
+        console.log("balanceOf: %s", IERC20(token).balanceOf(address(this)));
+        IERC20(token).safeTransfer(_receiver, _rewards);
+    }
+
     /// @inheritdoc IScoreGauge
     function depositRewards(uint256 _epoch, uint256 _amount) external nonReentrant {
         if (msg.sender != address(minter)) revert NotMinter();
 
-        epochInfo[_epoch].rewards += _amount;
+        _updateWeights(_epoch);
+
+        EpochInfo storage _epochInfo = epochInfo[_epoch];
+        _epochInfo.profitRewards += _amount * _epochInfo.profitWeight / _BASIS_POINTS_DIVISOR;
+        _epochInfo.volumeRewards += _amount * _epochInfo.volumeWeight / _BASIS_POINTS_DIVISOR;
+        console.log("depositRewards: %s", _amount);
+        console.log("balanceOf: %s", IERC20(token).balanceOf(address(this)));
+        console.log("profitRewards: %s", _epochInfo.profitRewards); // todo -- test that
+        console.log("volumeRewards: %s", _epochInfo.volumeRewards);
+
 
         emit DepositRewards(_amount);
     }
 
     /// @inheritdoc IScoreGauge
-    function claim(uint256 _epoch, address _receiver) external nonReentrant returns (uint256 _userReward) {
-        if (_epoch >= IGaugeController(controller).epoch()) revert InvalidEpoch();
-
-        EpochInfo storage _epochInfo = epochInfo[_epoch];
-        if (_epochInfo.claimed[msg.sender]) revert AlreadyClaimed();
-
-        _userReward = _claimableRewards(_epoch, msg.sender);
-        if (_userReward == 0) revert NoRewards();
-
-        _epochInfo.claimed[msg.sender] = true;
-
-        IERC20(token).safeTransfer(_receiver, _userReward);
-
-        emit Claim(_epoch, _userReward, msg.sender, _receiver);
-    }
-
-    /// @inheritdoc IScoreGauge
-    function updateUserScore(uint256 _volumeGenerated, uint256 _profit, address _user) external {
+    function updateUserScore(uint256 _volume, uint256 _profit, address _user) external {
         if (!IOrchestrator(orchestrator).isRoute(msg.sender)) revert NotRoute();
 
         if (!_isKilled) {
-            EpochInfo storage _epochInfo = epochInfo[controller.epoch()];
-            _epochInfo.userPerformance[_user].volumeGenerated += _volumeGenerated;
+            uint256 _epoch = controller.epoch();
+            EpochInfo storage _epochInfo = epochInfo[_epoch];
+
+            _epochInfo.userPerformance[_user].volume += _volume;
             _epochInfo.userPerformance[_user].profit += _profit;
 
-            if (_epochInfo.profitWeight == 0 && _epochInfo.volumeWeight == 0) {
-                IGaugeController _controller = controller;
-                _epochInfo.profitWeight = _controller.profitWeight();
-                _epochInfo.volumeWeight = _controller.volumeWeight();
-                if (_epochInfo.profitWeight == 0 && _epochInfo.volumeWeight == 0) revert InvalidWeights();
-            }
+            _epochInfo.totalVolume += _volume;
+            _epochInfo.totalProfit += _profit;
 
-            uint256 _totalVolumeGenerated = _epochInfo.totalVolumeGenerated + _volumeGenerated;
-            uint256 _totalProfit = _epochInfo.totalProfit + _profit;
+            _updateWeights(_epoch);
 
-            _epochInfo.totalVolumeGenerated = _totalVolumeGenerated;
-            _epochInfo.totalProfit = _totalProfit;
-
-            _epochInfo.totalScore = 
-                (_totalProfit * _epochInfo.profitWeight + _totalVolumeGenerated * _epochInfo.volumeWeight) 
-                / _BASIS_POINTS_DIVISOR;
-
-            emit UserScoreUpdate(_user, _volumeGenerated, _profit);
+            emit UserScoreUpdate(_user, _volume, _profit);
         }
     }
 
@@ -174,15 +179,15 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
 
     /// @inheritdoc IScoreGauge
     function commitTransferOwnership(address _futureAdmin) external onlyAdmin {
-        future_admin = _futureAdmin;
+        futureAdmin = _futureAdmin;
 
         emit CommitOwnership(_futureAdmin);
     }
 
     /// @inheritdoc IScoreGauge
     function applyTransferOwnership() external onlyAdmin {
-        address _admin = future_admin;
-        require(_admin != address(0), "admin not set");
+        address _admin = futureAdmin;
+        if (_admin == address(0)) revert ZeroAddress();
 
         admin = _admin;
 
@@ -197,13 +202,43 @@ contract ScoreGaugeV1 is ReentrancyGuard, IScoreGauge {
         EpochInfo storage _epochInfo = epochInfo[_epoch];
         if (_epochInfo.claimed[_user]) return 0;
 
-        uint256 _userProfit = _epochInfo.userPerformance[_user].profit;
-        uint256 _userVolumeGenerated = _epochInfo.userPerformance[_user].volumeGenerated;
+        console.log("epochInfo[_epoch].totalProfit", _epochInfo.totalProfit);
+        console.log("epochInfo[_epoch].totalVolume", _epochInfo.totalVolume);
+        console.log("_epochInfo.userPerformance[_user].profit", _epochInfo.userPerformance[_user].profit);
+        console.log("_epochInfo.userPerformance[_user].volume", _epochInfo.userPerformance[_user].volume);
+        console.log("_userProfitRewards: ", _epochInfo.userPerformance[_user].profit * _PRECISION / _epochInfo.totalProfit);
+        console.log("_userVolumeRewards: ", _epochInfo.userPerformance[_user].volume * _PRECISION / _epochInfo.totalVolume);
 
-        uint256 _userScore = ((_userProfit * _epochInfo.profitWeight + _userVolumeGenerated * _epochInfo.volumeWeight) / _BASIS_POINTS_DIVISOR);
-        uint256 _userScoreShare = _userScore * _PRECISION / _epochInfo.totalScore;
-        uint256 _userReward = _userScoreShare * _epochInfo.rewards / _PRECISION;
+        uint256 _profitShare = _epochInfo.userPerformance[_user].profit * _PRECISION / _epochInfo.totalProfit;
+        uint256 _volumeShare = _epochInfo.userPerformance[_user].volume * _PRECISION / _epochInfo.totalVolume;
 
-        return _userReward;
+        uint256 _userProfitRewards = _profitShare * _epochInfo.profitRewards / _PRECISION;
+        uint256 _userVolumeRewards = _volumeShare * _epochInfo.volumeRewards / _PRECISION;
+        console.log("totalRewards: ", _userProfitRewards + _userVolumeRewards);
+        return _userProfitRewards + _userVolumeRewards;
+    }
+
+    function _claim(uint256 _epoch, address _receiver) internal returns (uint256 _rewards) {
+        if (_epoch >= IGaugeController(controller).epoch()) revert InvalidEpoch();
+
+        EpochInfo storage _epochInfo = epochInfo[_epoch];
+        if (_epochInfo.claimed[msg.sender]) revert AlreadyClaimed();
+
+        _rewards = _claimableRewards(_epoch, msg.sender);
+        if (_rewards == 0) revert NoRewards();
+
+        _epochInfo.claimed[msg.sender] = true;
+
+        emit Claim(_epoch, _rewards, msg.sender, _receiver);
+    }
+
+    function _updateWeights(uint256 _epoch) internal {
+        EpochInfo storage _epochInfo = epochInfo[_epoch];
+        if (_epochInfo.profitWeight == 0 && _epochInfo.volumeWeight == 0) {
+            IGaugeController _controller = controller;
+            _epochInfo.profitWeight = _controller.profitWeight();
+            _epochInfo.volumeWeight = _controller.volumeWeight();
+            if (_epochInfo.profitWeight == 0 && _epochInfo.volumeWeight == 0) revert InvalidWeights();
+        }
     }
 }

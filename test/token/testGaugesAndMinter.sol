@@ -139,6 +139,7 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         _preGauge1AddAsserts();
         vm.startPrank(owner);
         gaugeController.addGauge(address(scoreGauge1V1), 0, 1);
+        // _gauge, int128 _gaugeType, uint256 _weight
         vm.stopPrank();
         _postGauge1AddAsserts();
 
@@ -258,14 +259,13 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         _postClaimRewardsAsserts(_aliceClaimedRewards, _bobClaimedRewards, _yossiClaimedRewards);
 
         // VOTE FOR 4th EPOCH (gauge3 gets all rewards)
-        skip(86400 * 2); // skip 2 days, just to make it more realistic
         _userVote4thEpoch(alice);
         _userVote4thEpoch(bob);
         _userVote4thEpoch(yossi);
         _postVote4thEpochAsserts();
 
         // ON 4th EPOCH END
-        skip(86400 * 5); // skip the 5 days left in the epoch
+        skip(86400 * 7);
         _pre4thEpochEndAsserts(); // (before calling advanceEpoch())
         gaugeController.advanceEpoch();
         _post4thEpochEndAsserts();
@@ -727,36 +727,29 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
 
         (
             ,
-            uint256 _totalScoreBefore,
+            ,
             uint256 _totalProfitBefore,
-            uint256 _totalVolumeGeneratedBefore,
+            uint256 _totalVolumeBefore,
             ,
         ) = scoreGauge1V1.epochInfo(gaugeController.epoch());
 
         scoreGauge1V1.updateUserScore(2876763763041700041795401421222374997, 31287038234711120027588025294117645, _user);
 
         (
-            ,
-            ,
-            ,
-            ,
+            uint256 _profitRewards,
+            uint256 _volumeRewards,
+            uint256 _totalProfitAfter,
+            uint256 _totalVolumeAfter,
             uint256 _profitWeight,
             uint256 _volumeWeight
         ) = scoreGauge1V1.epochInfo(gaugeController.epoch());
 
         assertEq(scoreGauge1V1.claimableRewards(gaugeController.epoch(), _user), 0, "_updateScoreGauge: E0");
 
-        (
-            uint256 _rewards,
-            uint256 _totalScoreAfter,
-            uint256 _totalProfitAfter,
-            uint256 _totalVolumeGeneratedAfter,,
-        ) = scoreGauge1V1.epochInfo(gaugeController.epoch());
-
-        assertEq(_rewards, 0, "_updateScoreGauge: E1");
-        assertTrue(_totalScoreAfter > _totalScoreBefore, "_updateScoreGauge: E2");
+        assertEq(_profitRewards, 0, "_updateScoreGauge: E1");
+        assertEq(_volumeRewards, 0, "_updateScoreGauge: E2");
         assertEq(_totalProfitAfter, _totalProfitBefore + 31287038234711120027588025294117645, "_updateScoreGauge: E3");
-        assertEq(_totalVolumeGeneratedAfter, _totalVolumeGeneratedBefore + 2876763763041700041795401421222374997, "_updateScoreGauge: E4");
+        assertEq(_totalVolumeAfter, _totalVolumeBefore + 2876763763041700041795401421222374997, "_updateScoreGauge: E4");
 
         assertEq(_profitWeight, 2000, "_updateScoreGauge: E5");
         assertEq(_volumeWeight, 8000, "_updateScoreGauge: E6");
@@ -791,12 +784,17 @@ contract testGaugesAndMinter is Test, DeployerUtilities {
         assertEq(_totalRewards1, 0, "_claimForUser: E001");
 
         uint256 _claimableRewards = scoreGauge1V1.claimableRewards(_epoch - 1, _user);
+        // todo
         
         vm.expectRevert(bytes4(keccak256("NoRewards()")));
         scoreGauge1V1.claim(_epoch - 1, _user);
 
         vm.startPrank(_user);
-        uint256 _claimedRewards = scoreGauge1V1.claim(_epoch - 1, _user);
+        // uint256 _claimedRewards = scoreGauge1V1.claim(_epoch - 1, _user);
+        //
+        uint256[] memory _epochs = new uint256[](1);
+        _epochs[0] = _epoch - 1;
+        uint256 _claimedRewards = scoreGauge1V1.claimMany(_epochs, _user);
 
         vm.expectRevert(bytes4(keccak256("AlreadyClaimed()")));
         scoreGauge1V1.claim(_epoch - 1, _user);
