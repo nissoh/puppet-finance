@@ -477,7 +477,7 @@ contract Orchestrator is Auth, Base, IOrchestrator {
     /// @inheritdoc IOrchestrator
     function subscribeRoute(
         uint256 _allowance,
-        uint256 _subscriptionPeriod,
+        uint256 _expiry,
         address _owner,
         address _trader,
         bytes32 _routeTypeKey, 
@@ -497,9 +497,9 @@ contract Orchestrator is Auth, Base, IOrchestrator {
 
         if (_subscribe) {
             if (_allowance > _BASIS_POINTS_DIVISOR || _allowance == 0) revert InvalidAllowancePercentage();
-            if (_subscriptionPeriod == 0) revert InvalidSubscriptionPeriod();
+            if (_expiry <= block.timestamp + 24 hours) revert InvalidSubscriptionPeriod();
 
-            _puppet.subscriptionExpiry[_routeKey] = block.timestamp + _subscriptionPeriod;
+            _puppet.subscriptionExpiry[_routeKey] = _expiry;
 
             EnumerableMap.set(_puppet.allowances, _route.route, _allowance);
             EnumerableSet.add(_route.puppets, _owner);
@@ -510,25 +510,25 @@ contract Orchestrator is Auth, Base, IOrchestrator {
             EnumerableSet.remove(_route.puppets, _owner);
         }
 
-        emit SubscribeRoute(_allowance, _trader, _owner, _route.route, _routeTypeKey, _subscribe);
+        emit SubscribeRoute(_subscribe, _allowance, _expiry, _trader, _owner, _route.route, _routeTypeKey, _subscribe);
     }
 
     /// @inheritdoc IOrchestrator
     function batchSubscribeRoute(
         address _owner,
         uint256[] memory _allowances,
-        uint256[] memory _subscriptionPeriods,
+        uint256[] memory _expiries,
         address[] memory _traders,
         bytes32[] memory _routeTypeKeys,
         bool[] memory _subscribe
     ) external {
         if (_traders.length != _allowances.length) revert MismatchedInputArrays();
-        if (_traders.length != _subscriptionPeriods.length) revert MismatchedInputArrays();
+        if (_traders.length != _expiries.length) revert MismatchedInputArrays();
         if (_traders.length != _subscribe.length) revert MismatchedInputArrays();
         if (_traders.length != _routeTypeKeys.length) revert MismatchedInputArrays();
 
         for (uint256 i = 0; i < _traders.length; i++) {
-            subscribeRoute(_allowances[i], _subscriptionPeriods[i], _owner, _traders[i], _routeTypeKeys[i], _subscribe[i]);
+            subscribeRoute(_allowances[i], _expiries[i], _owner, _traders[i], _routeTypeKeys[i], _subscribe[i]);
         }
     }
 

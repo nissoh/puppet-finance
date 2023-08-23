@@ -376,7 +376,7 @@ interface IOrchestrator {
     event SetRouteType(bytes32 routeTypeKey, address collateral, address index, bool isLong);
 
     event ApprovePlugin(address indexed caller, bytes32 routeTypeKey);
-    event SubscribeRoute(uint256 allowance, address indexed trader, address indexed puppet, address indexed route, bytes32 routeTypeKey, bool subscribe);
+    event SubscribeRoute(bool subscribe, uint256 allowance, uint256 subscriptionExpiry, address indexed trader, address indexed puppet, address indexed route, bytes32 routeTypeKey, bool subscribe);
     event SetThrottleLimit(address indexed puppet, bytes32 routeType, uint256 throttleLimit);
 
     event UpdateOpenTimestamp(address indexed puppet, bytes32 routeType, uint256 timestamp);
